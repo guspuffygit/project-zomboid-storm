@@ -1,0 +1,22 @@
+// This script applies common project publishing configuration
+
+// exclude javadoc warnings from console
+javadoc.options.addStringOption('Xdoclint:none', '-quiet')
+
+java {
+	withJavadocJar()
+	withSourcesJar()
+}
+
+// Configure the automatically created sourcesJar task to handle duplicates
+tasks.named('sourcesJar') {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.withType(org.gradle.api.publish.maven.tasks.PublishToMavenLocal).configureEach {
+	doLast {
+		// Access the publication object associated with this task
+		def pub = publication
+		println "Published: ${pub.groupId}:${pub.artifactId}:${pub.version}"
+	}
+}

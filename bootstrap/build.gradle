@@ -1,0 +1,26 @@
+plugins {
+	id 'java'
+	id 'com.gradleup.shadow' version '9.3.1'
+}
+
+dependencies {
+	implementation 'org.javassist:javassist:3.29.2-GA'
+}
+
+jar {
+	enabled = false
+}
+
+shadowJar {
+	archiveFileName = getProperty('bootstrapJarName')
+
+	manifest {
+		attributes(
+				'Premain-Class': 'io.pzstorm.storm.StormBootstrapper',
+				'Can-Redefine-Classes': 'true',
+				'Can-Retransform-Classes': 'true'
+				)
+	}
+}
+
+tasks.build.dependsOn tasks.shadowJar

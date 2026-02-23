@@ -1,0 +1,16 @@
+pluginManagement {
+	repositories {
+		mavenLocal()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'storm'
+
+// rename each project so that it has 'storm' prefix
+// this is important so that maven generates artifacts with correct names
+rootProject.children.each {
+	it.name = 'storm-' + it.name
+}
+
+include 'bootstrap'

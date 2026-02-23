@@ -1,0 +1,434 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.apache.tools.ant.filters.ReplaceTokens
+import org.gradle.internal.os.OperatingSystem
+
+plugins {
+	id 'java-library'
+	id 'application'
+	id 'maven-publish'
+	id 'signing'
+	id 'com.diffplug.spotless' version '8.1.0'
+	id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
+	id 'io.freefair.lombok' version '9.2.0'
+}
+
+String workshopId = '3670772371'
+String workshopTitle = 'Storm Mod Framework b42'
+String workshopDescription = 'Storm modding framework b42 only'
+
+def os = OperatingSystem.current()
+
+def getLocalProperty(String property, String defaultValue = null) {
+	return providers.provider {
+		def props = new Properties()
+		def propFile = file("local.properties")
+
+		if (propFile.exists()) {
+			propFile.withInputStream { props.load(it) }
+			return props.getProperty(property, defaultValue)
+		} else {
+			throw new GradleException("local.properties file not found!")
+		}
+	}
+}
+
+apply from: 'publish.gradle'
+
+String versionSuffix = System.getenv("STAGING") ? "" :
+		project.ext.has('versionSuffix') ? project.ext.get('versionSuffix') : "-SNAPSHOT"
+
+allprojects {
+	repositories { mavenCentral() }
+	group = 'at.mlem'
+	version = '0.2.7' + versionSuffix
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(25)
+		}
+	}
+}
+
+tasks.register('extractZomboidFiles', Copy) {
+	from getLocalProperty('gameDir')
+	into layout.buildDirectory.dir('zomboid-classpath')
+	include 'projectzomboid.jar', 'stdlib.lbc', 'stdlib.lua'
+}
+
+jar.getDestinationDirectory().set(new File(buildDir, 'libs'))
+
+dependencies {
+	api 'org.jetbrains:annotations:20.1.0'
+
+	compileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
+
+	api('com.google.guava:guava:31.1-jre') {
+		exclude group: 'com.google.errorprone'
+		exclude group: 'org.checkerframework'
+		exclude module: 'failureaccess'
+		exclude module: 'listenablefuture'
+		exclude module: 'j2objc-annotations'
+	}
+
+	api 'org.slf4j:slf4j-api:1.7.22'
+	api 'ch.qos.logback:logback-classic:1.2.13'
+	api 'net.bytebuddy:byte-buddy:1.18.4'
+	implementation 'net.bytebuddy:byte-buddy-agent:1.18.4'
+	implementation 'net.java.dev.jna:jna:5.18.1'
+	api 'com.fasterxml.jackson.core:jackson-databind:2.21.0'
+
+	compileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
+	testImplementation 'org.ow2.asm:asm:9.1'
+	testImplementation 'org.ow2.asm:asm-tree:9.1'
+	testImplementation 'org.ow2.asm:asm-util:9.1'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testImplementation 'io.github.java-diff-utils:java-diff-utils:4.10'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+jar {
+	from sourceSets.main.output
+}
+
+afterEvaluate {
+	distributions.main {
+		contents {
+			it.from('README.md', 'LICENSE', 'CHANGELOG.md', 'versionFile.txt', 'poster.png')
+
+			it.from('dist') {
+				include '**/*.*'
+				filter(ReplaceTokens, tokens: [stormVersion: rootProject.version])
+			}
+
+			it.exclude '**/storm', '**/storm.bat'
+		}
+	}
+}
+
+publishing {
+	publications {
+		coreMavenJava(MavenPublication) {
+			from project.components.java
+			artifactId = project.jar.archiveBaseName.get()
+			pom {
+				name = 'Zomboid Storm Core'
+				description = 'Project Zomboid Storm Implementation'
+				url = 'https://github.com/mlem/storm'
+				scm {
+					connection = 'scm:git:git://github.com/mlem/storm.git'
+					developerConnection = 'scm:git:ssh://github.com:mlem/storm.git'
+					url = 'https://github.com/mlem/storm'
+				}
+				licenses {
+					license {
+						name = 'GNU General Public License v3.0'
+						url = 'https://www.gnu.org/licenses/gpl-3.0.en.html'
+					}
+				}
+				developers {
+					developer {
+						id = 'yooksi'
+						name = 'Matthew Cain'
+						email = 'yooks@tuta.io'
+					}
+					developer {
+						id = 'mlem'
+						name = 'Martin Lemanski'
+						email = 'martin.lemanski@gmx.at'
+					}
+				}
+			}
+		}
+	}
+}
+
+signing {
+	def signingKey = findProperty("signingKey") || findProperty("signing.keyId")
+
+	if (!project.hasProperty('skipSigning') && signingKey) {
+		sign(publishing.publications.apiMavenJava, publishing.publications.coreMavenJava)
+	}
+}
+
+nexusPublishing {
+	repositories {
+		sonatype {
+			nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
+			snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+
+			username = System.getenv("MAVEN_USERNAME")
+			password = System.getenv("MAVEN_PASSWORD")
+		}
+	}
+}
+
+tasks.register('writeModInfo') {
+	def outputFile = layout.buildDirectory.file("mod.info")
+
+	inputs.property("name", "Storm - Core b42")
+	inputs.property("id", "${rootProject.name}-core-b42")
+	inputs.property("description", 'Storm core mod loader for b42')
+	inputs.property("url", 'url')
+	inputs.property("modversion", 'modversion')
+
+	outputs.file(outputFile)
+
+	doLast {
+		def f = outputFile.get().asFile
+		f.text = """\
+			name=${inputs.properties['name']}
+			poster=poster.png
+			description=${inputs.properties['description']}
+			id=${inputs.properties['id']}
+			url=${inputs.properties['url']}
+			modversion=${inputs.properties['modversion']}
+		""".stripIndent()
+	}
+}
+
+tasks.register('installStorm', Sync) {
+	group = 'installation'
+	description = 'Installs the Storm distribution into the Project Zomboid directory.'
+
+	dependsOn 'installDist', 'writeModInfo', 'generateWorkshopFolder', project(':bootstrap').tasks.named('shadowJar')
+
+	def destDir = getLocalProperty('zomboidDir').map { "${it}/Workshop/${rootProject.name}/Contents/mods/${rootProject.name}" }
+
+	from(tasks.named('installDist').map { it.destinationDir }) {
+		into '42'
+	}
+
+	from(writeModInfo) {
+		into '42'
+	}
+
+	from(rootProject.file('media')) {
+		into '42/media'
+	}
+
+	from(project(':bootstrap').tasks.named('shadowJar')) {
+		into 'bootstrap'
+	}
+
+	from('c/agentlib.dll') {
+		into 'bootstrap'
+	}
+
+	from('LICENSE') {
+		into 'common'
+	}
+
+	into destDir
+}
+
+spotless {
+	java {
+		target 'src/**/*.java', 'zombie/**/*.java'
+		cleanthat()
+		googleJavaFormat().aosp().reflowLongStrings(false)
+		removeUnusedImports()
+		trimTrailingWhitespace()
+		endWithNewline()
+	}
+	groovyGradle {
+		target '**/*.gradle'
+		greclipse()
+	}
+}
+
+tasks.register('generateWorkshopFile') {
+	def outputFile = layout.buildDirectory.file('generated/workshop.txt')
+
+	outputs.file(outputFile)
+
+	inputs.property('version', '3')
+	inputs.property('id', workshopId)
+	inputs.property('title', workshopTitle)
+	inputs.property('description', workshopDescription)
+	inputs.property('tags', 'Build 42')
+	inputs.property('visibility', 'public')
+
+	doLast {
+		def file = outputFile.get().asFile
+		file.parentFile.mkdirs()
+
+		file.text = [
+			"version=${inputs.properties['version']}",
+			"title=${inputs.properties['title']}",
+			"id=${inputs.properties['id']}",
+			"description=${inputs.properties['description']}",
+			"tags=${inputs.properties['tags']}",
+			"visibility=${inputs.properties['visibility']}",
+		].join('\n')
+	}
+}
+
+tasks.register('generateWorkshopFolder', Copy) {
+	dependsOn 'generateWorkshopFile'
+
+	from generateWorkshopFile
+	from(rootProject.file('preview.png'))
+
+	into getLocalProperty('zomboidDir').map { "${it}/Workshop/${rootProject.name}" }
+}
+
+tasks.register('runStorm', JavaExec) {
+	group = 'execution'
+	description = 'Runs the StormLauncher application'
+	mainClass = 'io.pzstorm.storm.core.StormLauncher'
+
+	def zomboidFiles = layout.buildDirectory.dir('zomboid-classpath')
+
+	// Add the directory (for loose .class files) AND a fileTree for the JARs
+	classpath = sourceSets.main.runtimeClasspath +
+			files(zomboidFiles) +
+			fileTree(zomboidFiles).include('**/*.jar')
+
+	dependsOn extractZomboidFiles
+
+	systemProperty 'user.dir', getLocalProperty('outputDir').getOrElse(getLocalProperty('gameDir').get())
+
+	def jvmArgsList = [
+		'-Djava.awt.headless=true',
+		'-Xmx12G',
+		'-Xms12G',
+		'-Dzomboid.steam=1',
+		'-Dzomboid.znetlog=1',
+		'-Dzomboid.znetlog=1',
+		'-XX:+UseZGC',
+	]
+
+	if (os.isWindows()) {
+		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}\\win64;${getLocalProperty('outputDir').get()}")
+	} else if (os.isLinux()) {
+		// TODO: This is untested
+		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}/linux64;${getLocalProperty('outputDir').get()}")
+		jvmArgsList.add('-Djava.security.egd=file:/dev/./urandom')
+	} else if (os.isMacOsX()) {
+		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
+	}
+
+	jvmArgs jvmArgsList
+}
+
+tasks.register('writeWorkshopVdf') {
+	def workshopDir = getLocalProperty('zomboidDir').map { "${it}/Workshop/${rootProject.name}" }
+	def outputFile = layout.buildDirectory.file('workshop.vdf')
+
+	inputs.property('appid', '108600')
+	inputs.property('publishedfileid', workshopId)
+	inputs.property('contentfolder', workshopDir.map { "${it}/Contents" })
+	inputs.property('previewfile', workshopDir.map { "${it}/preview.png" })
+	inputs.property('visibility', '0')
+	inputs.property('title', workshopTitle)
+	inputs.property('description', workshopDescription)
+	inputs.property('changenote', 'Deployment')
+
+	outputs.file(outputFile)
+
+	doLast {
+		def f = outputFile.get().asFile
+		f.parentFile.mkdirs()
+		f.text = """\
+			"workshopitem"
+			{
+			\t"appid" "${inputs.properties['appid']}"
+			\t"publishedfileid" "${inputs.properties['publishedfileid']}"
+			\t"contentfolder" "${inputs.properties['contentfolder']}"
+			\t"previewfile" "${inputs.properties['previewfile']}"
+			\t"visibility" "${inputs.properties['visibility']}"
+			\t"title" "${inputs.properties['title']}"
+			\t"description" "${inputs.properties['description']}"
+			\t"changenote" "${inputs.properties['changenote']}"
+			}
+		""".stripIndent()
+	}
+}
+
+tasks.register('uploadWorkshop', Exec) {
+	group = 'publishing'
+	description = 'Uploads the mod to the Steam Workshop via steamcmd'
+
+	dependsOn 'writeWorkshopVdf', 'installStorm'
+
+	doFirst {
+		def username = System.getenv('STEAM_USERNAME')
+		def password = System.getenv('STEAM_PASSWORD')
+
+		if (!username || !password) {
+			throw new GradleException('STEAM_USERNAME and STEAM_PASSWORD environment variables must be set')
+		}
+	}
+
+	def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
+	commandLine steamcmdPath,
+			'+login', System.getenv('STEAM_USERNAME'), System.getenv('STEAM_PASSWORD'),
+			'+workshop_build_item', layout.buildDirectory.file('workshop.vdf').get().asFile.absolutePath,
+			'+quit'
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.compilerArgs << "-Xlint:deprecation" << "-Xdiags:verbose"
+}
+
+def isWSL() {
+	try {
+		def result = "cat /proc/version".execute().text
+		return result.toLowerCase().contains("microsoft")
+	} catch (Exception e) {
+		return false
+	}
+}
+
+tasks.register('runProjectZomboid') {
+	doLast {
+		if (os.isLinux() && isWSL()) {
+			def dir = getLocalProperty('outputDir').getOrElse(getLocalProperty('gameDir').get())
+			def cmd = [
+				"${dir}/ProjectZomboid64.exe".toString(),
+				'-DstormType=local',
+				'-DLOG_LEVEL=DEBUG',
+				"-agentpath:${getLocalProperty('bootstrapDirOverride').get()}\\agentlib.dll=storm-bootstrap.jar".toString(),
+				'--',
+			]
+			def pb = new ProcessBuilder(cmd)
+			pb.directory(new File(dir))
+			pb.inheritIO()
+			def process = pb.start()
+			def shutdownHook = new Thread({
+				try {
+					"taskkill.exe /F /T /IM ProjectZomboid64.exe".execute()
+				} catch (Exception ignored) {}
+				process.destroyForcibly()
+			})
+			Runtime.runtime.addShutdownHook(shutdownHook)
+			def exitCode = process.waitFor()
+			Runtime.runtime.removeShutdownHook(shutdownHook)
+			if (exitCode != 0) {
+				throw new GradleException("ProjectZomboid exited with code ${exitCode}")
+			}
+		}
+	}
+}
+
+tasks.register('runProjectZomboidServer', Exec) {
+	dependsOn 'installStorm'
+
+	def dir = getLocalProperty('serverPath').get()
+	workingDir dir
+
+	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
+
+	commandLine "${dir}/start-server.sh",
+			"-javaagent:${getLocalProperty('zomboidDir').get()}/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar",
+			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '-DstormType=local', '--',
+			'-servername', 'storm'
+	standardInput = System.in
+	standardOutput = System.out
+	errorOutput = System.err
+}
