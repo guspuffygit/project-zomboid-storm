@@ -12,7 +12,8 @@ public class ZomboidLogger {
             case LogSeverity.Error -> LOGGER.error(logMessage);
             case LogSeverity.Warning -> LOGGER.warn(logMessage);
             case LogSeverity.General -> LOGGER.info(logMessage);
-            case LogSeverity.Debug -> LOGGER.debug(logMessage);
+            case LogSeverity.Debug, LogSeverity.Trace, LogSeverity.Noise ->
+                    LOGGER.debug(logMessage);
             case null, default -> LOGGER.trace(logMessage);
         }
     }

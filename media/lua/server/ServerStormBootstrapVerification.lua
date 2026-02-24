@@ -36,10 +36,9 @@ Events.OnGameBoot.Add(stormLoaderVerificationCheck)
 
 
 print('GOODBYE')
-owijefoiwjeofij
-getCore():quitToDesktop()
-local function ServerPinged(clientAddress, numClients)
-    -- your code here
+
+local function ServerPinged()
+    print('ping')
 end
 
-Events.ServerPinged.Add(ServerPinged)
+Events.OnTick.Add(ServerPinged);

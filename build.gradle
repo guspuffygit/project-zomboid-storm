@@ -100,7 +100,7 @@ jar {
 afterEvaluate {
 	distributions.main {
 		contents {
-			it.from('README.md', 'LICENSE', 'CHANGELOG.md', 'versionFile.txt', 'poster.png')
+			it.from('README.md', 'LICENSE', 'CHANGELOG.md', 'poster.png')
 
 			it.from('dist') {
 				include '**/*.*'
