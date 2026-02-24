@@ -70,7 +70,54 @@ Linux / Mac:
 -javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar -DstormType=local --
 ```
 
-## Dedicated Linux Server
+## Dedicated Server
+
+Add `3670772371` to WorkshopItems in the server.ini file.
+
+### Windows
+
+The `StartServer64.bat` script does not pass extra arguments to the JVM, so you need to add the Storm flags directly to the `java.exe` command line in the bat file.
+
+#### Workshop Install
+
+Copy `StartServer64.bat` to `StartServer64-Storm.bat` and add the Storm flags before the `-cp` argument:
+
+```bat
+@setlocal enableextensions
+@cd /d "%~dp0"
+
+SET PZ_CLASSPATH=java/;java/projectzomboid.jar
+
+".\jre64\bin\java.exe" ^
+  -Djava.awt.headless=true ^
+  -Dzomboid.steam=1 ^
+  -Dzomboid.znetlog=1 ^
+  -Dstorm.server=true ^
+  -agentpath:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar ^
+  -XX:+UseZGC ^
+  -XX:-CreateCoredumpOnCrash ^
+  -XX:-OmitStackTraceInFastThrow ^
+  -Xms16g ^
+  -Xmx16g ^
+  -Djava.library.path=natives/;natives/win64/;. ^
+  -cp %PZ_CLASSPATH% ^
+  zombie.network.GameServer ^
+  -statistic 0 ^
+  -servername yourserver ^
+  %1 %2
+
+PAUSE
+```
+
+#### Local Install
+
+Add these flags to the java arguments:
+```bat
+-DstormType=local
+-DLOG_LEVEL=DEBUG
+```
+
+### Linux
 
 ### Workshop Install
 
@@ -89,6 +136,7 @@ Linux / Mac:
   -javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar \
   -Dstorm.server=true \
   -DstormType=local \
+  -DLOG_LEVEL=DEBUG \
   -- \
   -servername yourserver
 ```
