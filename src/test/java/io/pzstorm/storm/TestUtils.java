@@ -18,7 +18,7 @@ public class TestUtils {
     public static void invokeRestrictedMethod(Method method, Object obj, Object... args)
             throws ReflectiveOperationException {
         boolean wasAccessible = false;
-        if (method.isAccessible()) {
+        if (method.canAccess(obj)) {
             LOGGER.warn("Calling 'invokeRestrictedMethod' to invoker accessible method.");
             wasAccessible = true;
         } else method.setAccessible(true);
