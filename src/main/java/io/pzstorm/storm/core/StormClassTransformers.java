@@ -13,7 +13,6 @@ import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
-import io.pzstorm.storm.patch.vehicle.CarControllerPatch;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,6 @@ public class StormClassTransformers {
         registerTransformer(new DebugLogPatch());
         registerTransformer(new ZomboidFileSystemPatch());
         registerTransformer(new CoopMasterPatch());
-        registerTransformer(new CarControllerPatch());
         registerTransformer(new CommandBasePatch());
     }
 
@@ -55,7 +53,9 @@ public class StormClassTransformers {
         TRANSFORMERS.put(transformer.getClassName(), transformer);
     }
 
-    /** Called by {@link StormBootstrap#loadAndRegisterMods()} to collect mod-provided transformers. */
+    /**
+     * Called by {@link StormBootstrap#loadAndRegisterMods()} to collect mod-provided transformers.
+     */
     public static void collectTransformers() {
         for (ZomboidMod mod : StormModRegistry.getRegisteredMods()) {
             List<StormClassTransformer> transformers = mod.getClassTransformers();

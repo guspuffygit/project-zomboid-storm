@@ -1,0 +1,1 @@
+print('Storm server lua initialized.')

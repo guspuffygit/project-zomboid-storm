@@ -22,6 +22,7 @@ import java.util.jar.JarFile;
 import zombie.Lua.LuaManager;
 import zombie.core.Core;
 import zombie.network.GameClient;
+import zombie.network.GameServer;
 import zombie.ui.TextManager;
 import zombie.ui.UIFont;
 
@@ -113,6 +114,11 @@ public class StormEventHandler {
             if (GameClient.client) {
                 loadFromResourcePath("/lua/client/ISUI/Maps/ISWorldMapPatch.lua");
             }
+            if (GameServer.server) {
+                loadFromResourcePath("/lua/server/storm/StormServer.lua");
+            }
+
+            loadFromResourcePath("/lua/shared/storm/StormShared.lua");
         } catch (Exception e) {
             LOGGER.error("Unable to load lua files from resources", e);
             throw new RuntimeException(e);

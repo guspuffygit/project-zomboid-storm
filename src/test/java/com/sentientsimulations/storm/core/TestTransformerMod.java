@@ -5,8 +5,8 @@ import io.pzstorm.storm.mod.ZomboidMod;
 import java.util.List;
 
 /**
- * A test {@link ZomboidMod} that provides a {@link TestModTransformer} via
- * {@link #getClassTransformers()}, used to verify the transformer collection pipeline.
+ * A test {@link ZomboidMod} that provides a {@link TestModTransformer} via {@link
+ * #getClassTransformers()}, used to verify the transformer collection pipeline.
  */
 public class TestTransformerMod implements ZomboidMod {
 

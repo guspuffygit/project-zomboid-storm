@@ -1,0 +1,1 @@
+print('Shared Storm lua initialized.')

@@ -6,8 +6,8 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * A no-op {@link StormClassTransformer} used to verify that mod-provided transformers are
- * collected and registered by {@code StormClassTransformers.collectTransformers()}.
+ * A no-op {@link StormClassTransformer} used to verify that mod-provided transformers are collected
+ * and registered by {@code StormClassTransformers.collectTransformers()}.
  */
 public class TestModTransformer extends StormClassTransformer {
 

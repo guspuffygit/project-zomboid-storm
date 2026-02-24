@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies that {@code StormClassTransformers.collectTransformers()} picks up transformers
- * provided by mods via {@code ZomboidMod.getClassTransformers()}.
+ * Verifies that {@code StormClassTransformers.collectTransformers()} picks up transformers provided
+ * by mods via {@code ZomboidMod.getClassTransformers()}.
  */
 class StormClassTransformersTest implements IntegrationTest {
 
@@ -48,9 +48,7 @@ class StormClassTransformersTest implements IntegrationTest {
         }
     }
 
-    /**
-     * Remove the test mod from the registry after each test to avoid polluting other tests.
-     */
+    /** Remove the test mod from the registry after each test to avoid polluting other tests. */
     @AfterEach
     @SuppressWarnings("unchecked")
     void cleanupRegistry() throws ReflectiveOperationException {

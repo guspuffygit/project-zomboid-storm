@@ -1,6 +1,5 @@
 package io.pzstorm.storm.core;
 
-import io.pzstorm.storm.commands.MouseSteeringCommand;
 import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.mod.ZomboidMod;
 import java.util.ArrayList;
@@ -19,7 +18,7 @@ public class StormCommandRegistry {
                 MOD_COMMANDS.addAll(commands);
             }
         }
-        MOD_COMMANDS.add(MouseSteeringCommand.class);
+
         MOD_COMMANDS.add(PingCommand.class);
     }
 
