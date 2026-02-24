@@ -47,14 +47,14 @@ zomboidDir=C:\\Users\\user\\Zomboid
 
 ### Deploy Storm Locally:
 
-Linux:
-```
-./gradlew clean spotlessApply installBootstrap installStorm publishToMavenLocal
-```
-
 Windows:
 ```
 .\gradlew.bat clean spotlessApply installBootstrap installStorm publishToMavenLocal
+```
+
+Linux / Mac:
+```
+./gradlew clean spotlessApply installBootstrap installStorm publishToMavenLocal
 ```
 
 2. Right click Project Zomboid in Steam Library, click Properties
@@ -65,7 +65,7 @@ Windows:
 -DstormType=local "-agentpath:C:\Users\<user>\Zomboid\Workshop\storm\Contents\mods\storm\bootstrap\agentlib.dll=storm-bootstrap.jar" --
 ```
 
-#### Linux
+#### Linux / Mac
 ```text
 -javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar -DstormType=local --
 ```
