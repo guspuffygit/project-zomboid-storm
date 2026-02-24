@@ -1,1 +1,6 @@
-print('Storm client lua initialized.')
+StormClient = {}
+function StormClient:present()
+    return true
+end
+
+print('StormClient lua initialized.')

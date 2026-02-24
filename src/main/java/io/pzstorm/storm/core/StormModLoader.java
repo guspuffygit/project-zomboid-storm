@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ObjectArrays;
 import io.pzstorm.storm.mod.*;
+import io.pzstorm.storm.util.StormEnv;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -300,7 +301,7 @@ public class StormModLoader extends URLClassLoader {
             localWorkshopDirectories.forEach(
                     (dir) -> LOGGER.debug("Local workshop directory: {}", dir.toAbsolutePath()));
 
-            boolean preferLocal = "local".equals(System.getProperty("stormType"));
+            boolean preferLocal = StormEnv.isStormLocal();
 
             catalogModJars(
                     Stream.of(

@@ -32,7 +32,6 @@ import java.util.stream.Stream;
  */
 public class StormBootstrapper {
 
-    // TODO: Update with new build 42 version of Storm
     private static final String WORKSHOP_PATH = "../../workshop/content/108600/3670772371/mods/storm/42/lib";
     private static final String LOCAL_DEV_PATH = "storm/Contents/mods/storm/42/lib";
     private static final String STORM_BOOTSTRAP_PAGE = "https://guspuffy.s3.us-east-1.amazonaws.com/storm-bootstrap-message.html";

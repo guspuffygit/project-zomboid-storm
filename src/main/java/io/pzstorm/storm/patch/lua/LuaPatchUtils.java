@@ -8,7 +8,7 @@ import se.krka.kahlua.vm.LuaClosure;
 import zombie.Lua.LuaManager;
 
 public class LuaPatchUtils {
-    public boolean doesLuaFunctionExist(String tableName, String functionName) {
+    public static boolean doesLuaFunctionExist(String tableName, String functionName) {
         KahluaTable env = LuaManager.env;
         if (env == null) {
             return false;
@@ -26,7 +26,7 @@ public class LuaPatchUtils {
         return functionObj != null;
     }
 
-    public void injectLuaCode(String luaCode, String fileName) {
+    public static void injectLuaCode(String luaCode, String fileName) {
         try {
             LOGGER.debug("Injecting luacode: {}", fileName);
 

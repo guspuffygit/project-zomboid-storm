@@ -13,10 +13,15 @@ import io.pzstorm.storm.patch.lua.LuaPatchUtils;
 import io.pzstorm.storm.wrappers.ui.PersistedBooleanConfigOption;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import zombie.Lua.LuaManager;
@@ -80,7 +85,7 @@ public class StormEventHandler {
     public static void onZomboidGlobalsLoad(OnZomboidGlobalsLoadEvent event) {
         LOGGER.debug("OnZomboidGlobalsLoadEvent");
         boolean result =
-                new LuaPatchUtils().doesLuaFunctionExist("SpawnRegionMgr", "loadSpawnPointsFile");
+                LuaPatchUtils.doesLuaFunctionExist("SpawnRegionMgr", "loadSpawnPointsFile");
         if (!result) {
             throw new RuntimeException("Lua was not loaded and did not exist");
         }
@@ -88,7 +93,6 @@ public class StormEventHandler {
         try {
             LuaManager.exposer.setExposed(PersistedBooleanConfigOption.class);
 
-            LuaPatchUtils luaPatchUtils = new LuaPatchUtils();
             // Load files from mod jars
             for (JarFile modJar : StormModLoader.getModJars()) {
                 Enumeration<JarEntry> entries = modJar.entries();
@@ -102,7 +106,7 @@ public class StormEventHandler {
                         try (InputStream is = modJar.getInputStream(entry)) {
                             String luaCode = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
-                            luaPatchUtils.injectLuaCode(luaCode, name);
+                            LuaPatchUtils.injectLuaCode(luaCode, name);
                         } catch (IOException e) {
                             LOGGER.error("Failed to read entry: {}", name, e);
                         }
@@ -110,15 +114,34 @@ public class StormEventHandler {
                 }
             }
 
-            // TODO: Load these automatically
-            if (GameClient.client) {
-                loadFromResourcePath("/lua/client/ISUI/Maps/ISWorldMapPatch.lua");
-            }
-            if (GameServer.server) {
-                loadFromResourcePath("/lua/server/storm/StormServer.lua");
+            List<String> luaPaths = discoverLuaResources();
+            for (String luaPath : luaPaths) {
+                if (luaPath.startsWith("lua/client/") && !GameClient.client) {
+                    LOGGER.debug("Skipping client lua (not a client): {}", luaPath);
+                    continue;
+                }
+                if (luaPath.startsWith("lua/server/") && !GameServer.server) {
+                    LOGGER.debug("Skipping server lua (not a server): {}", luaPath);
+                    continue;
+                }
+                loadFromResourcePath("/" + luaPath);
             }
 
-            loadFromResourcePath("/lua/shared/storm/StormShared.lua");
+            if (GameClient.client
+                    && !LuaPatchUtils.doesLuaFunctionExist("StormClient", "present")) {
+                throw new RuntimeException("StormClient lua was not loaded correctly.");
+            }
+
+            if (GameServer.server
+                    && !LuaPatchUtils.doesLuaFunctionExist("StormServer", "present")) {
+                throw new RuntimeException("StormServer lua was not loaded correctly.");
+            }
+
+            if (!LuaPatchUtils.doesLuaFunctionExist("StormShared", "present")) {
+                throw new RuntimeException("StormShared lua was not loaded correctly.");
+            }
+
+            LOGGER.info("All Storm lua loaded successfully.");
         } catch (Exception e) {
             LOGGER.error("Unable to load lua files from resources", e);
             throw new RuntimeException(e);
@@ -132,11 +155,77 @@ public class StormEventHandler {
             }
 
             String luaCode = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            new LuaPatchUtils().injectLuaCode(luaCode, path);
+            LuaPatchUtils.injectLuaCode(luaCode, path);
         } catch (Exception e) {
             LOGGER.error("Unable to load path: {}", path, e);
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Discovers all {@code .lua} files under the {@code lua/} resource directory. Works both when
+     * running from a JAR and from an exploded classes directory.
+     */
+    private static final String KNOWN_RESOURCE = "lua/shared/storm/StormShared.lua";
+
+    private static List<String> discoverLuaResources() {
+        List<String> paths = new ArrayList<>();
+        try {
+            // Use a known file (not directory) to reliably locate the jar on all platforms.
+            // Directory entries inside JARs are not guaranteed to exist on Windows.
+            URL resourceUrl = StormEventHandler.class.getClassLoader().getResource(KNOWN_RESOURCE);
+            if (resourceUrl == null) {
+                LOGGER.warn("Known resource {} not found on classpath", KNOWN_RESOURCE);
+                return paths;
+            }
+
+            LOGGER.debug("Located known resource at: {}", resourceUrl);
+            String protocol = resourceUrl.getProtocol();
+
+            if ("jar".equals(protocol)) {
+                // URL format: jar:file:/path/to/storm.jar!/lua/shared/storm/StormShared.lua
+                String jarUrlStr = resourceUrl.getPath();
+                String jarFilePath = jarUrlStr.substring(0, jarUrlStr.indexOf('!'));
+                Path jarPath = Paths.get(URI.create(jarFilePath));
+                try (JarFile jar = new JarFile(jarPath.toFile())) {
+                    Enumeration<JarEntry> entries = jar.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        String name = entry.getName();
+                        if (name.startsWith("lua/")
+                                && !entry.isDirectory()
+                                && name.endsWith(".lua")) {
+                            paths.add(name);
+                        }
+                    }
+                }
+            } else if ("file".equals(protocol)) {
+                // Running from exploded classes directory (e.g. during development).
+                // Walk up from the known resource to find the lua/ root.
+                Path knownPath = Paths.get(resourceUrl.toURI());
+                // knownPath is .../classes/lua/shared/storm/StormShared.lua
+                // We need to go up to the lua/ directory (3 levels from the known resource)
+                Path luaRoot = knownPath.getParent().getParent().getParent();
+                if (Files.isDirectory(luaRoot)) {
+                    try (var stream = Files.walk(luaRoot)) {
+                        stream.filter(p -> p.toString().endsWith(".lua") && Files.isRegularFile(p))
+                                .forEach(
+                                        p -> {
+                                            String relative = luaRoot.relativize(p).toString();
+                                            paths.add("lua/" + relative.replace('\\', '/'));
+                                        });
+                    }
+                }
+            } else {
+                LOGGER.warn("Unsupported URL protocol for lua resources: {}", protocol);
+            }
+
+            Collections.sort(paths);
+            LOGGER.debug("Discovered {} Storm lua resources: {}", paths.size(), paths);
+        } catch (IOException | URISyntaxException e) {
+            LOGGER.error("Failed to discover lua resources", e);
+        }
+        return paths;
     }
 
     @SubscribeEvent

@@ -3,6 +3,7 @@ package io.pzstorm.storm.core;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.logging.StormLogger;
+import io.pzstorm.storm.util.StormEnv;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import net.bytebuddy.ByteBuddy;
@@ -66,8 +67,7 @@ public class StormLauncher {
     }
 
     public static String getEntryPointClass() {
-        boolean isServerMode = Boolean.getBoolean("storm.server");
-        if (isServerMode) {
+        if (StormEnv.isStormServer()) {
             return SERVER_ENTRY_POINT_CLASS;
         }
 
