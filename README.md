@@ -69,3 +69,26 @@ Linux / Mac:
 ```text
 -javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar -DstormType=local --
 ```
+
+## Dedicated Linux Server
+
+### Workshop Install
+
+```bash
+./start-server.sh \
+  -javaagent:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar \
+  -Dstorm.server=true \
+  -- \
+  -servername yourserver
+```
+
+### Local Install
+
+```bash
+./start-server.sh \
+  -javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar \
+  -Dstorm.server=true \
+  -DstormType=local \
+  -- \
+  -servername yourserver
+```
