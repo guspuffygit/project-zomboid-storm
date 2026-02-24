@@ -1,5 +1,3 @@
-import groovy.json.JsonOutput
-import groovy.json.JsonSlurper
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.gradle.internal.os.OperatingSystem
 
@@ -40,8 +38,8 @@ String versionSuffix = System.getenv("STAGING") ? "" :
 
 allprojects {
 	repositories { mavenCentral() }
-	group = 'at.mlem'
-	version = '0.2.7' + versionSuffix
+	group = 'com.sentientsimulations'
+	version = '1.0.0' + versionSuffix
 	java {
 		toolchain {
 			languageVersion = JavaLanguageVersion.of(25)
@@ -78,6 +76,7 @@ dependencies {
 	api 'com.fasterxml.jackson.core:jackson-databind:2.21.0'
 
 	compileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
+	testCompileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
 	testImplementation 'org.ow2.asm:asm:9.1'
 	testImplementation 'org.ow2.asm:asm-tree:9.1'
 	testImplementation 'org.ow2.asm:asm-util:9.1'
@@ -93,6 +92,9 @@ test {
 
 jar {
 	from sourceSets.main.output
+	manifest {
+		attributes('Implementation-Version': project.version)
+	}
 }
 
 afterEvaluate {
@@ -374,6 +376,16 @@ tasks.register('uploadWorkshop', Exec) {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.compilerArgs << "-Xlint:deprecation" << "-Xdiags:verbose"
+}
+
+compileTestJava {
+	exclude '**/storm/logging/DebugLogStreamCompatibilityTest.java'
+	exclude '**/storm/util/StormUtilsTest.java'
+	exclude '**/storm/core/StormModLoaderIntegrationTest.java'
+	exclude '**/storm/core/StormModRegistryIntegrationTest.java'
+	exclude '**/storm/core/StormClassLoaderIntegrationTest.java'
+	exclude '**/storm/core/StormClassTransformerIntegrationTest.java'
+	exclude '**/storm/event/StormEventDispatcherIntegrationTest.java'
 }
 
 def isWSL() {

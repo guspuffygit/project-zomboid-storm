@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.characters.IsoGameCharacter;
@@ -19,6 +20,7 @@ import zombie.iso.BuildingDef;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoObject;
 
+@Tag("unit")
 class LuaEventFactoryTest implements UnitTest {
 
     private static final ImmutableMap<Class<? extends LuaEvent>, Class<?>[]>
