@@ -11,23 +11,24 @@ Successor to the original abandoned [Storm](https://github.com/pzstorm/storm)
 
 1. Subscribe to [Storm Mod Loader](https://steamcommunity.com/sharedfiles/filedetails/?id=3670772371) in the Steam Workshop.
 2. Right click Project Zomboid in Steam Library, click Properties
-3. In General, under Launch Options, copy and paste the line below into the input
+3. In General, under Launch Options, copy and paste the line for your platform below into the input
 
 #### Windows
 ```text
--pzexeconfig "../../workshop/content/108600/3670772371/mods/storm/storm-windows.json"
+-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
 ```
 
 #### Linux
 ```text
--pzexeconfig "../../workshop/content/108600/3670772371/mods/storm/storm-linux.json"
+-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
+```
+
+#### Mac
+```text
+-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
 ```
 
 When you start the game, the main screen menu should show the Storm version in the right bottom of the screen.
-
-#### Mac
-
-1. This works on Mac I just need to get my Mac out and try  it for the instructions. It requires editing Info.plist
 
 ## Local Install:
 
@@ -48,17 +49,23 @@ zomboidDir=C:\\Users\\user\\Zomboid
 
 Linux:
 ```
-./gradlew clean spotlessApply installBootstrap installStorm publishToMavenLocal processGameConfig
+./gradlew clean spotlessApply installBootstrap installStorm publishToMavenLocal
 ```
 
 Windows:
 ```
-.\gradlew.bat clean spotlessApply installBootstrap installStorm publishToMavenLocal processGameConfig
+.\gradlew.bat clean spotlessApply installBootstrap installStorm publishToMavenLocal
 ```
 
 2. Right click Project Zomboid in Steam Library, click Properties
 3. In General, under Launch Options, copy and paste the line below into the input
 
+#### Windows
 ```text
--pzexeconfig "storm-local.json"
+-DstormType=local "-agentpath:C:\Users\<user>\Zomboid\Workshop\storm\Contents\mods\storm\bootstrap\agentlib.dll=storm-bootstrap.jar" --
+```
+
+#### Linux
+```text
+-javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar -DstormType=local --
 ```
