@@ -133,6 +133,9 @@ public class StormBootstrap {
             zomboidModClass.getDeclaredMethod("registerEventHandlers").invoke(mod);
         }
 
+        // collect mod-provided class transformers before any PZ game classes are loaded
+        TRANSFORMERS_CLASS.getDeclaredMethod("collectTransformers").invoke(null);
+
         Class<?> commandRegistry =
                 Class.forName("io.pzstorm.storm.core.StormCommandRegistry", true, CLASS_LOADER);
         commandRegistry.getDeclaredMethod("collectCommands").invoke(null);
