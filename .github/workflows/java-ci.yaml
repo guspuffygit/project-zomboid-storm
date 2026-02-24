@@ -7,7 +7,6 @@ on:
     paths:
       - '**.java'
 
-# Continuous integration
 name: build
 
 jobs:
@@ -15,91 +14,47 @@ jobs:
     name: Build and test on Linux
     runs-on: ubuntu-latest
     env:
-      PZ_VERSION: "41.76"
-      VERSIONSUFFIX: ${{ secrets.VERSIONSUFFIX }}
+      PZ_VERSION: 42.14.1
     steps:
-      # Checkout repository
-      - uses: actions/checkout@v3
-      # Setup Java environment
-      - uses: actions/setup-java@v3
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
-          distribution: 'zulu' # See 'Supported distributions' for available options
-          java-version: '17'
-      # Configure GPG key
-      # as described https://github.com/crazy-max/ghaction-import-gpg
-      - name: Import GPG key
-        id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v5
-        with:
-          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-      # Cache gradle temporary files
-      - name: Cache gradle files
-        uses: actions/cache@v2
-        with:
-          path: ./.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      # Cache Project Zomboid classes
-      - name: Read Zomboid classes cache
-        id: pz-cache
-        uses: actions/cache@v2
-        with:
-          path: ./lib/
-          key: PZ-${{ env.PZ_VERSION }}-${{ secrets.CACHE_VERSION }}
-      # Install Project Zomboid classes
-      - name: Install Zomboid classes
-        if: steps.pz-cache.outputs.cache-hit != 'true'
-        uses: dsaltares/fetch-gh-release-asset@master
-        with:
-          repo: "mlem/zomboid"
-          version: "tags/v${{ env.PZ_VERSION }}"
-          file: "zomboid-${{ env.PZ_VERSION }}.jar"
-          target: "lib/zomboid-${{ env.PZ_VERSION }}.jar"
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      # Cache Project Zomboid classes
-      - name: Cache Zomboid classes
-        if: steps.pz-cache.outputs.cache-hit != 'true'
-        uses: actions/cache@v2
-        with:
-          path: ./lib/
-          key: PZ-${{ env.PZ_VERSION }}-${{ secrets.CACHE_VERSION }}
-      # Apply correct permissions for lib directory
-      - name: Apply directory permissions
-        run: sudo chmod a+rwx ./lib
-      # Assemble main classes with gradle
-      - name: Assemble classes
-        uses: burrunan/gradle-cache-action@v1
-        with:
-          arguments: classes -s
-      # Generate versionFile.txt
-      - name: Assemble classes
-        uses: burrunan/gradle-cache-action@v1
-        with:
-          arguments: currentVersion -PversionSuffix=${{ env.VERSIONSUFFIX }}
-      # Assemble distribution
-      - name: Assemble distributions
-        uses: burrunan/gradle-cache-action@v1
-        with:
-          arguments: distZip distTar -s -PversionSuffix=${{ env.VERSIONSUFFIX }}
-      # Run unit tests with gradle
-      - name: Run Unit Tests
-        uses: burrunan/gradle-cache-action@v1
-        with:
-          arguments: test -s
-      # Upload test reports as run artifact
-      - name: Upload test reports
+          distribution: corretto
+          java-version: 25
+#      # Configure GPG key
+#      # as described https://github.com/crazy-max/ghaction-import-gpg
+#      - name: Import GPG key
+#        id: import_gpg
+#        uses: crazy-max/ghaction-import-gpg@v5
+#        with:
+#          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
+#          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Download Zomboid classes from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          mkdir -p lib
+          aws s3 cp "s3://${{ secrets.S3_BUCKET }}/zomboid-${{ env.PZ_VERSION }}.zip" lib/zomboid-${{ env.PZ_VERSION }}.zip
+          unzip lib/zomboid-${{ env.PZ_VERSION }}.zip -d lib/zomboid
+      - name: Create local.properties
+        run: |
+          echo "gameDir=${{ github.workspace }}/lib/zomboid" > local.properties
+      - name: Test
+        run: |
+          ./gradlew test
+      - name: Upload Test Reports
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: test-report-${{ runner.os }}
           path: ./**/build/reports/tests/
-      # Upload dist artifacts as run artifacts
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: Package
-          path: |
-            build/distributions/*.tar
-            build/distributions/*.zip
+#
+#      - name: Upload Artifacts
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: Package
+#          path: |
+#            build/distributions/*.tar
+#            build/distributions/*.zip
