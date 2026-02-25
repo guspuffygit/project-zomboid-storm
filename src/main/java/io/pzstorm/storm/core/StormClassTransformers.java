@@ -6,6 +6,7 @@ import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ProcessBuilderPatch;
 import io.pzstorm.storm.patch.lua.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.lua.LuaEventPatch;
+import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.mod.CommandBasePatch;
 import io.pzstorm.storm.patch.mod.CoopMasterPatch;
@@ -40,6 +41,7 @@ public class StormClassTransformers {
         registerTransformer(new TISLogoStatePatch());
         registerTransformer(new LuaEventManagerPatch());
         registerTransformer(new LuaManagerPatch());
+        registerTransformer(new LuaExposerDumpPatch());
         registerTransformer(new LuaEventPatch());
         registerTransformer(new ZomboidGlobalsPatch());
         registerTransformer(new UIWorldMapPatch());
