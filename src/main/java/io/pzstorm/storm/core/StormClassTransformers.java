@@ -4,6 +4,7 @@ import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.*;
 import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ProcessBuilderPatch;
+import io.pzstorm.storm.patch.lua.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.lua.LuaEventPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.mod.CommandBasePatch;
@@ -37,6 +38,7 @@ public class StormClassTransformers {
         registerTransformer(new ProcessBuilderPatch());
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
+        registerTransformer(new LuaEventManagerPatch());
         registerTransformer(new LuaManagerPatch());
         registerTransformer(new LuaEventPatch());
         registerTransformer(new ZomboidGlobalsPatch());

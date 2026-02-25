@@ -38,7 +38,7 @@ Events.OnGameBoot.Add(stormLoaderVerificationCheck)
 print('GOODBYE')
 
 local function ServerPinged()
-    print('ping')
+    print('shit')
 end
 
 Events.OnTick.Add(ServerPinged);
