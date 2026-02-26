@@ -114,7 +114,7 @@ public class StormModLoader extends URLClassLoader {
             }
 
             List<ModJar> modJars = new ArrayList<>();
-            collectJarsFromDirectory(commonDir, modJars);
+            collectJarsFromDirectory(versionDir, modJars);
 
             if (versionDir != null) {
                 collectJarsFromDirectory(versionDir, modJars);
