@@ -2,8 +2,8 @@ local function createOSModal()
     local core = getCore();
 
     local descriptionLines = {
-        "                                                           !!! STOP: REQUIRED SETUP !!!",
-        "1. CLICK the button below matching your computer (Windows or Linux) to COPY.",
+        "REQUIRED SETUP !!!",
+        "1. CLICK the button below matching your computer (Windows/Linux/Mac) to COPY.",
         "2. Open Steam Library -> Right Click 'Project Zomboid' -> Select 'Properties...'",
         "3. Stay on the 'General' tab. Look at the very bottom for 'LAUNCH OPTIONS'.",
         "4. PASTE the code inside that text box.",
@@ -25,7 +25,8 @@ local function createOSModal()
     modal:addToUIManager();
 
     if modal.ok then
-        modal.ok:setVisible(false);
+        modal:removeChild(modal.ok);
+        modal.ok = nil;
     end
 
     local btnWid = 100;
@@ -72,9 +73,6 @@ function stormLoaderVerificationCheck()
     else
         print("User does not have Storm mod loader enabled if this method triggers")
         local modal = createOSModal()
-
-        modal:initialise()
-        modal:addToUIManager()
 
         if JoypadState.players[1] then
             setJoypadFocus(0, modal)
