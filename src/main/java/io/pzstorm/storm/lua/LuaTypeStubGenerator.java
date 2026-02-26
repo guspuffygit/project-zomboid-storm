@@ -532,10 +532,10 @@ public final class LuaTypeStubGenerator {
     private static String toLuaType(Class<?> type) {
         if (type == null) return "any";
         if (type == boolean.class || type == Boolean.class) return "boolean";
-        if (type == int.class || type == Integer.class) return "integer";
-        if (type == long.class || type == Long.class) return "integer";
-        if (type == short.class || type == Short.class) return "integer";
-        if (type == byte.class || type == Byte.class) return "integer";
+        if (type == int.class || type == Integer.class) return "number";
+        if (type == long.class || type == Long.class) return "number";
+        if (type == short.class || type == Short.class) return "number";
+        if (type == byte.class || type == Byte.class) return "number";
         if (type == float.class || type == Float.class) return "number";
         if (type == double.class || type == Double.class) return "number";
         if (type == char.class || type == Character.class) return "string";

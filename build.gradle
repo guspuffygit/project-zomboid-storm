@@ -428,8 +428,33 @@ tasks.register('runProjectZomboid') {
 	}
 }
 
+tasks.register('downloadWorkshop', Exec) {
+	dependsOn 'uploadWorkshop'
+
+	doFirst {
+		def username = System.getenv('STEAM_USERNAME')
+		def password = System.getenv('STEAM_PASSWORD')
+
+		if (!username || !password) {
+			throw new GradleException('STEAM_USERNAME and STEAM_PASSWORD environment variables must be set')
+		}
+	}
+
+	def dir = getLocalProperty('serverPath').get()
+	workingDir dir
+
+	def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
+	commandLine steamcmdPath,
+			'+force_install_dir', dir,
+			'+login', System.getenv('STEAM_USERNAME'), System.getenv('STEAM_PASSWORD'),
+			'+workshop_download_item',
+			'108600',
+			workshopId, 'validate',
+			'+quit'
+}
+
 tasks.register('runProjectZomboidServer', Exec) {
-	dependsOn 'installStorm'
+	dependsOn 'installStorm', 'downloadWorkshop'
 
 	def dir = getLocalProperty('serverPath').get()
 	workingDir dir
@@ -437,8 +462,8 @@ tasks.register('runProjectZomboidServer', Exec) {
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
 
 	commandLine "${dir}/start-server.sh",
-			"-javaagent:${getLocalProperty('zomboidDir').get()}/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar",
-			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '-DstormType=local', '--',
+			"-javaagent:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar",
+			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
 			'-servername', 'storm'
 	standardInput = System.in
 	standardOutput = System.out

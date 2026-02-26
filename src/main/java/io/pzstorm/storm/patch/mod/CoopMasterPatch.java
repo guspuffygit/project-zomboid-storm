@@ -60,16 +60,16 @@ public class CoopMasterPatch extends StormClassTransformer {
     public static class ProcessBuilderInterceptor {
 
         public static ProcessBuilder interceptProcessBuilder(List<String> command) {
-            //            int classIndex = command.indexOf("zombie.network.GameServer");
-            //            if (classIndex != -1) {
-            //                command.set(classIndex, "io.pzstorm.storm.StormBootstrapper");
-            //                command.add(classIndex, "-Dstorm.server=true");
-            //                command.add(classIndex, "-DSTORM_LOG_SOURCE=SERVER");
-            //                if ("local".equals(System.getProperty("stormType"))) {
-            //                    command.add(classIndex, "-DstormType=local");
-            //                    command.add(classIndex, "-DLOG_LEVEL=DEBUG");
-            //                }
-            //            }
+            int classIndex = command.indexOf("zombie.network.GameServer");
+            if (classIndex != -1) {
+                command.set(classIndex, "io.pzstorm.storm.StormBootstrapper");
+                command.add(classIndex, "-Dstorm.server=true");
+                command.add(classIndex, "-DSTORM_LOG_SOURCE=SERVER");
+                if ("local".equals(System.getProperty("stormType"))) {
+                    command.add(classIndex, "-DstormType=local");
+                    command.add(classIndex, "-DLOG_LEVEL=DEBUG");
+                }
+            }
 
             LOGGER.debug("Modified server args: {}", String.join(" ", command));
 

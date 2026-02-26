@@ -33,15 +33,18 @@ import java.util.stream.Stream;
 public class StormBootstrapper {
 
     private static final String WORKSHOP_PATH = "../../workshop/content/108600/3670772371/mods/storm/42/lib";
+    private static final String LINUX_SERVER_WORKSHOP_PATH = "steamapps/workshop/content/108600/3670772371/mods/storm/42/lib";
     private static final String LOCAL_DEV_PATH = "storm/Contents/mods/storm/42/lib";
     private static final String STORM_BOOTSTRAP_PAGE = "https://guspuffy.s3.us-east-1.amazonaws.com/storm-bootstrap-message.html";
 
     private static final String CORE_LAUNCHER_CLASS = "io.pzstorm.storm.core.StormLauncher";
 
+    private static final Boolean isServer = Boolean.getBoolean("storm.server");
+    private static final Path gameRoot = Paths.get(System.getProperty("user.dir"));
+
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[StormAgent] Agent initializing...");
 
-        boolean isServer = Boolean.getBoolean("storm.server");
         String targetMainClass = isServer
                 ? "zombie.network.GameServer"
                 : "zombie.gameStates.MainScreenState";
@@ -107,8 +110,9 @@ public class StormBootstrapper {
             if ("local".equals(System.getProperty("stormType"))) {
                 Path workshopDir = Paths.get(System.getProperty("user.home"), "Zomboid", "Workshop");
                 libraryDir = workshopDir.resolve(LOCAL_DEV_PATH).normalize();
+            } else if (isServer && System.getProperty("os.name").equalsIgnoreCase("linux")) {
+                libraryDir = gameRoot.resolve(LINUX_SERVER_WORKSHOP_PATH).normalize();
             } else {
-                Path gameRoot = Paths.get(System.getProperty("user.dir"));
                 libraryDir = gameRoot.resolve(WORKSHOP_PATH).normalize();
             }
 
