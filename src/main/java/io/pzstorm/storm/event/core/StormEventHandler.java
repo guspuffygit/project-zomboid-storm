@@ -77,9 +77,8 @@ public class StormEventHandler {
     }
 
     @SubscribeEvent
-    public static void onMainScreenEvent(OnMainMenuEnterEvent event) {
+    public static void onLuaManagerInitEvent(OnLuaManagerInitEvent event) {
         StormLua.setupStormLuaFunctions();
-        // TODO: This doesn't work for the server
     }
 
     @SubscribeEvent

@@ -3,6 +3,8 @@ package io.pzstorm.storm.patch.lua;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.core.StormClassTransformer;
+import io.pzstorm.storm.event.core.StormEventDispatcher;
+import io.pzstorm.storm.event.zomboid.OnLuaManagerInitEvent;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
@@ -21,10 +23,13 @@ public class LuaManagerPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(RunLuaInternalAdvice.class)
-                        .on(
-                                ElementMatchers.named("RunLuaInternal")
-                                        .and(ElementMatchers.takesArgument(0, String.class))));
+                        Advice.to(RunLuaInternalAdvice.class)
+                                .on(
+                                        ElementMatchers.named("RunLuaInternal")
+                                                .and(
+                                                        ElementMatchers.takesArgument(
+                                                                0, String.class))))
+                .visit(Advice.to(InitAdvice.class).on(ElementMatchers.named("init")));
     }
 
     public static class RunLuaInternalAdvice {
@@ -35,6 +40,14 @@ public class LuaManagerPatch extends StormClassTransformer {
 
                 LOGGER.debug("[RunLuaInternal] Loading file: {}", absolutePath);
             }
+        }
+    }
+
+    public static class InitAdvice {
+        @Advice.OnMethodExit
+        public static void afterInit() {
+            LOGGER.debug("LuaManager.init()");
+            StormEventDispatcher.dispatchEvent(new OnLuaManagerInitEvent());
         }
     }
 }

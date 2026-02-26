@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice;
 
+import io.pzstorm.storm.debugging.TriggeredEvents;
 import io.pzstorm.storm.event.core.StormEventDispatcher;
 import io.pzstorm.storm.event.zomboid.OnTriggerLuaEvent;
 import net.bytebuddy.asm.Advice;
@@ -12,6 +13,8 @@ public class TriggerEventAdvice {
     public static void onTrigger(
             @Advice.Argument(0) String name, @Advice.AllArguments Object[] allArgs) {
         Event event = LuaEventManager.AddEvent(name);
+
+        TriggeredEvents.add(event.name);
 
         Object[] eventArgs;
         if (allArgs.length > 1) {
