@@ -1,8 +1,29 @@
-local function createOSModal()
+local StormBootstrapVerification = {}
+
+local SETTINGS_FILE = "StormBootstrapSettings.ini"
+
+local function loadDontShowAgain()
+    local file = getFileReader(SETTINGS_FILE, true)
+    if not file then return false end
+    local line = file:readLine()
+    file:close()
+    return line == "dontShowAgain=true"
+end
+
+local function saveDontShowAgain(tickBox)
+    if tickBox and tickBox:isSelected(1) then
+        local file = getFileWriter(SETTINGS_FILE, true, false)
+        file:write("dontShowAgain=true\r\n")
+        file:close()
+    end
+end
+
+function StormBootstrapVerification.createOSModal()
     local core = getCore();
 
     local descriptionLines = {
-        "REQUIRED SETUP !!!",
+        "OPTIONAL SETUP",
+        "To get enhanced Quality of Life features, add this argument to enable the Storm Mod loader.",
         "1. CLICK the button below matching your computer (Windows/Linux/Mac) to COPY.",
         "2. Open Steam Library -> Right Click 'Project Zomboid' -> Select 'Properties...'",
         "3. Stay on the 'General' tab. Look at the very bottom for 'LAUNCH OPTIONS'.",
@@ -13,6 +34,7 @@ local function createOSModal()
     local description = table.concat(descriptionLines, "\n\n")
 
     local width, height = ISModalDialog.CalcSize(0, 0, description)
+    height = height + 30;
     local x = (core:getScreenWidth() / 2) - (width / 2);
     local y = (core:getScreenHeight() / 2) - (height / 2);
 
@@ -36,9 +58,16 @@ local function createOSModal()
     local startX = (width - totalBtnWidth) / 2;
     local btnY = modal:getHeight() - btnHgt - 10;
 
+    local tickBox = ISTickBox:new(startX, btnY - btnHgt - pad, width - (startX * 2), btnHgt, "", nil, nil);
+    tickBox:initialise();
+    tickBox:instantiate();
+    tickBox:addOption("Don't show this again");
+    modal:addChild(tickBox);
+
     local btnWindows = ISButton:new(startX, btnY, btnWid, btnHgt, "Copy Windows", modal, function(self)
         print('Windows')
         Clipboard.setClipboard(windowsCopy)
+        saveDontShowAgain(tickBox)
         self:destroy();
     end);
     btnWindows:initialise();
@@ -47,6 +76,7 @@ local function createOSModal()
     local btnLinux = ISButton:new(startX + btnWindows.width + pad, btnY, btnWid, btnHgt, "Copy Linux", modal, function(self)
         print('Linux')
         Clipboard.setClipboard(linuxCopy)
+        saveDontShowAgain(tickBox)
         self:destroy();
     end);
     btnLinux:initialise();
@@ -55,6 +85,7 @@ local function createOSModal()
     local btnMac = ISButton:new(startX + btnWindows.width + pad + btnLinux.width + pad, btnY, btnWid, btnHgt, "Copy Mac", modal, function(self)
         print('Mac')
         Clipboard.setClipboard(macCopy)
+        saveDontShowAgain(tickBox)
         self:destroy();
     end);
 
@@ -67,12 +98,17 @@ local function createOSModal()
     return modal;
 end
 
-function stormLoaderVerificationCheck()
+function StormBootstrapVerification.check()
     if Storm then
         print("Storm is loaded successfully")
     else
         print("User does not have Storm mod loader enabled if this method triggers")
-        local modal = createOSModal()
+
+        if loadDontShowAgain() then
+            return
+        end
+
+        local modal = StormBootstrapVerification.createOSModal()
 
         if JoypadState.players[1] then
             setJoypadFocus(0, modal)
@@ -80,4 +116,4 @@ function stormLoaderVerificationCheck()
     end
 end
 
-Events.OnGameStart.Add(stormLoaderVerificationCheck)
+return StormBootstrapVerification
