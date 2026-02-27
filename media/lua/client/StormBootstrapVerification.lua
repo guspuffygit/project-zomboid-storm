@@ -1,20 +1,19 @@
+require "PersistedTable"
+
 local StormBootstrapVerification = {}
 
-local SETTINGS_FILE = "StormBootstrapSettings.ini"
+local SETTINGS_FILE = "StormBootstrapSettings.txt"
 
 local function loadDontShowAgain()
-    local file = getFileReader(SETTINGS_FILE, true)
-    if not file then return false end
-    local line = file:readLine()
-    file:close()
-    return line == "dontShowAgain=true"
+    local settings = PersistedTable:read(SETTINGS_FILE)
+    return settings.dontShowAgain == "true"
 end
 
 local function saveDontShowAgain(tickBox)
     if tickBox and tickBox:isSelected(1) then
-        local file = getFileWriter(SETTINGS_FILE, true, false)
-        file:write("dontShowAgain=true\r\n")
-        file:close()
+        local settings = PersistedTable:read(SETTINGS_FILE)
+        settings.dontShowAgain = true
+        PersistedTable:save(SETTINGS_FILE, settings)
     end
 end
 
