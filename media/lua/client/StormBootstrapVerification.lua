@@ -1,7 +1,5 @@
 require "PersistedTable"
 
-local StormBootstrapVerification = {}
-
 local SETTINGS_FILE = "StormBootstrapSettings.txt"
 
 local function loadDontShowAgain()
@@ -17,12 +15,12 @@ local function saveDontShowAgain(tickBox)
     end
 end
 
-function StormBootstrapVerification.createOSModal()
+local function createOSModal()
     local core = getCore();
 
     local descriptionLines = {
         "OPTIONAL SETUP",
-        "To get enhanced Quality of Life features, add this argument to enable the Storm Mod loader.",
+        "To enable enhanced Quality of Life features from the Storm mod framework like seeing claimed cars on the map:",
         "1. CLICK the button below matching your computer (Windows/Linux/Mac) to COPY.",
         "2. Open Steam Library -> Right Click 'Project Zomboid' -> Select 'Properties...'",
         "3. Stay on the 'General' tab. Look at the very bottom for 'LAUNCH OPTIONS'.",
@@ -37,9 +35,9 @@ function StormBootstrapVerification.createOSModal()
     local x = (core:getScreenWidth() / 2) - (width / 2);
     local y = (core:getScreenHeight() / 2) - (height / 2);
 
-    local windowsCopy = '-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --'
-    local linuxCopy = '-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
-    local macCopy = '-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
+    local windowsCopy = '-agentpath:../../workshop/content/108600/3675499853/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --'
+    local linuxCopy = '-javaagent:../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --'
+    local macCopy = '-javaagent:../../../../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --'
 
     local modal = ISModalDialog:new(x, y, width, height, description, false, nil, nil, nil);
     modal:initialise();
@@ -97,7 +95,7 @@ function StormBootstrapVerification.createOSModal()
     return modal;
 end
 
-function StormBootstrapVerification.check()
+local function checkStorm()
     if Storm then
         print("Storm is loaded successfully")
     else
@@ -107,7 +105,7 @@ function StormBootstrapVerification.check()
             return
         end
 
-        local modal = StormBootstrapVerification.createOSModal()
+        local modal = createOSModal()
 
         if JoypadState.players[1] then
             setJoypadFocus(0, modal)
@@ -115,4 +113,4 @@ function StormBootstrapVerification.check()
     end
 end
 
-return StormBootstrapVerification
+Events.OnGameStart.Add(checkStorm)

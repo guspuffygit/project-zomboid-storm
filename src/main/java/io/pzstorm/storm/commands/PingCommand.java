@@ -1,6 +1,5 @@
 package io.pzstorm.storm.commands;
 
-import io.pzstorm.storm.debugging.TriggeredEvents;
 import zombie.characters.Capability;
 import zombie.characters.Role;
 import zombie.commands.CommandBase;
@@ -20,7 +19,6 @@ public class PingCommand extends CommandBase {
 
     @Override
     protected String Command() {
-        TriggeredEvents.printTriggeredEvents();
         return "pong";
     }
 }

@@ -465,7 +465,7 @@ tasks.register('runProjectZomboidServer', Exec) {
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
 
 	commandLine "${dir}/start-server.sh",
-			"-javaagent:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar",
+			"-javaagent:./steamapps/workshop/content/108600/3675492122/mods/storm/bootstrap/storm-bootstrap.jar",
 			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
 			'-servername', 'storm'
 	standardInput = System.in
