@@ -11,9 +11,11 @@ plugins {
 	id 'io.freefair.lombok' version '9.2.0'
 }
 
-String workshopId = '3670772371'
-String workshopTitle = 'Storm Mod Framework b42'
+def isProd = project.hasProperty('prod')
+String workshopId = isProd ? '3675499853' : '3675492122'
+String workshopTitle = isProd ? 'Storm Mod Framework b42' : '[DEV] Storm Mod Framework b42'
 String workshopDescription = 'Storm modding framework b42 only'
+String workshopVisibility = isProd ? '0' : '3'
 
 def os = OperatingSystem.current()
 
@@ -172,7 +174,7 @@ nexusPublishing {
 tasks.register('writeModInfo') {
 	def outputFile = layout.buildDirectory.file("mod.info")
 
-	inputs.property("name", "Storm - Core b42")
+	inputs.property("name", isProd ? "Storm - Core b42" : "[DEV] Storm - Core b42")
 	inputs.property("id", "${rootProject.name}-core-b42")
 	inputs.property("description", 'Storm core mod loader for b42')
 	inputs.property("url", 'url')
@@ -253,7 +255,7 @@ tasks.register('generateWorkshopFile') {
 	inputs.property('title', workshopTitle)
 	inputs.property('description', workshopDescription)
 	inputs.property('tags', 'Build 42')
-	inputs.property('visibility', 'public')
+	inputs.property('visibility', workshopVisibility)
 
 	doLast {
 		def file = outputFile.get().asFile
@@ -326,7 +328,7 @@ tasks.register('writeWorkshopVdf') {
 	inputs.property('publishedfileid', workshopId)
 	inputs.property('contentfolder', workshopDir.map { "${it}/Contents" })
 	inputs.property('previewfile', workshopDir.map { "${it}/preview.png" })
-	inputs.property('visibility', '0')
+	inputs.property('visibility', workshopVisibility)
 	inputs.property('title', workshopTitle)
 	inputs.property('description', workshopDescription)
 	inputs.property('changenote', 'Deployment')
