@@ -186,10 +186,11 @@ tasks.register('writeModInfo') {
 		def f = outputFile.get().asFile
 		f.text = """\
 			name=${inputs.properties['name']}
+			author=SentientSimulations
+			url=https://github.com/guspuffygit/project-zomboid-java-mods
 			poster=poster.png
 			description=${inputs.properties['description']}
 			id=${inputs.properties['id']}
-			url=${inputs.properties['url']}
 			modversion=${inputs.properties['modversion']}
 		""".stripIndent()
 	}
