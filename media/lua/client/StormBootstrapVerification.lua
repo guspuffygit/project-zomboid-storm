@@ -122,6 +122,4 @@ local function checkStorm()
     end
 end
 
-createOSModal()
-
 Events.OnGameStart.Add(checkStorm)
