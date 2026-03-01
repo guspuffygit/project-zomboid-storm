@@ -9,23 +9,23 @@ Successor to the original abandoned [Storm](https://github.com/pzstorm/storm)
 
 ## Installation
 
-1. Subscribe to [Storm Mod Loader](https://steamcommunity.com/sharedfiles/filedetails/?id=3675499853) in the Steam Workshop.
+1. Subscribe to [Storm Mod Loader](https://steamcommunity.com/sharedfiles/filedetails/?id=3670772371) in the Steam Workshop.
 2. Right click Project Zomboid in Steam Library, click Properties
 3. In General, under Launch Options, copy and paste the line for your platform below into the input
 
 #### Windows
 ```text
--agentpath:../../workshop/content/108600/3675499853/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
+-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
 ```
 
 #### Linux
 ```text
--javaagent:../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --
+-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
 ```
 
 #### Mac
 ```text
--javaagent:../../../../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --
+-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
 ```
 
 When you start the game, the main screen menu should show the Storm version in the right bottom of the screen.
@@ -72,7 +72,7 @@ Linux / Mac:
 
 ## Dedicated Server
 
-Add `3675499853` to WorkshopItems in the server.ini file.
+Add `3670772371` to WorkshopItems in the server.ini file.
 
 ### Windows
 
@@ -93,7 +93,7 @@ SET PZ_CLASSPATH=java/;java/projectzomboid.jar
   -Dzomboid.steam=1 ^
   -Dzomboid.znetlog=1 ^
   -Dstorm.server=true ^
-  -agentpath:./steamapps/workshop/content/108600/3675499853/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar ^
+  -agentpath:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar ^
   -XX:+UseZGC ^
   -XX:-CreateCoredumpOnCrash ^
   -XX:-OmitStackTraceInFastThrow ^
@@ -123,7 +123,7 @@ Add these flags to the java arguments:
 
 ```bash
 ./start-server.sh \
-  -javaagent:./steamapps/workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar \
+  -javaagent:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar \
   -Dstorm.server=true \
   -- \
   -servername yourserver

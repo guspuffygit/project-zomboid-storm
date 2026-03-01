@@ -35,9 +35,9 @@ local function createOSModal()
     local x = (core:getScreenWidth() / 2) - (width / 2);
     local y = (core:getScreenHeight() / 2) - (height / 2);
 
-    local windowsCopy = '-agentpath:../../workshop/content/108600/3675499853/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --'
-    local linuxCopy = '-javaagent:../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --'
-    local macCopy = '-javaagent:../../../../../workshop/content/108600/3675499853/mods/storm/bootstrap/storm-bootstrap.jar --'
+    local windowsCopy = '-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --'
+    local linuxCopy = '-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
+    local macCopy = '-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
 
     local modal = ISModalDialog:new(x, y, width, height, description, false, nil, nil, nil);
     modal:initialise();
