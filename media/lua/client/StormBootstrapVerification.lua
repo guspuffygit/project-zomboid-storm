@@ -31,7 +31,7 @@ local function createOSModal()
     local description = table.concat(descriptionLines, "\n\n")
 
     local width, height = ISModalDialog.CalcSize(0, 0, description)
-    height = height + 30;
+    height = height + 100;
     local x = (core:getScreenWidth() / 2) - (width / 2);
     local y = (core:getScreenHeight() / 2) - (height / 2);
 
@@ -53,13 +53,7 @@ local function createOSModal()
     local pad = 10;
     local totalBtnWidth = (btnWid * 3) + (pad * 2);
     local startX = (width - totalBtnWidth) / 2;
-    local btnY = modal:getHeight() - btnHgt - 10;
-
-    local tickBox = ISTickBox:new(startX, btnY - btnHgt - pad, width - (startX * 2), btnHgt, "", nil, nil);
-    tickBox:initialise();
-    tickBox:instantiate();
-    tickBox:addOption("Don't show this again");
-    modal:addChild(tickBox);
+    local btnY = modal:getHeight() - btnHgt - pad - btnHgt - pad - btnHgt - 10;
 
     local btnWindows = ISButton:new(startX, btnY, btnWid, btnHgt, "Copy Windows", modal, function(self)
         print('Windows')
@@ -89,6 +83,21 @@ local function createOSModal()
     btnMac:initialise();
     modal:addChild(btnMac);
 
+    local tickBox = ISTickBox:new(startX, btnY + btnHgt + pad, width - (startX * 2), btnHgt, "", nil, nil);
+    tickBox:initialise();
+    tickBox:instantiate();
+    tickBox:addOption("Don't show this again");
+    modal:addChild(tickBox);
+
+    local closeBtnWid = 80;
+    local closeBtnX = (width - closeBtnWid) / 2;
+    local btnClose = ISButton:new(closeBtnX, btnY + btnHgt + pad + btnHgt + pad, closeBtnWid, btnHgt, "Close", modal, function(self)
+        saveDontShowAgain(tickBox)
+        self:destroy();
+    end);
+    btnClose:initialise();
+    modal:addChild(btnClose);
+
     modal.x = (core:getScreenWidth() / 2) - (modal.x / 2)
     modal.y = (core:getScreenHeight() / 2) - (modal.y / 2)
 
@@ -112,5 +121,7 @@ local function checkStorm()
         end
     end
 end
+
+createOSModal()
 
 Events.OnGameStart.Add(checkStorm)
