@@ -12,7 +12,8 @@ plugins {
 }
 
 def isProd = project.hasProperty('prod')
-String workshopId = isProd ? '3670772371' : '3676481910'
+String devVersion = '3676481910'
+String workshopId = isProd ? '3670772371' : devVersion
 String workshopTitle = isProd ? 'Storm Mod Framework b42' : '[DEV] Storm Mod Framework b42'
 String workshopDescription = 'Storm modding framework b42 only'
 String workshopVisibility = isProd ? '0' : '3'
@@ -465,7 +466,7 @@ tasks.register('runProjectZomboidServer', Exec) {
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
 
 	commandLine "${dir}/start-server.sh",
-			"-javaagent:./steamapps/workshop/content/108600/3675492122/mods/storm/bootstrap/storm-bootstrap.jar",
+			"-javaagent:./steamapps/workshop/content/108600/${devVersion}/mods/storm/bootstrap/storm-bootstrap.jar",
 			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
 			'-servername', 'storm'
 	standardInput = System.in
