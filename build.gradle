@@ -12,7 +12,7 @@ plugins {
 }
 
 def isProd = project.hasProperty('prod')
-String workshopId = isProd ? '3675499853' : '3675492122'
+String workshopId = isProd ? '3670772371' : '3675492122'
 String workshopTitle = isProd ? 'Storm Mod Framework b42' : '[DEV] Storm Mod Framework b42'
 String workshopDescription = 'Storm modding framework b42 only'
 String workshopVisibility = isProd ? '0' : '3'
