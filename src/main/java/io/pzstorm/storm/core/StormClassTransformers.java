@@ -6,7 +6,7 @@ import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.*;
 import io.pzstorm.storm.patch.ThreadPatch;
 import io.pzstorm.storm.patch.debugging.DebugLogPatch;
-import io.pzstorm.storm.patch.debugging.ProcessBuilderPatch;
+import io.pzstorm.storm.patch.entity.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.lua.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
@@ -45,7 +45,7 @@ public class StormClassTransformers {
     private static final Map<String, StormClassTransformer> TRANSFORMERS = new HashMap<>();
 
     static {
-        registerTransformer(new ProcessBuilderPatch());
+        //        registerTransformer(new ProcessBuilderPatch());
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
         registerTransformer(new LuaEventManagerPatch());
@@ -60,6 +60,7 @@ public class StormClassTransformers {
         registerTransformer(new CoopMasterPatch());
         registerTransformer(new CommandBasePatch());
         registerTransformer(new ThreadPatch());
+        registerTransformer(new SpriteConfigFixPatch());
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
