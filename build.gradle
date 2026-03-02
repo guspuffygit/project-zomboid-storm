@@ -74,7 +74,6 @@ dependencies {
 	api 'org.slf4j:slf4j-api:1.7.22'
 	api 'ch.qos.logback:logback-classic:1.2.13'
 	api 'net.bytebuddy:byte-buddy:1.18.4'
-	implementation 'net.bytebuddy:byte-buddy-agent:1.18.4'
 	implementation 'net.java.dev.jna:jna:5.18.1'
 	api 'com.fasterxml.jackson.core:jackson-databind:2.21.0'
 
@@ -461,12 +460,13 @@ tasks.register('runProjectZomboidServer', Exec) {
 	dependsOn 'installStorm', 'downloadWorkshop'
 
 	def dir = getLocalProperty('serverPath').get()
+	def workshopModPath = "./steamapps/workshop/content/108600/${devVersion}/mods/storm"
 	workingDir dir
 
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
 
 	commandLine "${dir}/start-server.sh",
-			"-javaagent:./steamapps/workshop/content/108600/${devVersion}/mods/storm/bootstrap/storm-bootstrap.jar",
+			"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar",
 			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
 			'-servername', 'storm'
 	standardInput = System.in

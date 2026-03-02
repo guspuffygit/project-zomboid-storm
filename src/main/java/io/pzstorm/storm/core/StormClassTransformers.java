@@ -1,7 +1,10 @@
 package io.pzstorm.storm.core;
 
+import static io.pzstorm.storm.logging.StormLogger.LOGGER;
+
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.*;
+import io.pzstorm.storm.patch.ThreadPatch;
 import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ProcessBuilderPatch;
 import io.pzstorm.storm.patch.lua.LuaEventManagerPatch;
@@ -14,9 +17,16 @@ import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
+import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
+import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.pool.TypePool;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nullable;
 
@@ -49,6 +59,7 @@ public class StormClassTransformers {
         registerTransformer(new ZomboidFileSystemPatch());
         registerTransformer(new CoopMasterPatch());
         registerTransformer(new CommandBasePatch());
+        registerTransformer(new ThreadPatch());
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
@@ -77,5 +88,79 @@ public class StormClassTransformers {
     @Contract(pure = true)
     public static @Nullable StormClassTransformer getRegistered(String className) {
         return TRANSFORMERS.getOrDefault(className, null);
+    }
+
+    /**
+     * Applies transformers that target classes blacklisted by {@link StormClassLoader} (e.g. {@code
+     * java.lang.*}) using the {@link Instrumentation} retransformation API. The {@code
+     * Instrumentation} instance is provided by the bootstrap agent's {@code premain()}.
+     */
+    public static void applyAgentTransformers(Instrumentation instrumentation) {
+        for (Map.Entry<String, StormClassTransformer> entry : TRANSFORMERS.entrySet()) {
+            String className = entry.getKey();
+            if (!StormClassLoader.isBlacklistedClass(className)) {
+                continue;
+            }
+
+            StormClassTransformer transformer = entry.getValue();
+            LOGGER.debug("Applying agent-based transformer for blacklisted class: {}", className);
+
+            ResettableClassFileTransformer agent =
+                    new AgentBuilder.Default()
+                            .disableClassFormatChanges()
+                            .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                            .ignore(ElementMatchers.none())
+                            .with(
+                                    new AgentBuilder.Listener.Adapter() {
+                                        @Override
+                                        public void onError(
+                                                String typeName,
+                                                ClassLoader classLoader,
+                                                net.bytebuddy.utility.JavaModule module,
+                                                boolean loaded,
+                                                Throwable throwable) {
+                                            LOGGER.error(
+                                                    "Agent transformer failed for {}: {}",
+                                                    typeName,
+                                                    throwable.getMessage(),
+                                                    throwable);
+                                        }
+
+                                        @Override
+                                        public void onTransformation(
+                                                net.bytebuddy.description.type.TypeDescription
+                                                        typeDescription,
+                                                ClassLoader classLoader,
+                                                net.bytebuddy.utility.JavaModule module,
+                                                boolean loaded,
+                                                DynamicType dynamicType) {
+                                            LOGGER.debug(
+                                                    "Successfully retransformed: {}",
+                                                    typeDescription.getName());
+                                        }
+                                    })
+                            .type(ElementMatchers.named(className))
+                            .transform(
+                                    (builder, typeDescription, classLoader, module, domain) -> {
+                                        ClassFileLocator locator =
+                                                new ClassFileLocator.Compound(
+                                                        ClassFileLocator.ForClassLoader.of(
+                                                                transformer
+                                                                        .getClass()
+                                                                        .getClassLoader()),
+                                                        ClassFileLocator.ForClassLoader
+                                                                .ofSystemLoader());
+                                        TypePool typePool = TypePool.Default.of(locator);
+                                        @SuppressWarnings("unchecked")
+                                        DynamicType.Builder<Object> castedBuilder =
+                                                (DynamicType.Builder<Object>)
+                                                        (DynamicType.Builder<?>) builder;
+                                        return transformer.dynamicType(
+                                                locator, typePool, castedBuilder);
+                                    })
+                            .installOn(instrumentation);
+
+            LOGGER.debug("Installed agent transformer for: {}", className);
+        }
     }
 }

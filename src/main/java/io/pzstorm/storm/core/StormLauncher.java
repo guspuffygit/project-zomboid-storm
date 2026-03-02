@@ -4,12 +4,14 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.util.StormEnv;
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.FixedValue;
 import net.bytebuddy.matcher.ElementMatchers;
+import org.jetbrains.annotations.Nullable;
 
 public class StormLauncher {
 
@@ -35,8 +37,20 @@ public class StormLauncher {
             Class.forName("io.pzstorm.storm.core.StormClassTransformers", true, classLoader);
             Class.forName("io.pzstorm.storm.logging.ZomboidLogger", true, classLoader);
 
+            // Set Storm's uncaught exception handler BEFORE applying agent transformers,
+            // since ThreadPatch will block all subsequent setDefaultUncaughtExceptionHandler calls.
             Thread.setDefaultUncaughtExceptionHandler(
                     new StormLogger.Log4JUncaughtExceptionHandler());
+
+            // Retrieve the Instrumentation instance stored by StormBootstrapper.premain()
+            // via reflection (bootstrap and core are in different classloaders).
+            Instrumentation instrumentation = getInstrumentation();
+            if (instrumentation != null) {
+                StormClassTransformers.applyAgentTransformers(instrumentation);
+            } else {
+                LOGGER.warn(
+                        "Instrumentation not available, agent-based transformers will not be applied");
+            }
 
             StormBootstrap.loadAndRegisterMods();
 
@@ -72,6 +86,25 @@ public class StormLauncher {
         }
 
         return CLIENT_ENTRY_POINT_CLASS;
+    }
+
+    /**
+     * Retrieves the {@link Instrumentation} instance stored by {@code StormBootstrapper.premain()}
+     * via reflection, since the bootstrap jar is loaded by a different classloader.
+     */
+    private static @Nullable Instrumentation getInstrumentation() {
+        try {
+            Class<?> bootstrapperClass =
+                    Class.forName(
+                            "io.pzstorm.storm.StormBootstrapper",
+                            false,
+                            ClassLoader.getSystemClassLoader());
+            return (Instrumentation)
+                    bootstrapperClass.getDeclaredField("instrumentation").get(null);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to retrieve Instrumentation from StormBootstrapper", e);
+            return null;
+        }
     }
 
     private static void verifyByteBuddy()

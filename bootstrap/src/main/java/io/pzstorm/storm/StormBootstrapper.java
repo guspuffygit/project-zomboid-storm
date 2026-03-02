@@ -39,6 +39,9 @@ public class StormBootstrapper {
 
     private static final Boolean isServer = Boolean.getBoolean("storm.server");
 
+    /** Stored from premain so Storm core can retrieve it via reflection. */
+    public static volatile Instrumentation instrumentation;
+
     private static Path getJarDirectory() {
         try {
             URI jarUri = StormBootstrapper.class.getProtectionDomain().getCodeSource().getLocation().toURI();
@@ -50,6 +53,7 @@ public class StormBootstrapper {
 
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[StormAgent] Agent initializing...");
+        instrumentation = inst;
 
         String targetMainClass = isServer
                 ? "zombie.network.GameServer"
