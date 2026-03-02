@@ -88,3 +88,5 @@ logs/
 CLAUDE.md
 .claude/
 .emmyrc.json
+.luarc.json
+
