@@ -1,0 +1,43 @@
+name: publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    env:
+      PZ_VERSION: 42.14.1
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: 25
+
+      - name: Download Zomboid classes from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          mkdir -p lib
+          aws s3 cp "s3://${{ secrets.S3_BUCKET }}/zomboid-${{ env.PZ_VERSION }}.zip" lib/zomboid-${{ env.PZ_VERSION }}.zip
+          unzip lib/zomboid-${{ env.PZ_VERSION }}.zip -d lib/zomboid
+
+      - name: Create local.properties
+        run: |
+          echo "gameDir=${{ github.workspace }}/lib/zomboid" > local.properties
+
+      - name: Publish to Maven Central
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          STAGING: true
+          ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_SIGNING_PASSWORD }}
+        run: |
+          ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository

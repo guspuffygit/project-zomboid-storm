@@ -1,6 +1,7 @@
 # Storm Mod Loader
 
-[![License](https://img.shields.io/github/license/pzstorm/storm?logo=gnu)](https://www.gnu.org/licenses/) 
+[![Maven Central](https://img.shields.io/maven-central/v/com.sentientsimulations/project-zomboid-storm)](https://central.sonatype.com/artifact/com.sentientsimulations/project-zomboid-storm)
+[![License](https://img.shields.io/github/license/guspuffygit/project-zomboid-storm?logo=gnu)](https://www.gnu.org/licenses/)
 [![Discord](https://img.shields.io/discord/823907021178798150?color=7289DA&label=discord&logo=discord&logoColor=white)](https://discord.gg/ZCmg9VsvSW)
 
 Storm Mod Loader is a Java modding framework for Project Zomboid.

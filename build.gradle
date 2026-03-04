@@ -118,15 +118,15 @@ publishing {
 	publications {
 		coreMavenJava(MavenPublication) {
 			from project.components.java
-			artifactId = project.jar.archiveBaseName.get()
+			artifactId = 'project-zomboid-storm'
 			pom {
-				name = 'Zomboid Storm Core'
-				description = 'Project Zomboid Storm Implementation'
-				url = 'https://github.com/mlem/storm'
+				name = 'Project Zomboid Storm'
+				description = 'Storm Mod Framework - A modding framework and mod loader for Project Zomboid'
+				url = 'https://github.com/guspuffygit/project-zomboid-storm'
 				scm {
-					connection = 'scm:git:git://github.com/mlem/storm.git'
-					developerConnection = 'scm:git:ssh://github.com:mlem/storm.git'
-					url = 'https://github.com/mlem/storm'
+					connection = 'scm:git:git://github.com/guspuffygit/project-zomboid-storm.git'
+					developerConnection = 'scm:git:ssh://github.com:guspuffygit/project-zomboid-storm.git'
+					url = 'https://github.com/guspuffygit/project-zomboid-storm'
 				}
 				licenses {
 					license {
@@ -136,14 +136,8 @@ publishing {
 				}
 				developers {
 					developer {
-						id = 'yooksi'
-						name = 'Matthew Cain'
-						email = 'yooks@tuta.io'
-					}
-					developer {
-						id = 'mlem'
-						name = 'Martin Lemanski'
-						email = 'martin.lemanski@gmx.at'
+						id = 'guspuffygit'
+						name = 'guspuffygit'
 					}
 				}
 			}
@@ -152,18 +146,22 @@ publishing {
 }
 
 signing {
-	def signingKey = findProperty("signingKey") || findProperty("signing.keyId")
+	def signingKey = findProperty("signingKey")
+	def signingPassword = findProperty("signingPassword")
 
-	if (!project.hasProperty('skipSigning') && signingKey) {
-		sign(publishing.publications.apiMavenJava, publishing.publications.coreMavenJava)
+	if (!project.hasProperty('skipSigning') && (signingKey || findProperty("signing.keyId"))) {
+		if (signingKey) {
+			useInMemoryPgpKeys(signingKey, signingPassword)
+		}
+		sign(publishing.publications.coreMavenJava)
 	}
 }
 
 nexusPublishing {
 	repositories {
 		sonatype {
-			nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
-			snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+			nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+			snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
 
 			username = System.getenv("MAVEN_USERNAME")
 			password = System.getenv("MAVEN_PASSWORD")
