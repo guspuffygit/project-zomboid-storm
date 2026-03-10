@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.io.File;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -24,6 +25,7 @@ import java.nio.file.Paths;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
@@ -148,6 +150,30 @@ public class StormBootstrapper {
 
             if (libraryUrls.isEmpty()) {
                 throw new RuntimeException("No JAR files found in Workshop directory.");
+            }
+
+            // Append logback jars to the system classloader so SLF4J's ServiceLoader
+            // can discover LogbackServiceProvider. Without this, logback is only visible
+            // in the child workshopLoader and SLF4J (loaded by the system classloader
+            // from projectzomboid.jar) falls back to NOP.
+            String stormJarUrl = null;
+            for (URL url : libraryUrls) {
+                String fileName = url.toString().toLowerCase();
+                if (fileName.contains("logback")) {
+                    File jarFile = new File(url.toURI());
+                    System.out.println("[StormBootstrapper] Appending to system classloader: " + jarFile.getName());
+                    instrumentation.appendToSystemClassLoaderSearch(new JarFile(jarFile));
+                }
+                if (fileName.contains("storm-") && fileName.endsWith(".jar")) {
+                    stormJarUrl = url.toString();
+                }
+            }
+
+            // Point logback to our config inside storm.jar
+            if (stormJarUrl != null) {
+                String configUrl = "jar:" + stormJarUrl + "!/logback.xml";
+                System.setProperty("logback.configurationFile", configUrl);
+                System.out.println("[StormBootstrapper] Set logback.configurationFile=" + configUrl);
             }
 
             URLClassLoader workshopLoader = new URLClassLoader(

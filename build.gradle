@@ -71,8 +71,8 @@ dependencies {
 		exclude module: 'j2objc-annotations'
 	}
 
-	api 'org.slf4j:slf4j-api:1.7.22'
-	api 'ch.qos.logback:logback-classic:1.2.13'
+	api 'org.slf4j:slf4j-api:2.0.16'
+	api 'ch.qos.logback:logback-classic:1.5.16'
 	api 'net.bytebuddy:byte-buddy:1.18.4'
 	implementation 'net.java.dev.jna:jna:5.18.1'
 	api 'com.fasterxml.jackson.core:jackson-databind:2.21.0'

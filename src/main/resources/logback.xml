@@ -9,11 +9,9 @@
         <append>true</append>
         <file>${LOG_HOME}/main.log</file>
 
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_FILE_PATTERN}-main-%i.log.zip</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>100MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxFileSize>20MB</maxFileSize>
             <maxHistory>30</maxHistory>
             <totalSizeCap>5GB</totalSizeCap>
         </rollingPolicy>
@@ -33,11 +31,9 @@
     <appender name="STORM_DEBUG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <append>true</append>
         <file>${LOG_HOME}/debug.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_FILE_PATTERN}-debug-%i.log.zip</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>50MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxFileSize>20MB</maxFileSize>
             <maxHistory>5</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
