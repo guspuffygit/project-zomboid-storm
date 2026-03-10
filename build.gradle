@@ -242,6 +242,10 @@ spotless {
 		target '**/*.gradle'
 		greclipse()
 	}
+	json {
+		target '**/*.json'
+		gson().indentWithSpaces(2)
+	}
 }
 
 tasks.register('generateWorkshopFile') {

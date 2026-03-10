@@ -61,6 +61,7 @@ public class StormClassTransformers {
         registerTransformer(new CommandBasePatch());
         registerTransformer(new ThreadPatch());
         registerTransformer(new SpriteConfigFixPatch());
+        registerTransformer(new TranslatorPatch());
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
