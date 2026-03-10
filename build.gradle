@@ -42,7 +42,7 @@ String versionSuffix = System.getenv("STAGING") ? "" :
 allprojects {
 	repositories { mavenCentral() }
 	group = 'com.sentientsimulations'
-	version = '1.1.0' + versionSuffix
+	version = '1.2.0' + versionSuffix
 	java {
 		toolchain {
 			languageVersion = JavaLanguageVersion.of(25)
