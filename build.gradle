@@ -470,7 +470,7 @@ tasks.register('runProjectZomboidServer', Exec) {
 	commandLine "${dir}/start-server.sh",
 			"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar",
 			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
-			'-servername', 'storm'
+			'-servername', 'storm2'
 	standardInput = System.in
 	standardOutput = System.out
 	errorOutput = System.err
