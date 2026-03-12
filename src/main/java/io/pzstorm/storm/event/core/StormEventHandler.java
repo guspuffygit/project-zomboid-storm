@@ -43,9 +43,19 @@ public class StormEventHandler {
     @SubscribeEvent
     public static void handleLuaEventTrigger(OnTriggerLuaEvent event) {
         LOGGER.trace("OnTriggerLuaEvent {}", event.getName());
-        LuaEvent luaEvent =
-                LuaEventFactory.constructLuaEvent(
-                        event.luaEvent.name, event.args.toArray(new Object[0]));
+        LuaEvent luaEvent;
+        try {
+            luaEvent =
+                    LuaEventFactory.constructLuaEvent(
+                            event.luaEvent.name, event.args.toArray(new Object[0]));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            LOGGER.warn(
+                    "Failed to construct event '{}' with args {}: {}",
+                    event.luaEvent.name,
+                    event.args,
+                    e.getMessage());
+            return;
+        }
         if (luaEvent != null) {
             luaEvent.registerCallback();
             StormEventDispatcher.dispatchEvent(luaEvent);
