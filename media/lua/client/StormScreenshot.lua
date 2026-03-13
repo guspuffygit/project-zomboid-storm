@@ -37,7 +37,7 @@ local function processCapture()
         pendingCapture.ticks = pendingCapture.ticks + 1
         if pendingCapture.ticks < POLL_DELAY_TICKS then return end
         if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
-            print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
+--             print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
             pendingCapture = nil
             return
         end
@@ -45,7 +45,7 @@ local function processCapture()
         if not stream then return end
         pendingCapture.bytes = stream:readAllBytes()
         stream:close()
-        print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
+--         print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
         pendingCapture.encodePos = 1
         pendingCapture.encodedParts = {}
         pendingCapture.state = "encoding"
@@ -62,11 +62,11 @@ local function processCapture()
         pendingCapture.encodePos = endPos + 1
         if pendingCapture.encodePos > #bytes then
             local base64str = table.concat(parts)
-            print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
+--             print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
             pendingCapture.bytes = nil
             pendingCapture.encodedParts = nil
             sendChunks(pendingCapture.id, base64str)
-            print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
+--             print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
             pendingCapture = nil
         end
     end
