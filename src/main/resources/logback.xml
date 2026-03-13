@@ -1,21 +1,20 @@
 <configuration>
 
-    <property name="LOG_HOME" value="logs/storm"/>
-    <property name="LOG_FILE_PATTERN" value="${LOG_HOME}/%d{yyyy-MM}/pz-storm-%d{MM-dd-yyyy}"/>
-    <property name="PATTERN_FILE" value="%d{[yyyy-MM-dd][HH:mm:ss]} [${STORM_LOG_SOURCE:-CLIENT}] [%level] [%c{1}]: %msg%n"/>
-    <property name="PATTERN_CONSOLE" value="%d{[HH:mm:ss]} [${STORM_LOG_SOURCE:-CLIENT}] [%level] [%c{1}]: %msg%n"/>
+    <timestamp key="SESSION" datePattern="yyyy-MM-dd_HH-mm"/>
+
+    <property name="LOG_HOME" value="${STORM_LOG_DIR:-${user.home}/Zomboid/Logs}"/>
+    <property name="LOG_ARCHIVE_PATTERN" value="${LOG_HOME}/storm/%d{yyyy-MM}/storm-%d{MM-dd-yyyy}"/>
+    <property name="PATTERN_FILE" value="%d{[yyyy-MM-dd][HH:mm:ss]} [${STORM_LOG_SOURCE:-CLIENT}] [%level] [%thread] [%c{1}]: %msg%n"/>
 
     <appender name="STORM_MAIN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <append>true</append>
-        <file>${LOG_HOME}/main.log</file>
-
+        <file>${LOG_HOME}/${SESSION}_storm.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_FILE_PATTERN}-main-%i.log.zip</fileNamePattern>
+            <fileNamePattern>${LOG_ARCHIVE_PATTERN}-main-%i.log.zip</fileNamePattern>
             <maxFileSize>20MB</maxFileSize>
             <maxHistory>30</maxHistory>
             <totalSizeCap>5GB</totalSizeCap>
         </rollingPolicy>
-
         <encoder>
             <pattern>${PATTERN_FILE}</pattern>
         </encoder>
@@ -30,9 +29,9 @@
 
     <appender name="STORM_DEBUG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <append>true</append>
-        <file>${LOG_HOME}/debug.log</file>
+        <file>${LOG_HOME}/${SESSION}_storm-debug.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_FILE_PATTERN}-debug-%i.log.zip</fileNamePattern>
+            <fileNamePattern>${LOG_ARCHIVE_PATTERN}-debug-%i.log.zip</fileNamePattern>
             <maxFileSize>20MB</maxFileSize>
             <maxHistory>5</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
@@ -40,6 +39,13 @@
         <encoder>
             <pattern>${PATTERN_FILE}</pattern>
         </encoder>
+    </appender>
+
+    <appender name="ASYNC_DEBUG" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="STORM_DEBUG_FILE"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
     </appender>
 
     <root level="${LOG_LEVEL:-INFO}">
@@ -52,7 +58,7 @@
 
     <logger name="io.pzstorm.storm" level="${LOG_LEVEL:-INFO}" additivity="false">
         <appender-ref ref="ASYNC_STORM"/>
-        <appender-ref ref="STORM_DEBUG_FILE"/>
+        <appender-ref ref="ASYNC_DEBUG"/>
     </logger>
 
 </configuration>
