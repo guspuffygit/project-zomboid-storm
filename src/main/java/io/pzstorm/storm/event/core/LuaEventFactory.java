@@ -231,7 +231,10 @@ public class LuaEventFactory {
                             OnPressRackButtonEvent.class,
                             OnHitZombieEvent.class,
                             OnBeingHitByZombieEvent.class,
-                            OnSendMessageToChatEvent.class
+                            OnSendMessageToChatEvent.class,
+                            OnPlayerFullyConnectedEvent.class,
+                            OnPlayerDisconnectedEvent.class,
+                            OnAuthAttemptEvent.class
                         };
         for (Class<? extends LuaEvent> eventClass : eventClasses) {
             Constructor<?>[] constructors = eventClass.getConstructors();

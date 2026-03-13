@@ -14,6 +14,8 @@ import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
+import io.pzstorm.storm.patch.networking.GameServerPatch;
+import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -62,6 +64,8 @@ public class StormClassTransformers {
         registerTransformer(new ThreadPatch());
         registerTransformer(new SpriteConfigFixPatch());
         registerTransformer(new TranslatorPatch());
+        registerTransformer(new GameServerPatch());
+        registerTransformer(new ServerWorldDatabasePatch());
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
