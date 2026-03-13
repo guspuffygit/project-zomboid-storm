@@ -9,7 +9,7 @@ import io.pzstorm.storm.event.lua.*;
 import io.pzstorm.storm.event.zomboid.*;
 import io.pzstorm.storm.lua.functions.storm.StormLua;
 import io.pzstorm.storm.mod.ActiveMods;
-import io.pzstorm.storm.patch.lua.LuaPatchUtils;
+import io.pzstorm.storm.util.LuaPatchUtils;
 import io.pzstorm.storm.wrappers.ui.PersistedBooleanConfigOption;
 import java.io.IOException;
 import java.io.InputStream;

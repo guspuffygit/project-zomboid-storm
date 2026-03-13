@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch.entity;
+package io.pzstorm.storm.patch.fixes;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.Advice;

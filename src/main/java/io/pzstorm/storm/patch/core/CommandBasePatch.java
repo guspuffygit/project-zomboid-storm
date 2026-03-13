@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch.mod;
+package io.pzstorm.storm.patch.core;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import io.pzstorm.storm.core.StormCommandRegistry;

@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch;
+package io.pzstorm.storm.patch.debugging;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.Advice;

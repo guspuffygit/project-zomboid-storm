@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch.lua;
+package io.pzstorm.storm.util;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 

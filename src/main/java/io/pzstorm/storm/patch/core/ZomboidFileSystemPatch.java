@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch.mod;
+package io.pzstorm.storm.patch.core;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 

@@ -1,4 +1,4 @@
-package io.pzstorm.storm.patch;
+package io.pzstorm.storm.patch.events;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
