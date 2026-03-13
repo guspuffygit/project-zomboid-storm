@@ -19,6 +19,8 @@ import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,6 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * This class defines, initializes and stores {@link StormClassTransformer} instances. To retrieve a
@@ -43,7 +44,7 @@ public class StormClassTransformers {
      * StormClassLoader} when loading classes and invokes the transformation chain of methods to
      * transform the class before defining it via JVM.
      */
-    private static final Map<String, StormClassTransformer> TRANSFORMERS = new HashMap<>();
+    private static final Map<String, List<StormClassTransformer>> TRANSFORMERS = new HashMap<>();
 
     static {
         registerTransformer(new MainScreenStatePatch());
@@ -64,7 +65,9 @@ public class StormClassTransformers {
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
-        TRANSFORMERS.put(transformer.getClassName(), transformer);
+        TRANSFORMERS
+                .computeIfAbsent(transformer.getClassName(), k -> new ArrayList<>())
+                .add(transformer);
     }
 
     /**
@@ -82,13 +85,29 @@ public class StormClassTransformers {
     }
 
     /**
-     * Returns registered instance of {@link StormClassTransformer} that matches the given name.
+     * Returns all registered {@link StormClassTransformer} instances that target the given class.
      *
-     * @return {@code StormClassTransformer} or {@code null} if no registered instance found.
+     * @return list of transformers (empty if none registered).
      */
     @Contract(pure = true)
-    public static @Nullable StormClassTransformer getRegistered(String className) {
-        return TRANSFORMERS.getOrDefault(className, null);
+    public static List<StormClassTransformer> getRegistered(String className) {
+        return TRANSFORMERS.getOrDefault(className, Collections.emptyList());
+    }
+
+    /**
+     * Applies all registered transformers for the given class name sequentially. Each transformer
+     * independently redefines the class bytes produced by the previous transformer.
+     *
+     * @param className the binary name of the class to transform.
+     * @param rawClass byte array representing the class.
+     * @return transformed byte array, or the original if no transformers are registered.
+     */
+    public static byte[] applyAll(String className, byte[] rawClass) {
+        List<StormClassTransformer> transformers = getRegistered(className);
+        for (StormClassTransformer transformer : transformers) {
+            rawClass = transformer.transform(rawClass);
+        }
+        return rawClass;
     }
 
     /**
@@ -97,13 +116,13 @@ public class StormClassTransformers {
      * Instrumentation} instance is provided by the bootstrap agent's {@code premain()}.
      */
     public static void applyAgentTransformers(Instrumentation instrumentation) {
-        for (Map.Entry<String, StormClassTransformer> entry : TRANSFORMERS.entrySet()) {
-            String className = entry.getKey();
+        for (String className : TRANSFORMERS.keySet()) {
             if (!StormClassLoader.isBlacklistedClass(className)) {
                 continue;
             }
 
-            StormClassTransformer transformer = entry.getValue();
+            List<StormClassTransformer> transformers =
+                    TRANSFORMERS.getOrDefault(className, Collections.emptyList());
             LOGGER.debug("Applying agent-based transformer for blacklisted class: {}", className);
 
             ResettableClassFileTransformer agent =
@@ -143,21 +162,25 @@ public class StormClassTransformers {
                             .type(ElementMatchers.named(className))
                             .transform(
                                     (builder, typeDescription, classLoader, module, domain) -> {
-                                        ClassFileLocator locator =
-                                                new ClassFileLocator.Compound(
-                                                        ClassFileLocator.ForClassLoader.of(
-                                                                transformer
-                                                                        .getClass()
-                                                                        .getClassLoader()),
-                                                        ClassFileLocator.ForClassLoader
-                                                                .ofSystemLoader());
-                                        TypePool typePool = TypePool.Default.of(locator);
                                         @SuppressWarnings("unchecked")
                                         DynamicType.Builder<Object> castedBuilder =
                                                 (DynamicType.Builder<Object>)
                                                         (DynamicType.Builder<?>) builder;
-                                        return transformer.dynamicType(
-                                                locator, typePool, castedBuilder);
+                                        for (StormClassTransformer transformer : transformers) {
+                                            ClassFileLocator locator =
+                                                    new ClassFileLocator.Compound(
+                                                            ClassFileLocator.ForClassLoader.of(
+                                                                    transformer
+                                                                            .getClass()
+                                                                            .getClassLoader()),
+                                                            ClassFileLocator.ForClassLoader
+                                                                    .ofSystemLoader());
+                                            TypePool typePool = TypePool.Default.of(locator);
+                                            castedBuilder =
+                                                    transformer.dynamicType(
+                                                            locator, typePool, castedBuilder);
+                                        }
+                                        return castedBuilder;
                                     })
                             .installOn(instrumentation);
 

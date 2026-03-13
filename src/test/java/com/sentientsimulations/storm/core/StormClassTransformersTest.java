@@ -5,6 +5,7 @@ import io.pzstorm.storm.core.StormBootstrap;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -62,8 +63,9 @@ class StormClassTransformersTest implements IntegrationTest {
             throws ReflectiveOperationException {
 
         // Verify the transformer is NOT registered before collection
-        Object before = GET_REGISTERED.invoke(null, TestModTransformer.TARGET_CLASS);
-        Assertions.assertNull(before, "Transformer should not be registered before collection");
+        List<?> before = (List<?>) GET_REGISTERED.invoke(null, TestModTransformer.TARGET_CLASS);
+        Assertions.assertTrue(
+                before.isEmpty(), "Transformer should not be registered before collection");
 
         // Load TestTransformerMod through StormClassLoader so it implements the correct
         // ZomboidMod interface (loaded by the same classloader as StormModRegistry)
@@ -83,12 +85,14 @@ class StormClassTransformersTest implements IntegrationTest {
         COLLECT_TRANSFORMERS.invoke(null);
 
         // Verify the transformer IS now registered
-        Object after = GET_REGISTERED.invoke(null, TestModTransformer.TARGET_CLASS);
-        Assertions.assertNotNull(after, "Transformer should be registered after collection");
+        List<?> after = (List<?>) GET_REGISTERED.invoke(null, TestModTransformer.TARGET_CLASS);
+        Assertions.assertFalse(
+                after.isEmpty(), "Transformer should be registered after collection");
 
         // Verify it targets the correct class
-        Method getClassName = after.getClass().getMethod("getClassName");
-        String registeredClassName = (String) getClassName.invoke(after);
+        Object transformer = after.get(0);
+        Method getClassName = transformer.getClass().getMethod("getClassName");
+        String registeredClassName = (String) getClassName.invoke(transformer);
         Assertions.assertEquals(TestModTransformer.TARGET_CLASS, registeredClassName);
     }
 

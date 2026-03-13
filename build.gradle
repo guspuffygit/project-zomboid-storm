@@ -6,6 +6,7 @@ plugins {
 	id 'application'
 	id 'maven-publish'
 	id 'signing'
+	id 'jacoco'
 	id 'com.diffplug.spotless' version '8.1.0'
 	id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
 	id 'io.freefair.lombok' version '9.2.0'
@@ -90,6 +91,31 @@ dependencies {
 
 test {
 	useJUnitPlatform()
+	finalizedBy jacocoTestReport
+}
+
+tasks.register('unpackZomboidJar', Copy) {
+	dependsOn 'extractZomboidFiles'
+	from(zipTree(layout.buildDirectory.file('zomboid-classpath/projectzomboid.jar')))
+	into layout.buildDirectory.dir('zomboid-classes')
+	exclude 'META-INF/versions/**'
+}
+
+jacocoTestReport {
+	dependsOn test, 'unpackZomboidJar'
+
+	def zomboidClasses = layout.buildDirectory.dir('zomboid-classes')
+	def zomboidSrcDir = file("${System.getProperty('user.home')}/projects/project-zomboid-base/src/main/java")
+
+	additionalClassDirs(files(zomboidClasses).asFileTree.matching {
+		include 'zombie/**'
+	})
+	additionalSourceDirs(files(zomboidSrcDir))
+
+	reports {
+		html.required = true
+		xml.required = true
+	}
 }
 
 jar {

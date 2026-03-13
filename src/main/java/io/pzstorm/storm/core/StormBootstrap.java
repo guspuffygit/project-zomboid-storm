@@ -3,7 +3,6 @@ package io.pzstorm.storm.core;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.util.Set;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * This class bootstraps everything needed to launch the game with static initialization. It should
@@ -24,31 +23,21 @@ public class StormBootstrap {
     public static final Class<?> MOD_LOADER_CLASS;
 
     /**
-     * Loaded and initialized {@link StormClassTransformer} {@code Class}. To transform specific
+     * Loaded and initialized {@link StormClassTransformers} {@code Class}. To transform specific
      * classes during load time (<i>on-fly</i>) {@link StormClassLoader} has to read and invoke
      * registered transformers. Due to how class loading works in Java references to classes within
      * {@code ClassLoader} do not get loaded by that specific {@code ClassLoader} but get delegate
      * to {@code AppClassLoader}. For this reason we have to use bootstrapping and reflection to
      * access transformers from {@code StormClassLoader}.
      */
-    private static final Class<?> TRANSFORMER_CLASS;
-
-    /** Loaded and initialized {@link StormClassTransformers} {@code Class}. */
     private static final Class<?> TRANSFORMERS_CLASS;
 
     /**
-     * Represents {@link StormClassTransformers#getRegistered(String)} method.
+     * Represents {@link StormClassTransformers#applyAll(String, byte[])} method.
      *
-     * @see #getRegisteredTransformer(String)
+     * @see #applyAllTransformers(String, byte[])
      */
-    private static final Method TRANSFORMER_GETTER;
-
-    /**
-     * Represents {@link StormClassTransformer#transform(byte[])} method.
-     *
-     * @see #getRegisteredTransformer(String)
-     */
-    private static final Method TRANSFORMER_INVOKER;
+    private static final Method APPLY_ALL;
 
     /**
      * Marks the {@code StormBoostrap} as being fully loaded. This variable will be {@code true}
@@ -61,17 +50,12 @@ public class StormBootstrap {
         try {
             MOD_LOADER_CLASS =
                     Class.forName("io.pzstorm.storm.core.StormModLoader", true, CLASS_LOADER);
-            TRANSFORMER_CLASS =
-                    Class.forName(
-                            "io.pzstorm.storm.core.StormClassTransformer", true, CLASS_LOADER);
             TRANSFORMERS_CLASS =
                     Class.forName(
                             "io.pzstorm.storm.core.StormClassTransformers", true, CLASS_LOADER);
-            TRANSFORMER_GETTER =
-                    TRANSFORMERS_CLASS.getDeclaredMethod("getRegistered", String.class);
-            TRANSFORMER_INVOKER = TRANSFORMER_CLASS.getDeclaredMethod("transform", byte[].class);
+            APPLY_ALL =
+                    TRANSFORMERS_CLASS.getDeclaredMethod("applyAll", String.class, byte[].class);
 
-            // mark StormBootstrap as finished loading
             hasLoaded = true;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
@@ -79,19 +63,14 @@ public class StormBootstrap {
     }
 
     /**
-     * Returns registered instance of {@link StormClassTransformer} that matches the given name.
+     * Applies all registered transformers for the given class name sequentially.
      *
      * @throws ReflectiveOperationException if an error occurred while invoking method.
-     * @see StormClassTransformers#getRegistered(String)
+     * @see StormClassTransformers#applyAll(String, byte[])
      */
-    static @Nullable Object getRegisteredTransformer(String name)
+    static byte[] applyAllTransformers(String name, byte[] rawClass)
             throws ReflectiveOperationException {
-        return TRANSFORMER_GETTER.invoke(null, name);
-    }
-
-    static byte[] invokeTransformer(Object transformer, byte[] rawClass)
-            throws ReflectiveOperationException {
-        return (byte[]) TRANSFORMER_INVOKER.invoke(transformer, (Object) rawClass);
+        return (byte[]) APPLY_ALL.invoke(null, name, rawClass);
     }
 
     /**
