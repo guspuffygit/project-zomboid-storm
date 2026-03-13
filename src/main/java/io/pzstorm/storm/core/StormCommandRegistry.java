@@ -2,6 +2,7 @@ package io.pzstorm.storm.core;
 
 import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.commands.PrintDebugCommand;
+import io.pzstorm.storm.commands.ScreenshotCommand;
 import io.pzstorm.storm.mod.ZomboidMod;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +23,7 @@ public class StormCommandRegistry {
 
         MOD_COMMANDS.add(PingCommand.class);
         MOD_COMMANDS.add(PrintDebugCommand.class);
+        MOD_COMMANDS.add(ScreenshotCommand.class);
     }
 
     public static List<Class<?>> getModCommands() {
