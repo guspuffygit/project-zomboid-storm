@@ -90,3 +90,4 @@ CLAUDE.md
 .emmyrc.json
 .luarc.json
 
+*.class
