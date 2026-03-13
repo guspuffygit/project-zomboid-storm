@@ -11,7 +11,6 @@ import io.pzstorm.storm.patch.lua.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.mod.CommandBasePatch;
-import io.pzstorm.storm.patch.mod.CoopMasterPatch;
 import io.pzstorm.storm.patch.mod.ZomboidFileSystemPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
@@ -45,7 +44,6 @@ public class StormClassTransformers {
     private static final Map<String, StormClassTransformer> TRANSFORMERS = new HashMap<>();
 
     static {
-        //        registerTransformer(new ProcessBuilderPatch());
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
         registerTransformer(new LuaEventManagerPatch());
@@ -57,7 +55,6 @@ public class StormClassTransformers {
         registerTransformer(new UIWorldMapV1Patch());
         registerTransformer(new DebugLogPatch());
         registerTransformer(new ZomboidFileSystemPatch());
-        registerTransformer(new CoopMasterPatch());
         registerTransformer(new CommandBasePatch());
         registerTransformer(new ThreadPatch());
         registerTransformer(new SpriteConfigFixPatch());
