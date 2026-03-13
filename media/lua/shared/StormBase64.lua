@@ -17,21 +17,26 @@ local function getDecodeLookup()
     return DECODE_LOOKUP
 end
 
-function StormBase64.encode(bytes)
+function StormBase64.encode(bytes, startIdx, endIdx)
     local result = {}
-    local n = #bytes
-    for i = 1, n, 3 do
-        local b1 = bytes[i]
+    local s = startIdx or 1
+    local n = endIdx or #bytes
+    local total = #bytes
+    for i = s, n, 3 do
+        local b1 = bytes[i] or 0
         local b2 = bytes[i + 1] or 0
         local b3 = bytes[i + 2] or 0
+        if b1 < 0 then b1 = b1 + 256 end
+        if b2 < 0 then b2 = b2 + 256 end
+        if b3 < 0 then b3 = b3 + 256 end
 
         local idx1 = math.floor(b1 / 4)
         local idx2 = (b1 % 4) * 16 + math.floor(b2 / 16)
         local idx3 = (b2 % 16) * 4 + math.floor(b3 / 64)
         local idx4 = b3 % 64
 
-        local c3 = (i + 1 <= n) and ENCODE[idx3] or 61
-        local c4 = (i + 2 <= n) and ENCODE[idx4] or 61
+        local c3 = (i + 1 <= total) and ENCODE[idx3] or 61
+        local c4 = (i + 2 <= total) and ENCODE[idx4] or 61
 
         result[#result + 1] = string.char(ENCODE[idx1], ENCODE[idx2], c3, c4)
     end

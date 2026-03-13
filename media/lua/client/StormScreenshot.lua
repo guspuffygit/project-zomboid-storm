@@ -4,24 +4,11 @@ StormScreenshot = StormScreenshot or {}
 
 local LUA_CACHE_PREFIX = "../Lua/"
 local CHUNK_SIZE = 30000
+local ENCODE_BATCH = 199998
 local POLL_DELAY_TICKS = 60
 local POLL_TIMEOUT_TICKS = 600
 
 local pendingCapture = nil
-
-local function readFileBytes(filename)
-    local stream = getFileInput(filename)
-    if not stream then return nil end
-
-    local bytes = stream:readAllBytes()
-    stream:close()
-
-    for i = 1, #bytes do
-        if bytes[i] < 0 then bytes[i] = bytes[i] + 256 end
-    end
-
-    return bytes
-end
 
 local function sendChunks(screenshotId, base64str)
     local totalLen = string.len(base64str)
@@ -44,28 +31,45 @@ end
 local function processCapture()
     if not pendingCapture then return end
 
-    pendingCapture.ticks = pendingCapture.ticks + 1
+    local state = pendingCapture.state
 
-    if pendingCapture.ticks < POLL_DELAY_TICKS then return end
+    if state == "polling" then
+        pendingCapture.ticks = pendingCapture.ticks + 1
+        if pendingCapture.ticks < POLL_DELAY_TICKS then return end
+        if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
+            print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
+            pendingCapture = nil
+            return
+        end
+        local stream = getFileInput(pendingCapture.filename)
+        if not stream then return end
+        pendingCapture.bytes = stream:readAllBytes()
+        stream:close()
+        print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
+        pendingCapture.encodePos = 1
+        pendingCapture.encodedParts = {}
+        pendingCapture.state = "encoding"
 
-    if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
-        print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
-        pendingCapture = nil
-        return
+    elseif state == "encoding" then
+        local bytes = pendingCapture.bytes
+        local pos = pendingCapture.encodePos
+        local endPos = math.min(pos + ENCODE_BATCH - 1, #bytes)
+
+        local part = StormBase64.encode(bytes, pos, endPos)
+        local parts = pendingCapture.encodedParts
+        parts[#parts + 1] = part
+
+        pendingCapture.encodePos = endPos + 1
+        if pendingCapture.encodePos > #bytes then
+            local base64str = table.concat(parts)
+            print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
+            pendingCapture.bytes = nil
+            pendingCapture.encodedParts = nil
+            sendChunks(pendingCapture.id, base64str)
+            print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
+            pendingCapture = nil
+        end
     end
-
-    local bytes = readFileBytes(pendingCapture.filename)
-    if not bytes or #bytes == 0 then return end
-
-    print("[Storm] Read " .. #bytes .. " bytes from screenshot")
-
-    local base64str = StormBase64.encode(bytes)
-    print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
-
-    sendChunks(pendingCapture.id, base64str)
-    print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
-
-    pendingCapture = nil
 end
 
 function StormScreenshot.captureAndSend(screenshotId)
@@ -82,6 +86,7 @@ function StormScreenshot.captureAndSend(screenshotId)
         id = screenshotId,
         filename = filename,
         ticks = 0,
+        state = "polling",
     }
 
     print("[Storm] Screenshot capture started: " .. screenshotId)
