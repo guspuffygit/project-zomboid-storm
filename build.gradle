@@ -343,7 +343,7 @@ tasks.register('runStorm', JavaExec) {
 		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}/linux64;${getLocalProperty('outputDir').get()}")
 		jvmArgsList.add('-Djava.security.egd=file:/dev/./urandom')
 	} else if (os.isMacOsX()) {
-		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
+//		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
 	}
 
 	jvmArgs jvmArgsList
