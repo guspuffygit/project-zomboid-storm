@@ -80,6 +80,7 @@ dependencies {
 
 	compileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
 	testCompileOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
+	testRuntimeOnly fileTree(dir: layout.buildDirectory.dir('zomboid-classpath'), include: '*.jar').builtBy('extractZomboidFiles')
 	testImplementation 'org.ow2.asm:asm:9.1'
 	testImplementation 'org.ow2.asm:asm-tree:9.1'
 	testImplementation 'org.ow2.asm:asm-util:9.1'
@@ -343,7 +344,7 @@ tasks.register('runStorm', JavaExec) {
 		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}/linux64;${getLocalProperty('outputDir').get()}")
 		jvmArgsList.add('-Djava.security.egd=file:/dev/./urandom')
 	} else if (os.isMacOsX()) {
-//		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
+		//		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
 	}
 
 	jvmArgs jvmArgsList

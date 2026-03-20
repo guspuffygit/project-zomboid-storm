@@ -3,6 +3,7 @@ package io.pzstorm.storm.event.core;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import com.google.common.collect.Sets;
+import io.pzstorm.storm.event.lua.OnClientCommandEvent;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -127,6 +128,18 @@ public class StormEventDispatcher {
                         String.format(text, method.getName(), className, parameters.length));
             }
         }
+
+        if (method.isAnnotationPresent(OnClientCommand.class)) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 1
+                    || !ClientCommandEvent.class.isAssignableFrom(parameters[0])) {
+                throw new IllegalArgumentException(
+                        "@OnClientCommand method "
+                                + method.getName()
+                                + " must have exactly one parameter extending ClientCommandEvent");
+            }
+            ClientCommandDispatcher.registerHandler(method, handler);
+        }
     }
 
     /**
@@ -181,6 +194,10 @@ public class StormEventDispatcher {
                 LOGGER.trace("Dispatching event {}", event.getClass().getName());
                 method.invoke(event);
             }
+        }
+
+        if (event instanceof OnClientCommandEvent clientCommandEvent) {
+            ClientCommandDispatcher.dispatch(clientCommandEvent);
         }
     }
 
