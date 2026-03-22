@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import java.util.ArrayList;
+import java.util.Iterator;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
@@ -41,7 +42,13 @@ public class GameServerWorkshopItemsPatch extends StormClassTransformer {
         public static void beforeInstall(
                 @Advice.Argument(value = 0, readOnly = false) ArrayList<Long> itemIDList) {
             int before = itemIDList.size();
-            itemIDList.removeIf(id -> id == 3670772371L || id == 3676481910L);
+            Iterator<Long> it = itemIDList.iterator();
+            while (it.hasNext()) {
+                long id = it.next();
+                if (id == 3670772371L || id == 3676481910L) {
+                    it.remove();
+                }
+            }
             int removed = before - itemIDList.size();
             if (removed > 0) {
                 LOGGER.info(
