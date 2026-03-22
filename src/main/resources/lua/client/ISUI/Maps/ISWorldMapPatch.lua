@@ -1,3 +1,6 @@
+-- Preserve any hooks registered by mods that loaded before Storm
+WorldMapOptions_visibleOptionsHooks = WorldMapOptions_visibleOptionsHooks or {}
+
 function WorldMapOptions:getVisibleOptions()
     local result = {}
     if self.showAllOptions then
@@ -7,6 +10,10 @@ function WorldMapOptions:getVisibleOptions()
                 table.insert(result, option)
             end
         end
+        for _, hook in ipairs(WorldMapOptions_visibleOptionsHooks) do
+            hook(result)
+        end
+        table.sort(result, function(a,b) return not string.sort(a:getName(), b:getName()) end)
         return result;
     end
 
@@ -22,8 +29,45 @@ function WorldMapOptions:getVisibleOptions()
         end
     end
 
+    for _, hook in ipairs(WorldMapOptions_visibleOptionsHooks) do
+        hook(result)
+    end
+
     table.sort(result, function(a,b) return not string.sort(a:getName(), b:getName()) end)
     return result
+end
+
+function WorldMapOptions:synchUI()
+    local showAllOptions = false
+    if getDebug() or (isClient() and (getAccessLevel() == "admin")) then
+        showAllOptions = true
+    end
+
+    local visibleOptions = self:getVisibleOptions()
+    local boolCount = 0
+    for _, opt in ipairs(visibleOptions) do
+        if opt:getType() == "boolean" then boolCount = boolCount + 1 end
+    end
+
+    if showAllOptions ~= self.showAllOptions
+        or self.screenHeight ~= getCore():getScreenHeight()
+        or boolCount ~= (self._lastBoolCount or -1) then
+        local children = {}
+        for k, v in pairs(self:getChildren()) do table.insert(children, v) end
+        for _, child in ipairs(children) do self:removeChild(child) end
+        self:createChildren()
+        self._lastBoolCount = boolCount
+    end
+
+    visibleOptions = self:getVisibleOptions()
+    for i, option in ipairs(visibleOptions) do
+        if option:getType() == "boolean" and self.tickBoxes[i] then
+            self.tickBoxes[i]:setSelected(1, option:getValue())
+        end
+        if option:getType() == "double" and self.doubleBoxes[i] then
+            self.doubleBoxes[i]:setText(option:getValueAsString())
+        end
+    end
 end
 
 function WorldMapOptions:getOptionNames()
