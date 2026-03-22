@@ -16,6 +16,7 @@ import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
 import io.pzstorm.storm.patch.networking.GameServerPatch;
+import io.pzstorm.storm.patch.networking.GameServerWorkshopItemsPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
@@ -67,6 +68,7 @@ public class StormClassTransformers {
         registerTransformer(new TranslatorPatch());
         registerTransformer(new CoopMasterPatch());
         registerTransformer(new GameServerPatch());
+        registerTransformer(new GameServerWorkshopItemsPatch());
         registerTransformer(new ServerWorldDatabasePatch());
     }
 
