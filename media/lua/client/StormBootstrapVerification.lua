@@ -105,21 +105,21 @@ local function createOSModal()
 end
 
 local function checkStorm()
-    if Storm then
-        print("Storm is loaded successfully")
-    else
-        print("User does not have Storm mod loader enabled if this method triggers")
-
-        if loadDontShowAgain() then
-            return
-        end
-
-        local modal = createOSModal()
-
-        if JoypadState.players[1] then
-            setJoypadFocus(0, modal)
-        end
-    end
+    --if Storm then
+    --    print("Storm is loaded successfully")
+    --else
+    --    print("User does not have Storm mod loader enabled if this method triggers")
+    --
+    --    if loadDontShowAgain() then
+    --        return
+    --    end
+    --
+    --    local modal = createOSModal()
+    --
+    --    if JoypadState.players[1] then
+    --        setJoypadFocus(0, modal)
+    --    end
+    --end
 end
 
 Events.OnGameStart.Add(checkStorm)
