@@ -17,7 +17,7 @@ def env = project.hasProperty('env') ? project.property('env') : 'dev'
 def getWorkshopId = {
 	switch (env) {
 		case 'prod':  return '3670772371'
-		case 'stage': return ''
+		case 'stage': return '3694148746'
 		default: return '3676481910'
 	}
 }
