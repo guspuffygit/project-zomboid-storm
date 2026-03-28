@@ -12,12 +12,48 @@ plugins {
 	id 'io.freefair.lombok' version '9.2.0'
 }
 
-def isProd = project.hasProperty('prod')
-String devVersion = '3676481910'
-String workshopId = isProd ? '3670772371' : devVersion
-String workshopTitle = isProd ? 'Storm Mod Framework b42' : '[DEV] Storm Mod Framework b42'
+def env = project.hasProperty('env') ? project.property('env') : 'dev'
+
+def getWorkshopId = {
+	switch (env) {
+		case 'prod':  return '3670772371'
+		case 'stage': return ''
+		default: return '3676481910'
+	}
+}
+
+def getWorkshopTitle = {
+	switch (env) {
+		case 'prod':  return 'Storm Mod Framework b42'
+		case 'stage': return '[STAGE] Storm Mod Framework b42'
+		default: return '[DEV] Storm Mod Framework b42'
+	}
+}
+
+def getModId = {
+	switch (env) {
+		case 'prod':  return "${rootProject.name}-core-b42"
+		case 'stage': return "${rootProject.name}-core-b42-stage"
+		default: return "${rootProject.name}-core-b42-dev"
+	}
+}
+
+def getModName = {
+	switch (env) {
+		case 'prod':  return 'Storm - Core b42'
+		case 'stage': return '[STAGE] Storm - Core b42'
+		default: return '[DEV] Storm - Core b42'
+	}
+}
+
+def getWorkshopVisibility = {
+	switch (env) {
+		case 'prod':  return '0'
+		default: return '2'
+	}
+}
+
 String workshopDescription = 'Storm modding framework b42 only'
-String workshopVisibility = isProd ? '0' : '3'
 
 def os = OperatingSystem.current()
 
@@ -199,8 +235,8 @@ nexusPublishing {
 tasks.register('writeModInfo') {
 	def outputFile = layout.buildDirectory.file("mod.info")
 
-	inputs.property("name", isProd ? "Storm - Core b42" : "[DEV] Storm - Core b42")
-	inputs.property("id", "${rootProject.name}-core-b42")
+	inputs.property("name", getModName())
+	inputs.property("id", getModId())
 	inputs.property("description", 'Storm core mod loader for b42')
 	inputs.property("url", 'url')
 	inputs.property("modversion", 'modversion')
@@ -281,11 +317,11 @@ tasks.register('generateWorkshopFile') {
 	outputs.file(outputFile)
 
 	inputs.property('version', '3')
-	inputs.property('id', workshopId)
-	inputs.property('title', workshopTitle)
+	inputs.property('id', getWorkshopId())
+	inputs.property('title', getWorkshopTitle())
 	inputs.property('description', workshopDescription)
 	inputs.property('tags', 'Build 42')
-	inputs.property('visibility', workshopVisibility)
+	inputs.property('visibility', getWorkshopVisibility())
 
 	doLast {
 		def file = outputFile.get().asFile
@@ -355,11 +391,11 @@ tasks.register('writeWorkshopVdf') {
 	def outputFile = layout.buildDirectory.file('workshop.vdf')
 
 	inputs.property('appid', '108600')
-	inputs.property('publishedfileid', workshopId)
+	inputs.property('publishedfileid', getWorkshopId())
 	inputs.property('contentfolder', workshopDir.map { "${it}/Contents" })
 	inputs.property('previewfile', workshopDir.map { "${it}/preview.png" })
-	inputs.property('visibility', workshopVisibility)
-	inputs.property('title', workshopTitle)
+	inputs.property('visibility', getWorkshopVisibility())
+	inputs.property('title', getWorkshopTitle())
 	inputs.property('description', workshopDescription)
 	inputs.property('changenote', 'Deployment')
 
@@ -481,7 +517,7 @@ tasks.register('downloadWorkshop', Exec) {
 			'+login', System.getenv('STEAM_USERNAME'), System.getenv('STEAM_PASSWORD'),
 			'+workshop_download_item',
 			'108600',
-			workshopId, 'validate',
+			getWorkshopId(), 'validate',
 			'+quit'
 }
 
@@ -489,7 +525,7 @@ tasks.register('runProjectZomboidServer', Exec) {
 	dependsOn 'installStorm', 'downloadWorkshop'
 
 	def dir = getLocalProperty('serverPath').get()
-	def workshopModPath = "./steamapps/workshop/content/108600/${devVersion}/mods/storm"
+	def workshopModPath = "./steamapps/workshop/content/108600/3676481910/mods/storm"
 	workingDir dir
 
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
