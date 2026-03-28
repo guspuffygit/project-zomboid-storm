@@ -49,7 +49,7 @@ def getModName = {
 def getWorkshopVisibility = {
 	switch (env) {
 		case 'prod':  return '0'
-		default: return '2'
+		default: return '3'
 	}
 }
 
