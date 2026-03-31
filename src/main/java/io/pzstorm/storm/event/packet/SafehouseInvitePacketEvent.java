@@ -1,6 +1,8 @@
 package io.pzstorm.storm.event.packet;
 
+import javax.annotation.Nullable;
 import zombie.core.raknet.UdpConnection;
+import zombie.iso.areas.SafeHouse;
 import zombie.network.packets.safehouse.SafehouseInvitePacket;
 
 /**
@@ -20,5 +22,37 @@ public class SafehouseInvitePacketEvent extends PacketEvent {
     @Override
     public String getName() {
         return "SafehouseInvitePacketEvent";
+    }
+
+    public SafeHouse getSafehouse() {
+        return getPacket().getSafehouse();
+    }
+
+    public int getX() {
+        return getPacket().x;
+    }
+
+    public int getY() {
+        return getPacket().y;
+    }
+
+    public short getW() {
+        return getPacket().w;
+    }
+
+    public short getH() {
+        return getPacket().h;
+    }
+
+    public String getOwnerUsername() {
+        return getPacket().ownerUsername;
+    }
+
+    public @Nullable String getOwner() {
+        return (String) getField("owner");
+    }
+
+    public @Nullable String getInvited() {
+        return (String) getField("invited");
     }
 }

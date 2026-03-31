@@ -1,5 +1,7 @@
 package io.pzstorm.storm.event.packet;
 
+import javax.annotation.Nullable;
+import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.packets.safehouse.SafezoneClaimPacket;
 
@@ -20,5 +22,29 @@ public class SafezoneClaimPacketEvent extends PacketEvent {
     @Override
     public String getName() {
         return "SafezoneClaimPacketEvent";
+    }
+
+    public IsoPlayer getPlayer() {
+        return getPacket().getPlayer();
+    }
+
+    public int getX() {
+        return getPacket().x;
+    }
+
+    public int getY() {
+        return getPacket().y;
+    }
+
+    public int getW() {
+        return getPacket().w;
+    }
+
+    public int getH() {
+        return getPacket().h;
+    }
+
+    public @Nullable String getTitle() {
+        return (String) getField("title");
     }
 }

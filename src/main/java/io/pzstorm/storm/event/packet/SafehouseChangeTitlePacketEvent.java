@@ -1,6 +1,7 @@
 package io.pzstorm.storm.event.packet;
 
 import zombie.core.raknet.UdpConnection;
+import zombie.iso.areas.SafeHouse;
 import zombie.network.packets.safehouse.SafehouseChangeTitlePacket;
 
 /**
@@ -20,5 +21,13 @@ public class SafehouseChangeTitlePacketEvent extends PacketEvent {
     @Override
     public String getName() {
         return "SafehouseChangeTitlePacketEvent";
+    }
+
+    public SafeHouse getSafehouse() {
+        return getPacket().getSafehouse();
+    }
+
+    public String getTitle() {
+        return getPacket().title;
     }
 }
