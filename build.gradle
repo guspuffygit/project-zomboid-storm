@@ -473,6 +473,8 @@ tasks.register('runProjectZomboid') {
 				"${dir}/ProjectZomboid64.exe".toString(),
 				'-DstormType=local',
 				'-DLOG_LEVEL=DEBUG',
+				'-Xms16g',
+				'-Xmx16g',
 				"-agentpath:${getLocalProperty('bootstrapDirOverride').get()}\\agentlib.dll=storm-bootstrap.jar".toString(),
 				'--',
 			]
