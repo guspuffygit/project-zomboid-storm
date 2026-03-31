@@ -32,10 +32,18 @@ public class PacketReceivedPatch extends StormClassTransformer {
 
     public static class ProcessServerAdvice {
 
+        @Advice.OnMethodEnter(suppress = Throwable.class)
+        public static Object beforeProcessServer(
+                @Advice.This Object self, @Advice.Argument(1) UdpConnection connection) {
+            return PacketEventDispatcher.createTypedEvent(self, connection);
+        }
+
         @Advice.OnMethodExit(suppress = Throwable.class)
         public static void afterProcessServer(
-                @Advice.This Object self, @Advice.Argument(1) UdpConnection connection) {
-            PacketEventDispatcher.dispatchPacket(self, connection);
+                @Advice.This Object self,
+                @Advice.Argument(1) UdpConnection connection,
+                @Advice.Enter Object typedEvent) {
+            PacketEventDispatcher.dispatchPacket(self, connection, typedEvent);
         }
     }
 }

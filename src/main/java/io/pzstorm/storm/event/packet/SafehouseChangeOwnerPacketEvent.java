@@ -10,8 +10,18 @@ import zombie.network.packets.safehouse.SafehouseChangeOwnerPacket;
  */
 public class SafehouseChangeOwnerPacketEvent extends PacketEvent {
 
+    private String previousOwner;
+
     public SafehouseChangeOwnerPacketEvent(Object packet, UdpConnection connection) {
         super(packet, connection);
+    }
+
+    @Override
+    public void capturePreState() {
+        SafeHouse safehouse = getSafehouse();
+        if (safehouse != null) {
+            previousOwner = safehouse.getOwner();
+        }
     }
 
     public SafehouseChangeOwnerPacket getPacket() {
@@ -29,5 +39,10 @@ public class SafehouseChangeOwnerPacketEvent extends PacketEvent {
 
     public String getPlayer() {
         return getPacket().player;
+    }
+
+    /** Returns the safehouse owner before the ownership change was processed. */
+    public String getPreviousOwner() {
+        return previousOwner;
     }
 }

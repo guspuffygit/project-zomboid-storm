@@ -30,6 +30,18 @@ public abstract class PacketEvent implements ZomboidEvent {
         this.connection = connection;
     }
 
+    /**
+     * Called <b>before</b> {@code processServer} runs, giving subclasses a chance to snapshot any
+     * game state that will be mutated. The default implementation does nothing.
+     *
+     * <p>Subclasses should override this to store values in their own fields. For example, a
+     * safehouse-owner-change event would snapshot the current owner here so it's still available
+     * after the packet mutates it.
+     */
+    public void capturePreState() {
+        // default: nothing to capture
+    }
+
     /** Returns the raw packet object. Typed subclasses shadow this with a typed return. */
     protected Object getRawPacket() {
         return packet;

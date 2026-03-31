@@ -201,22 +201,19 @@ public class PacketEventDispatcher {
     }
 
     /**
-     * Called from {@link io.pzstorm.storm.patch.networking.PacketReceivedPatch} advice when any
-     * patched packet's {@code processServer} completes. Creates and dispatches both the generic
-     * {@link OnPacketReceivedEvent} and the typed {@link PacketEvent} subclass (if one exists).
+     * Called from {@link io.pzstorm.storm.patch.networking.PacketReceivedPatch} enter advice
+     * <b>before</b> {@code processServer} runs. Constructs the typed {@link PacketEvent} subclass
+     * (if one exists) and calls {@link PacketEvent#capturePreState()} so it can snapshot any game
+     * state that will be mutated.
      *
      * @param packet the raw packet object.
      * @param connection the UDP connection.
+     * @return the typed event with pre-state captured, or {@code null} if no typed event exists.
      */
-    public static void dispatchPacket(Object packet, UdpConnection connection) {
-        // Dispatch the generic event (for @SubscribeEvent and @OnPacketReceived handlers)
-        OnPacketReceivedEvent event = new OnPacketReceivedEvent(packet, connection);
-        StormEventDispatcher.dispatchEvent(event);
-
-        // Dispatch the typed event (for @SubscribeEvent handlers on specific PacketEvent subclass)
+    public static @Nullable Object createTypedEvent(Object packet, UdpConnection connection) {
         String simpleName = packet.getClass().getSimpleName();
         if (NO_TYPED_EVENT.contains(simpleName)) {
-            return;
+            return null;
         }
 
         Constructor<? extends PacketEvent> ctor = TYPED_EVENT_CACHE.get(simpleName);
@@ -224,16 +221,40 @@ public class PacketEventDispatcher {
             ctor = resolveTypedEventConstructor(simpleName);
             if (ctor == null) {
                 NO_TYPED_EVENT.add(simpleName);
-                return;
+                return null;
             }
             TYPED_EVENT_CACHE.put(simpleName, ctor);
         }
 
         try {
             PacketEvent typedEvent = ctor.newInstance(packet, connection);
-            StormEventDispatcher.dispatchEvent(typedEvent);
+            typedEvent.capturePreState();
+            return typedEvent;
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to dispatch typed packet event for {}", simpleName, e);
+            LOGGER.error("Failed to create typed packet event for {}", simpleName, e);
+            return null;
+        }
+    }
+
+    /**
+     * Called from {@link io.pzstorm.storm.patch.networking.PacketReceivedPatch} exit advice
+     * <b>after</b> {@code processServer} completes. Dispatches both the generic {@link
+     * OnPacketReceivedEvent} and the pre-built typed {@link PacketEvent} (if one was created in the
+     * enter advice).
+     *
+     * @param packet the raw packet object.
+     * @param connection the UDP connection.
+     * @param preBuiltEvent the typed event created by {@link #createTypedEvent}, or {@code null}.
+     */
+    public static void dispatchPacket(
+            Object packet, UdpConnection connection, @Nullable Object preBuiltEvent) {
+        // Dispatch the generic event (for @SubscribeEvent and @OnPacketReceived handlers)
+        OnPacketReceivedEvent event = new OnPacketReceivedEvent(packet, connection);
+        StormEventDispatcher.dispatchEvent(event);
+
+        // Dispatch the typed event that was constructed before processServer ran
+        if (preBuiltEvent instanceof PacketEvent typedEvent) {
+            StormEventDispatcher.dispatchEvent(typedEvent);
         }
     }
 
