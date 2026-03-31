@@ -10,7 +10,6 @@ import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ThreadPatch;
 import io.pzstorm.storm.patch.events.ChatManagerPatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
-import io.pzstorm.storm.patch.fixes.FluidContainerRainPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
@@ -65,7 +64,6 @@ public class StormClassTransformers {
         registerTransformer(new CommandBasePatch());
         registerTransformer(new ThreadPatch());
         registerTransformer(new SpriteConfigFixPatch());
-        registerTransformer(new FluidContainerRainPatch());
         registerTransformer(new TranslatorPatch());
         registerTransformer(new CoopMasterPatch());
         registerTransformer(new GameServerPatch());
