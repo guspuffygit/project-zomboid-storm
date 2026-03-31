@@ -10,6 +10,8 @@ import zombie.network.packets.safehouse.SafehouseChangeMemberPacket;
  */
 public class SafehouseChangeMemberPacketEvent extends PacketEvent {
 
+    private boolean wasMember;
+
     public SafehouseChangeMemberPacketEvent(Object packet, UdpConnection connection) {
         super(packet, connection);
     }
@@ -21,6 +23,15 @@ public class SafehouseChangeMemberPacketEvent extends PacketEvent {
     @Override
     public String getName() {
         return "SafehouseChangeMemberPacketEvent";
+    }
+
+    @Override
+    public void capturePreState() {
+        wasMember = getSafehouse().getPlayers().contains(getPlayer());
+    }
+
+    public boolean wasMember() {
+        return wasMember;
     }
 
     public SafeHouse getSafehouse() {
