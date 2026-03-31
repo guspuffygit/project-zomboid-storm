@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import com.google.common.collect.Sets;
 import io.pzstorm.storm.event.lua.OnClientCommandEvent;
+import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -140,6 +141,18 @@ public class StormEventDispatcher {
             }
             ClientCommandDispatcher.registerHandler(method, handler);
         }
+
+        if (method.isAnnotationPresent(OnPacketReceived.class)) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 1
+                    || !OnPacketReceivedEvent.class.isAssignableFrom(parameters[0])) {
+                throw new IllegalArgumentException(
+                        "@OnPacketReceived method "
+                                + method.getName()
+                                + " must have exactly one OnPacketReceivedEvent parameter");
+            }
+            PacketEventDispatcher.registerHandler(method, handler);
+        }
     }
 
     /**
@@ -198,6 +211,10 @@ public class StormEventDispatcher {
 
         if (event instanceof OnClientCommandEvent clientCommandEvent) {
             ClientCommandDispatcher.dispatch(clientCommandEvent);
+        }
+
+        if (event instanceof OnPacketReceivedEvent packetEvent) {
+            PacketEventDispatcher.dispatch(packetEvent);
         }
     }
 

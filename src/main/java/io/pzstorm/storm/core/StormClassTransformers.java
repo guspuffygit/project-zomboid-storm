@@ -2,6 +2,7 @@ package io.pzstorm.storm.core;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
 import io.pzstorm.storm.patch.core.ZomboidFileSystemPatch;
@@ -15,8 +16,7 @@ import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
-import io.pzstorm.storm.patch.networking.GameServerPatch;
-import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
+import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -66,8 +66,11 @@ public class StormClassTransformers {
         registerTransformer(new SpriteConfigFixPatch());
         registerTransformer(new TranslatorPatch());
         registerTransformer(new CoopMasterPatch());
-        registerTransformer(new GameServerPatch());
-        registerTransformer(new ServerWorldDatabasePatch());
+
+        // Register generic packet event dispatching for all supported packet types
+        for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
+            registerTransformer(new PacketReceivedPatch(packetClass));
+        }
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
@@ -111,7 +114,25 @@ public class StormClassTransformers {
     public static byte[] applyAll(String className, byte[] rawClass) {
         List<StormClassTransformer> transformers = getRegistered(className);
         for (StormClassTransformer transformer : transformers) {
-            rawClass = transformer.transform(rawClass);
+            LOGGER.info(
+                    "Applying transformer {} to class {}",
+                    transformer.getClass().getSimpleName(),
+                    className);
+            try {
+                rawClass = transformer.transform(rawClass);
+                LOGGER.info(
+                        "Successfully applied transformer {} to class {}",
+                        transformer.getClass().getSimpleName(),
+                        className);
+            } catch (Exception e) {
+                LOGGER.error(
+                        "Failed to apply transformer {} to class {}: {}",
+                        transformer.getClass().getSimpleName(),
+                        className,
+                        e.getMessage(),
+                        e);
+                throw e;
+            }
         }
         return rawClass;
     }
