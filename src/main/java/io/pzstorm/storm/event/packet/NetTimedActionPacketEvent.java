@@ -2,8 +2,6 @@ package io.pzstorm.storm.event.packet;
 
 import io.pzstorm.storm.lua.StormKahluaTable;
 import javax.annotation.Nullable;
-
-import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.PZNetKahluaTableImpl;
 import zombie.network.fields.character.PlayerID;

@@ -5,8 +5,8 @@ import zombie.network.fields.vehicle.VehicleID;
 import zombie.network.packets.hit.PlayerHitVehiclePacket;
 
 /**
- * Typed event dispatched when {@link zombie.network.packets.hit.PlayerHitVehiclePacket} is processed on
- * the server.
+ * Typed event dispatched when {@link zombie.network.packets.hit.PlayerHitVehiclePacket} is
+ * processed on the server.
  */
 public class PlayerHitVehiclePacketEvent extends PacketEvent {
 

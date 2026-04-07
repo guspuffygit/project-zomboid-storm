@@ -136,7 +136,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.connection.LoginPacket",
                     "zombie.network.packets.connection.LoginQueueDonePacket",
                     "zombie.network.packets.connection.QueuePacket",
-                    "zombie.network.packets.connection.ServerCustomizationPacket",
                     "zombie.network.packets.hit.AttackCollisionCheckPacket",
                     "zombie.network.packets.hit.HitCharacter",
                     "zombie.network.packets.safehouse.SafehouseAcceptPacket",
