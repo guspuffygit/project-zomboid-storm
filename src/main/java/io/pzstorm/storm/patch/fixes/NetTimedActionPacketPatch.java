@@ -1,7 +1,5 @@
 package io.pzstorm.storm.patch.fixes;
 
-import static io.pzstorm.storm.logging.StormLogger.LOGGER;
-
 import io.pzstorm.storm.core.StormClassTransformer;
 import java.lang.reflect.Field;
 import net.bytebuddy.asm.Advice;
@@ -54,6 +52,10 @@ import zombie.network.packets.NetTimedActionPacket;
  * declared fields (not the superclass hierarchy), and {@code Action} cannot be specified as {@code
  * declaringType} because it is package-private. These fields are therefore accessed via cached
  * reflection handles in {@link #processServerFixed}.
+ *
+ * <p><b>Advice classes</b> are standalone files referenced via {@code
+ * typePool.describe().resolve()} and {@code locator}, following the same pattern as {@link
+ * io.pzstorm.storm.advice.TriggerEventAdvice}.
  */
 public class NetTimedActionPacketPatch extends StormClassTransformer {
 
@@ -64,11 +66,14 @@ public class NetTimedActionPacketPatch extends StormClassTransformer {
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
+        String pkg = "io.pzstorm.storm.advice.nta.";
         return builder.visit(
-                Advice.to(ProcessServerAdvice.class).on(ElementMatchers.named("processServer")));
+                        Advice.to(typePool.describe(pkg + "ProcessServerAdvice").resolve(), locator)
+                                .on(ElementMatchers.named("processServer")))
+                .visit(
+                        Advice.to(typePool.describe(pkg + "ProcessClientAdvice").resolve(), locator)
+                                .on(ElementMatchers.named("processClient")));
     }
-
-    // -- Cached reflection handles for Action's protected fields --
 
     private static volatile Field stateField;
     private static volatile Field idField;
@@ -100,85 +105,192 @@ public class NetTimedActionPacketPatch extends StormClassTransformer {
      * @return {@code true} if the fix ran (skip original), {@code false} if the player is not in
      *     the allowed set (fall through to vanilla).
      */
-    public static boolean processServerFixed(Object self, UdpConnection connection)
+    public static boolean processServerFixed(NetTimedActionPacket packet, UdpConnection connection)
             throws ReflectiveOperationException {
         if (stateField == null) {
             initFieldHandles();
         }
 
-        NetTimedActionPacket packet = (NetTimedActionPacket) self;
-        Transaction.TransactionState state = (Transaction.TransactionState) stateField.get(self);
-        byte id = idField.getByte(self);
-        PlayerID playerId = (PlayerID) playerIdField.get(self);
+        Transaction.TransactionState state = (Transaction.TransactionState) stateField.get(packet);
+        byte id = idField.getByte(packet);
+        PlayerID playerId = (PlayerID) playerIdField.get(packet);
+
+        boolean shouldLog = NtaDebugLog.isAllowedConnection(connection);
+
+        if (shouldLog) {
+            NtaDebugLog.log(
+                    "SERVER",
+                    "processServer ENTER: state="
+                            + state
+                            + " id="
+                            + id
+                            + " steamId="
+                            + connection.getSteamId()
+                            + " packet="
+                            + NtaDebugLog.describe(packet));
+        }
 
         if (state == Transaction.TransactionState.Request) {
-            if (packet.isConsistent(connection) && packet.action != null) {
+            boolean consistent = packet.isConsistent(connection);
+            boolean hasAction = packet.action != null;
+
+            if (shouldLog) {
+                NtaDebugLog.log(
+                        "SERVER",
+                        "processServer: isConsistent="
+                                + consistent
+                                + " hasAction="
+                                + hasAction
+                                + " -> "
+                                + (consistent && hasAction ? "ACCEPT" : "REJECT")
+                                + " path");
+            }
+
+            if (consistent && hasAction) {
                 // --- ACCEPT PATH ---
-                LOGGER.trace("NetTimedAction accepted {}", packet.getDescription());
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer ACCEPT: before stopPlayerActions, currentActions="
+                                    + NtaDebugLog.describePlayerActions(playerId));
+                }
+
                 ActionManager.stopPlayerActions(playerId);
 
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer ACCEPT: after stopPlayerActions, remainingActions="
+                                    + NtaDebugLog.describePlayerActions(playerId));
+                }
+
                 NetTimedAction act = ActionManager.getAction(id, playerId);
+                boolean existingAction = act != null;
                 if (act == null) {
                     act = new NetTimedAction();
                 }
                 act.copyFrom(packet);
 
-                ActionManager.start(act);
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer ACCEPT: before start(), existingAction="
+                                    + existingAction
+                                    + " act="
+                                    + NtaDebugLog.describe(act));
+                }
+
+                try {
+                    ActionManager.start(act);
+                } catch (Exception e) {
+                    if (shouldLog) {
+                        NtaDebugLog.log(
+                                "SERVER",
+                                "processServer ACCEPT: start() THREW "
+                                        + e.getClass().getSimpleName()
+                                        + ": "
+                                        + e.getMessage()
+                                        + " - action lost, client will hang!");
+                    }
+                    throw e;
+                }
+
                 act.setState(Transaction.TransactionState.Accept);
+
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer ACCEPT: after start+setState, act="
+                                    + NtaDebugLog.describe(act));
+                }
 
                 ByteBufferWriter bbw = connection.startPacket();
                 PacketTypes.PacketType.NetTimedAction.doPacket(bbw);
                 act.write(bbw); // FIX: write act (state=Accept, with duration) not this
                 PacketTypes.PacketType.NetTimedAction.send(connection);
+
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer ACCEPT: response sent (act.write with state=Accept)");
+                }
             } else {
                 // --- REJECT PATH ---
-                LOGGER.trace("NetTimedAction rejected {}", packet.getDescription());
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer REJECT: creating reject response for id=" + id);
+                }
 
                 NetTimedAction act = ActionManager.getAction(id, playerId);
                 if (act == null) {
                     act = new NetTimedAction();
                 }
                 act.copyFrom(packet);
-
                 act.setState(Transaction.TransactionState.Reject);
+
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER", "processServer REJECT: act=" + NtaDebugLog.describe(act));
+                }
 
                 ByteBufferWriter bbw = connection.startPacket();
                 PacketTypes.PacketType.NetTimedAction.doPacket(bbw);
                 act.write(bbw); // FIX: write act (state=Reject) not this
                 PacketTypes.PacketType.NetTimedAction.send(connection);
+
+                if (shouldLog) {
+                    NtaDebugLog.log(
+                            "SERVER",
+                            "processServer REJECT: response sent (act.write with state=Reject)");
+                }
             }
         } else if (Transaction.TransactionState.Reject == state) {
             // --- CLIENT REJECT ACKNOWLEDGEMENT ---
+            if (shouldLog) {
+                NtaDebugLog.log(
+                        "SERVER",
+                        "processServer CLIENT_REJECT_ACK: id="
+                                + id
+                                + " currentActions="
+                                + NtaDebugLog.describePlayerActions(playerId));
+            }
+
             NetTimedAction act = ActionManager.getAction(id, playerId);
             if (act == null) {
                 act = new NetTimedAction();
             }
             act.copyFrom(packet);
-            LOGGER.trace("NetTimedAction reject {}", packet.getDescription());
+
+            if (shouldLog) {
+                NtaDebugLog.log(
+                        "SERVER",
+                        "processServer CLIENT_REJECT_ACK: stopping act="
+                                + NtaDebugLog.describe(act));
+            }
+
             ActionManager.stop(act);
+
+            if (shouldLog) {
+                NtaDebugLog.log(
+                        "SERVER",
+                        "processServer CLIENT_REJECT_ACK: done, remainingActions="
+                                + NtaDebugLog.describePlayerActions(playerId));
+            }
+        } else {
+            // Unexpected state
+            if (shouldLog) {
+                NtaDebugLog.log(
+                        "SERVER",
+                        "processServer: UNEXPECTED state="
+                                + state
+                                + " id="
+                                + id
+                                + " packet="
+                                + NtaDebugLog.describe(packet));
+            }
         }
 
         return true;
-    }
-
-    /**
-     * Advice inlined into {@code NetTimedActionPacket.processServer()}. Delegates to {@link
-     * #processServerFixed} which contains the corrected logic. If the helper throws (e.g.
-     * reflection failure), {@code suppress} catches the exception and the advice returns {@code
-     * false} (the default), allowing the original method body to run as a fallback.
-     */
-    public static class ProcessServerAdvice {
-
-        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class, suppress = Throwable.class)
-        public static boolean onEnter(
-                @Advice.This Object self, @Advice.Argument(1) UdpConnection connection)
-                throws Exception {
-            try {
-                return NetTimedActionPacketPatch.processServerFixed(self, connection);
-            } catch (Exception e) {
-                LOGGER.error("Unable to run NetTimedActionPacketPatch.processServerFixed", e);
-                return false;
-            }
-        }
     }
 }

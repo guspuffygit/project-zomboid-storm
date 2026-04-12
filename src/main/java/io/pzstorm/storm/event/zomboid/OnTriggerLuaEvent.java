@@ -5,6 +5,7 @@ import io.pzstorm.storm.event.core.ZomboidEvent;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import lombok.Getter;
 import org.jetbrains.annotations.Unmodifiable;
 import zombie.Lua.Event;
 
@@ -17,8 +18,8 @@ import zombie.Lua.Event;
 @SuppressWarnings("WeakerAccess")
 public class OnTriggerLuaEvent implements ZomboidEvent {
 
-    public final Event luaEvent;
-    public final @Unmodifiable List<Object> args;
+    @Getter private final Event luaEvent;
+    @Getter private final @Unmodifiable List<Object> args;
 
     public OnTriggerLuaEvent(Event luaEvent, Object... args) {
         this.luaEvent = luaEvent;

@@ -47,12 +47,12 @@ public class StormEventHandler {
         try {
             luaEvent =
                     LuaEventFactory.constructLuaEvent(
-                            event.luaEvent.name, event.args.toArray(new Object[0]));
+                            event.getLuaEvent().name, event.getArgs().toArray(new Object[0]));
         } catch (IllegalArgumentException | IllegalStateException e) {
             LOGGER.warn(
                     "Failed to construct event '{}' with args {}: {}",
-                    event.luaEvent.name,
-                    event.args,
+                    event.getLuaEvent().name,
+                    event.getArgs(),
                     e.getMessage());
             return;
         }
