@@ -34,8 +34,8 @@ public class StormHttpServer {
             created.createContext("/", HttpEndpointDispatcher::dispatch);
             created.start();
             server = created;
-            boundPort = port;
-            LOGGER.info("Storm HTTP server started on port {}", port);
+            boundPort = created.getAddress().getPort();
+            LOGGER.info("Storm HTTP server started on port {}", boundPort);
         } catch (IOException e) {
             LOGGER.error("Failed to start Storm HTTP server on port {}", port, e);
         }
