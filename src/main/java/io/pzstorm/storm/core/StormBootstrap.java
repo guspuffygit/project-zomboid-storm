@@ -131,7 +131,8 @@ public class StormBootstrap {
         }
 
         Class<?> dispatcherClass =
-                Class.forName("io.pzstorm.storm.event.core.StormEventDispatcher", true, CLASS_LOADER);
+                Class.forName(
+                        "io.pzstorm.storm.event.core.StormEventDispatcher", true, CLASS_LOADER);
         Class<?> builtinClass =
                 Class.forName("io.pzstorm.storm.http.StormBuiltinEndpoints", true, CLASS_LOADER);
         dispatcherClass

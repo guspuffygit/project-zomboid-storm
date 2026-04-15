@@ -63,7 +63,8 @@ public class HttpRequestEvent {
 
     public Map<String, String> getRequestHeaders() {
         Map<String, String> result = new HashMap<>();
-        for (Map.Entry<String, java.util.List<String>> e : exchange.getRequestHeaders().entrySet()) {
+        for (Map.Entry<String, java.util.List<String>> e :
+                exchange.getRequestHeaders().entrySet()) {
             if (!e.getValue().isEmpty()) {
                 result.put(e.getKey(), e.getValue().get(0));
             }

@@ -167,9 +167,7 @@ public class StormEventDispatcher {
             }
             if (method.getReturnType() != void.class) {
                 throw new IllegalArgumentException(
-                        "@HttpEndpoint method "
-                                + method.getName()
-                                + " must return void");
+                        "@HttpEndpoint method " + method.getName() + " must return void");
             }
             if (handler == null && !Modifier.isStatic(method.getModifiers())) {
                 throw new IllegalArgumentException(

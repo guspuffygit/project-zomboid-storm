@@ -20,7 +20,9 @@ public class HttpEndpointDispatcher {
 
     private static final Map<String, HandlerMethod> HANDLERS = new HashMap<>();
 
-    /** Paths that exist for any method, used to distinguish 404 (no path) from 405 (wrong method). */
+    /**
+     * Paths that exist for any method, used to distinguish 404 (no path) from 405 (wrong method).
+     */
     private static final Set<String> KNOWN_PATHS = new HashSet<>();
 
     public static void reset() {
