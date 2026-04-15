@@ -5,6 +5,9 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.google.common.collect.Sets;
 import io.pzstorm.storm.event.lua.OnClientCommandEvent;
 import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
+import io.pzstorm.storm.http.HttpEndpoint;
+import io.pzstorm.storm.http.HttpEndpointDispatcher;
+import io.pzstorm.storm.http.HttpRequestEvent;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -152,6 +155,35 @@ public class StormEventDispatcher {
                                 + " must have exactly one OnPacketReceivedEvent parameter");
             }
             PacketEventDispatcher.registerHandler(method, handler);
+        }
+
+        if (method.isAnnotationPresent(HttpEndpoint.class)) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 1 || !HttpRequestEvent.class.isAssignableFrom(parameters[0])) {
+                throw new IllegalArgumentException(
+                        "@HttpEndpoint method "
+                                + method.getName()
+                                + " must have exactly one HttpRequestEvent parameter");
+            }
+            if (method.getReturnType() != void.class) {
+                throw new IllegalArgumentException(
+                        "@HttpEndpoint method "
+                                + method.getName()
+                                + " must return void");
+            }
+            if (handler == null && !Modifier.isStatic(method.getModifiers())) {
+                throw new IllegalArgumentException(
+                        "@HttpEndpoint method "
+                                + method.getName()
+                                + " must be STATIC when registered via a Class");
+            }
+            if (handler != null && Modifier.isStatic(method.getModifiers())) {
+                throw new IllegalArgumentException(
+                        "@HttpEndpoint method "
+                                + method.getName()
+                                + " must NOT be STATIC when registered via an instance");
+            }
+            HttpEndpointDispatcher.registerHandler(method, handler);
         }
     }
 

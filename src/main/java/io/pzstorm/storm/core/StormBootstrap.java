@@ -118,5 +118,36 @@ public class StormBootstrap {
         Class<?> commandRegistry =
                 Class.forName("io.pzstorm.storm.core.StormCommandRegistry", true, CLASS_LOADER);
         commandRegistry.getDeclaredMethod("collectCommands").invoke(null);
+
+        startHttpServerIfConfigured();
+    }
+
+    private static void startHttpServerIfConfigured() throws ReflectiveOperationException {
+        Class<?> httpServerClass =
+                Class.forName("io.pzstorm.storm.http.StormHttpServer", true, CLASS_LOADER);
+        int port = (int) httpServerClass.getDeclaredMethod("configuredPort").invoke(null);
+        if (port <= 0) {
+            return;
+        }
+
+        Class<?> dispatcherClass =
+                Class.forName("io.pzstorm.storm.event.core.StormEventDispatcher", true, CLASS_LOADER);
+        Class<?> builtinClass =
+                Class.forName("io.pzstorm.storm.http.StormBuiltinEndpoints", true, CLASS_LOADER);
+        dispatcherClass
+                .getDeclaredMethod("registerEventHandler", Class.class)
+                .invoke(null, builtinClass);
+
+        httpServerClass.getDeclaredMethod("start", int.class).invoke(null, port);
+        Runtime.getRuntime()
+                .addShutdownHook(
+                        new Thread(
+                                () -> {
+                                    try {
+                                        httpServerClass.getDeclaredMethod("stop").invoke(null);
+                                    } catch (ReflectiveOperationException ignored) {
+                                        // shutdown best-effort
+                                    }
+                                }));
     }
 }
