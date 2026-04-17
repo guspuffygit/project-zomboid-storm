@@ -13,8 +13,10 @@ import io.pzstorm.storm.patch.events.ChatManagerPatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
+import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
+import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
@@ -74,6 +76,8 @@ public class StormClassTransformers {
         registerTransformer(new NetTimedActionPacketPatch());
         registerTransformer(new ActionManagerPatch());
         registerTransformer(new ActionStateContainerPatch());
+        registerTransformer(new ItemTransactionPacketPatch());
+        registerTransformer(new TransactionManagerPatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {

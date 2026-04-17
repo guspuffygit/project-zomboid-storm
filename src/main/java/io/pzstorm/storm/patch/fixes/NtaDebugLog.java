@@ -23,7 +23,8 @@ public class NtaDebugLog {
 
     public static final String PREFIX = "[STORM-NTA]";
 
-    private static volatile Set<String> allowedPlayers = Set.of("76561197984809068");
+    // 76561197984809068
+    private static volatile Set<String> allowedPlayers = Set.of("");
 
     // --- Reflection cache for Action (package-private) fields ---
 

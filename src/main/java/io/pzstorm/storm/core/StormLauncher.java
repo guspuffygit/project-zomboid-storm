@@ -64,6 +64,12 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, eventHandler);
 
+            Class<?> transferHandler =
+                    classLoader.loadClass("io.pzstorm.storm.transfer.StormTransferHandler");
+            eventDispatcher
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, transferHandler);
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());
