@@ -14,6 +14,7 @@ import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
+import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
@@ -78,6 +79,7 @@ public class StormClassTransformers {
         registerTransformer(new ActionStateContainerPatch());
         registerTransformer(new ItemTransactionPacketPatch());
         registerTransformer(new TransactionManagerPatch());
+        registerTransformer(new CompressIdenticalItemsPatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
