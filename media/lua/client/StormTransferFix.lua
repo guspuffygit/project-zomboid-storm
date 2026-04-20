@@ -300,6 +300,9 @@ function ISInventoryTransferAction:update()
     elseif isStormTransactionTimedOut(self._stormUUID) then
         cleanupStormTransaction(self._stormUUID)
         self:forceStop()
+    elseif not self.srcContainer:contains(self.item) then
+        cancelStormTransaction(self.character, self._stormUUID)
+        self:forceStop()
     end
 
     -- Duration from server (replaces getItemTransactionDuration)
