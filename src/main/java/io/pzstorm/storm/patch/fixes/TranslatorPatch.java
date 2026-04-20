@@ -58,6 +58,7 @@ public class TranslatorPatch extends StormClassTransformer {
                     || desc.startsWith("Farming_")
                     || desc.startsWith("IGUI_")
                     || desc.startsWith("ContextMenu_")
+                    || desc.startsWith("credits_")
                     || desc.startsWith("GameSound_")
                     || desc.startsWith("Sandbox_")
                     || desc.startsWith("Tooltip_")
