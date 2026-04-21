@@ -112,6 +112,7 @@ class LiveServerStartupTest implements IntegrationTest {
                                 "stormtest",
                                 "-port",
                                 Integer.toString(TEST_RAKNET_PORT),
+                                "-nosteam",
                                 "-udpport",
                                 Integer.toString(TEST_UDP_PORT),
                                 "-cachedir=" + cacheDir)
