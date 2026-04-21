@@ -128,7 +128,15 @@ dependencies {
 
 test {
 	useJUnitPlatform()
-	systemProperty 'storm.server.path', getLocalProperty('serverPath').get()
+	def serverDir = getLocalProperty('serverPath').get()
+	systemProperty 'storm.server.path', serverDir
+	def ldLibPath = [
+		"${serverDir}/natives",
+		"${serverDir}/linux64",
+		"${serverDir}/jre64/lib/amd64",
+		System.getenv('LD_LIBRARY_PATH') ?: ''
+	].findAll { it }.join(':')
+	environment 'LD_LIBRARY_PATH', ldLibPath
 	finalizedBy jacocoTestReport
 
 	testLogging {
