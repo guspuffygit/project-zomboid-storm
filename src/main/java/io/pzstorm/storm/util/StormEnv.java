@@ -9,4 +9,8 @@ public class StormEnv {
     public static boolean isStormServer() {
         return Boolean.getBoolean("storm.server");
     }
+
+    public static boolean isStormTesting() {
+        return Boolean.getBoolean("storm.testing");
+    }
 }

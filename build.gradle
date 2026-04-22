@@ -130,6 +130,7 @@ test {
 	useJUnitPlatform()
 	def serverDir = getLocalProperty('serverPath').get()
 	systemProperty 'storm.server.path', serverDir
+	systemProperty 'storm.testing', 'true'
 	def ldLibPath = [
 		"${serverDir}/natives",
 		"${serverDir}/linux64",

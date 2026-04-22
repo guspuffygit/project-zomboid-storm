@@ -2,9 +2,12 @@ package io.pzstorm.storm.liveserver;
 
 import io.pzstorm.storm.IntegrationTest;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,16 +17,15 @@ import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import lombok.Getter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * Boots a single Project Zomboid dedicated server for the whole test suite and tears it down
- * once all tests have finished. Tests that need a live server should apply this via {@code
- * @ExtendWith(ServerExtension.class)}.
+ * Boots a single Project Zomboid dedicated server for the whole test suite and tears it down once
+ * all tests have finished. Tests that need a live server should apply this via
+ * {@code @ExtendWith(ServerExtension.class)}.
  */
 public class ServerExtension
         implements BeforeAllCallback, ExtensionContext.Store.CloseableResource {
@@ -42,11 +44,9 @@ public class ServerExtension
             "./steamapps/workshop/content/108600/3676481910/mods/storm/bootstrap/storm-bootstrap.jar";
 
     private static boolean started = false;
-    @Getter
-    private static Process serverProcess;
+    @Getter private static Process serverProcess;
     private static Thread outputReaderThread;
-    @Getter
-    private static Path logFile;
+    @Getter private static Path logFile;
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
@@ -91,6 +91,7 @@ public class ServerExtension
                 new ProcessBuilder(
                                 "./start-server.sh",
                                 "-DLOG_LEVEL=debug",
+                                "-Dstorm.testing=true",
                                 "-Dstorm.http.port=" + TEST_HTTP_PORT,
                                 "-Dstorm.server=true",
                                 "-javaagent:" + STORM_BOOTSTRAP_JAR,
@@ -194,6 +195,62 @@ public class ServerExtension
         } catch (IOException e) {
             crashed.set(true);
         }
+    }
+
+    /**
+     * Sends a console command to the running server via stdin and waits briefly for it to be
+     * processed. The server must be started before calling this.
+     */
+    public static void sendConsoleCommand(String command) throws IOException, InterruptedException {
+        Assertions.assertNotNull(serverProcess, "Server not started");
+        Assertions.assertTrue(serverProcess.isAlive(), "Server process is not alive");
+        BufferedWriter stdin =
+                new BufferedWriter(
+                        new OutputStreamWriter(
+                                serverProcess.getOutputStream(), StandardCharsets.UTF_8));
+        System.out.println("[test] sending console command: " + command);
+        stdin.write(command);
+        stdin.newLine();
+        stdin.flush();
+        Thread.sleep(500);
+    }
+
+    /**
+     * Creates a test character for the given username on the running server. The server must be
+     * {@code Open=true} (the default) so the client auto-registers on first login — do NOT call
+     * {@code adduser}, which hashes the password differently than the login packet sends it.
+     */
+    public static void createTestCharacter(String username)
+            throws IOException, InterruptedException {
+        sendConsoleCommand("stormcreatechar " + username);
+        Thread.sleep(2000);
+    }
+
+    /**
+     * Sends a console command and waits for a line containing {@code marker} to appear in the
+     * server log. Returns the first matching line, or {@code null} if the timeout expires.
+     */
+    public static String sendCommandAndAwaitOutput(String command, String marker, Duration timeout)
+            throws IOException, InterruptedException {
+        Assertions.assertNotNull(logFile, "Server log not initialized");
+        long logSizeBefore = Files.size(logFile);
+
+        sendConsoleCommand(command);
+
+        Instant deadline = Instant.now().plus(timeout);
+        while (Instant.now().isBefore(deadline)) {
+            Thread.sleep(200);
+            try (RandomAccessFile raf = new RandomAccessFile(logFile.toFile(), "r")) {
+                raf.seek(logSizeBefore);
+                String line;
+                while ((line = raf.readLine()) != null) {
+                    if (line.contains(marker)) {
+                        return line;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private static String safeExitValue(Process p) {

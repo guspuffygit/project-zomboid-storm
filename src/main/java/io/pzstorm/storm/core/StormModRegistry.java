@@ -2,6 +2,7 @@ package io.pzstorm.storm.core;
 
 import com.google.common.collect.ImmutableSet;
 import io.pzstorm.storm.mod.ZomboidMod;
+import java.lang.reflect.Modifier;
 import java.util.*;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -15,10 +16,13 @@ public class StormModRegistry {
     public static void registerMods() throws ReflectiveOperationException {
         for (Map.Entry<String, ImmutableSet<Class<?>>> entry :
                 StormModLoader.CLASS_CATALOG.entrySet()) {
-            // find the first class that implements ZomboidMod interface
             Optional<Class<?>> modClass =
                     entry.getValue().stream()
-                            .filter(ZomboidMod.class::isAssignableFrom)
+                            .filter(
+                                    cls ->
+                                            ZomboidMod.class.isAssignableFrom(cls)
+                                                    && !cls.isInterface()
+                                                    && !Modifier.isAbstract(cls.getModifiers()))
                             .findFirst();
 
             if (modClass.isPresent()) {

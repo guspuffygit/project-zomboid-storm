@@ -3,16 +3,16 @@ package io.pzstorm.storm.liveserver;
 import io.pzstorm.storm.IntegrationTest;
 import java.io.File;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.MethodOrderer;
 
 /**
  * Validates that the test JVM can load Project Zomboid's native networking libraries (RakNet /
  * ZNetNoSteam) and initialize the Java-side static state that a client-mode {@code UdpEngine}
- * depends on. No server is spawned and no socket is opened; this is the smallest possible probe
- * for the JNI + static-init path that a real two-client collision test will sit on top of.
+ * depends on. No server is spawned and no socket is opened; this is the smallest possible probe for
+ * the JNI + static-init path that a real two-client collision test will sit on top of.
  *
  * <p>The server install dir (containing {@code natives/libRakNet64.so} and {@code
  * natives/libZNetNoSteam64.so}) is supplied via {@code storm.server.path}. The test relies on
