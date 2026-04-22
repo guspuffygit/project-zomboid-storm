@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import net.bytebuddy.asm.Advice;
 import zombie.core.ActionManager;
 import zombie.core.NetTimedAction;
-import zombie.debug.DebugType;
 import zombie.network.GameServer;
 import zombie.network.server.AnimEventEmulator;
 
@@ -84,8 +83,7 @@ public class StopAdvice {
         Object targetPid = playerIdField.get(actionObj);
         short targetOnlineId = (short) getPlayerOnlineIdMethod.invoke(targetPid);
 
-        DebugType.Action.debugln(
-                "ActionManager stop action %s", getDescriptionMethod.invoke(actionObj));
+        LOGGER.debug("ActionManager stop action {}", getDescriptionMethod.invoke(actionObj));
 
         @SuppressWarnings("unchecked")
         ConcurrentLinkedQueue<Object> queue =
@@ -105,8 +103,7 @@ public class StopAdvice {
 
         for (int i = 0; i < toRemove.size(); i++) {
             Object a = toRemove.get(i);
-            DebugType.Action.debugln(
-                    "ActionManager remove action %s", getDescriptionMethod.invoke(a));
+            LOGGER.debug("ActionManager remove action {}", getDescriptionMethod.invoke(a));
             actionStopMethod.invoke(a);
             if (a instanceof NetTimedAction nta) {
                 AnimEventEmulator.getInstance().remove(nta);
