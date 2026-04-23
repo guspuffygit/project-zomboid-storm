@@ -1,5 +1,7 @@
 package io.pzstorm.storm.advice.compressidenticalitems;
 
+import static io.pzstorm.storm.logging.StormLogger.LOGGER;
+
 import java.util.ArrayList;
 import net.bytebuddy.asm.Advice;
 import zombie.inventory.InventoryItem;
@@ -36,6 +38,13 @@ public class FilterSaveAdvice {
                 for (int j = 0; j < i; j++) {
                     filtered.add(items.get(j));
                 }
+            }
+            if (drop) {
+                LOGGER.warn(
+                        "CompressIdenticalItemsPatch: dropping AnimalInventoryItem with null"
+                                + " animal (index={}, itemId={})",
+                        i,
+                        item == null ? -1 : item.getID());
             }
             if (!drop && filtered != null) {
                 filtered.add(item);

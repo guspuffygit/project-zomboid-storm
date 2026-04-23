@@ -1,5 +1,7 @@
 package io.pzstorm.storm.advice.reattachbacktomom;
 
+import static io.pzstorm.storm.logging.StormLogger.LOGGER;
+
 import net.bytebuddy.asm.Advice;
 import zombie.characters.animals.IsoAnimal;
 import zombie.vehicles.BaseVehicle;
@@ -32,6 +34,11 @@ public class FilterVehicleAnimalsAdvice {
         for (int i = animals.size() - 1; i >= 0; i--) {
             if (animals.get(i) == null) {
                 animals.remove(i);
+                LOGGER.warn(
+                        "IsoAnimalReattachBackToMomPatch: removed null animal from"
+                                + " vehicle.animals (index={}, vehicleId={})",
+                        i,
+                        vehicle.getId());
             }
         }
     }
