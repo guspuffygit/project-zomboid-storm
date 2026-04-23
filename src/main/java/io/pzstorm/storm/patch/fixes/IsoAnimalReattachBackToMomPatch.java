@@ -19,8 +19,8 @@ import net.bytebuddy.pool.TypePool;
  *
  * <p>This patch applies an {@code @Advice.OnMethodEnter} that sweeps the vehicle's animal list and
  * removes any null entries in place. Removal self-heals the list for the second iteration inside
- * the same method ({@code findMotherAndAttach} over {@code connectedDZone} squares still reads
- * only the cell/zone lists, but the vehicle list is also reused by the outer tick loop).
+ * the same method ({@code findMotherAndAttach} over {@code connectedDZone} squares still reads only
+ * the cell/zone lists, but the vehicle list is also reused by the outer tick loop).
  *
  * <p>Advice is loaded via {@code typePool.describe().resolve()} so Byte Buddy parses it via ASM
  * without triggering class loading of referenced game types.
