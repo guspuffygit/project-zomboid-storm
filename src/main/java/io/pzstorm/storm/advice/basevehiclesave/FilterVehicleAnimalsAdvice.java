@@ -11,8 +11,8 @@ import zombie.vehicles.BaseVehicle;
  *
  * <p>Removes any null entries from {@code this.animals} before the original body runs. {@code
  * BaseVehicle.save} writes {@code animals.size()} as the count prefix then iterates and calls
- * {@code animals.get(i).save(...)} unguarded &mdash; a single null slot aborts the whole
- * vehicle-DB save and can crash shutdown.
+ * {@code animals.get(i).save(...)} unguarded &mdash; a single null slot aborts the whole vehicle-DB
+ * save and can crash shutdown.
  *
  * <p>Because the sweep runs before the count prefix is written, the count and the iterated entries
  * stay self-consistent for {@code load} to read back.
