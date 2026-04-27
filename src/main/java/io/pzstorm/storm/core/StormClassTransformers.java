@@ -15,6 +15,7 @@ import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
+import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
@@ -78,6 +79,7 @@ public class StormClassTransformers {
         registerTransformer(new ServerWorldDatabasePatch());
         registerTransformer(new NetTimedActionPacketPatch());
         registerTransformer(new ActionManagerPatch());
+        registerTransformer(new GeneralActionPacketPatch());
         registerTransformer(new ActionStateContainerPatch());
         registerTransformer(new ItemTransactionPacketPatch());
         registerTransformer(new TransactionManagerPatch());
