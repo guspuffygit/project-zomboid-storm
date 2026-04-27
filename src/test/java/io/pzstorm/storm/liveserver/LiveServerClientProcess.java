@@ -152,6 +152,15 @@ public final class LiveServerClientProcess implements AutoCloseable {
         }
     }
 
+    public void sendGeneralActionReject(byte actionByteId) throws Exception {
+        send("send-general-action-reject " + (actionByteId & 0xFF));
+        String line = awaitResponse(Duration.ofSeconds(10));
+        if (line == null || !line.startsWith("SENT")) {
+            throw new IllegalStateException(
+                    "[" + tag + "] send-general-action-reject failed: " + line);
+        }
+    }
+
     private void send(String line) throws IOException {
         stdin.write(line);
         stdin.newLine();

@@ -5,6 +5,8 @@ import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.commands.PrintDebugCommand;
 import io.pzstorm.storm.commands.ScreenshotCommand;
 import io.pzstorm.storm.commands.TestActionRemoveBugCommand;
+import io.pzstorm.storm.commands.TestCountActionCommand;
+import io.pzstorm.storm.commands.TestSeedActionCommand;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.util.StormEnv;
 import java.util.ArrayList;
@@ -31,6 +33,8 @@ public class StormCommandRegistry {
         if (StormEnv.isStormTesting()) {
             MOD_COMMANDS.add(CreateTestCharCommand.class);
             MOD_COMMANDS.add(TestActionRemoveBugCommand.class);
+            MOD_COMMANDS.add(TestSeedActionCommand.class);
+            MOD_COMMANDS.add(TestCountActionCommand.class);
         }
     }
 

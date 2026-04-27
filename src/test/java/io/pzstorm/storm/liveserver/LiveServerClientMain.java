@@ -21,6 +21,10 @@ import java.time.Duration;
  *   RSP: SENT
  *   RSP: ERROR &lt;message&gt;
  *
+ *   CLI: send-general-action-reject &lt;actionByteId&gt;
+ *   RSP: SENT
+ *   RSP: ERROR &lt;message&gt;
+ *
  *   CLI: quit
  *   RSP: BYE                    — before exiting
  * </pre>
@@ -77,6 +81,19 @@ public final class LiveServerClientMain {
                                 byte id = (byte) Integer.parseInt(parts[1]);
                                 long duration = Long.parseLong(parts[2]);
                                 client.sendRawNetTimedActionBytes(id, duration);
+                                System.out.println("SENT");
+                                System.out.flush();
+                                break;
+                            }
+                        case "send-general-action-reject":
+                            {
+                                if (client == null) {
+                                    System.out.println("ERROR not-connected");
+                                    System.out.flush();
+                                    break;
+                                }
+                                byte id = (byte) Integer.parseInt(parts[1]);
+                                client.sendGeneralActionReject(id);
                                 System.out.println("SENT");
                                 System.out.flush();
                                 break;
