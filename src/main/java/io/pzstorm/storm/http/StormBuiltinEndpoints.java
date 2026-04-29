@@ -20,13 +20,7 @@ public class StormBuiltinEndpoints {
     @HttpEndpoint(path = "/storm/server/tickInterval")
     public static void getTickInterval(HttpRequestEvent event) throws IOException {
         long ms = UpdateLimitFactory.getCurrentTickIntervalMs();
-        event.sendJson(
-                200,
-                "{\"tickIntervalMs\":"
-                        + ms
-                        + ",\"tps\":"
-                        + String.format("%.2f", 1000.0 / ms)
-                        + "}");
+        event.sendJson(200, "{\"tickIntervalMs\":" + ms + ",\"tps\":" + formatTpsJson(ms) + "}");
     }
 
     @HttpEndpoint(path = "/storm/server/tickInterval", method = "POST")
@@ -57,7 +51,11 @@ public class StormBuiltinEndpoints {
                         + ",\"appliedMs\":"
                         + applied
                         + ",\"tps\":"
-                        + String.format("%.2f", 1000.0 / applied)
+                        + formatTpsJson(applied)
                         + "}");
+    }
+
+    private static String formatTpsJson(long intervalMs) {
+        return intervalMs <= 0 ? "null" : String.format("%.2f", 1000.0 / intervalMs);
     }
 }

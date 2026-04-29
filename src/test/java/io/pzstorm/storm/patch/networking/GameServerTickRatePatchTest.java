@@ -73,7 +73,7 @@ class GameServerTickRatePatchTest implements UnitTest {
 
     @Test
     void resolveClampsBelowMinimum() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "1");
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "-1");
         assertEquals(
                 GameServerTickRatePatch.MIN_TICK_INTERVAL_MS,
                 UpdateLimitFactory.resolveTickIntervalMs());
@@ -223,7 +223,7 @@ class GameServerTickRatePatchTest implements UnitTest {
     @Test
     void setTickIntervalMsClampsBelowMinimum() {
         UpdateLimit limit = UpdateLimitFactory.create(100L);
-        long applied = UpdateLimitFactory.setTickIntervalMs(1L);
+        long applied = UpdateLimitFactory.setTickIntervalMs(-1L);
         assertEquals(GameServerTickRatePatch.MIN_TICK_INTERVAL_MS, applied);
         assertEquals(GameServerTickRatePatch.MIN_TICK_INTERVAL_MS, limit.getDelay());
         assertEquals(

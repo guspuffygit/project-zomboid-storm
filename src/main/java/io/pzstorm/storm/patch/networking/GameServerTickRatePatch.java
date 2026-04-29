@@ -37,8 +37,8 @@ public class GameServerTickRatePatch extends StormClassTransformer {
     /** Vanilla server tick interval — 10 TPS. */
     public static final long DEFAULT_TICK_INTERVAL_MS = 100L;
 
-    /** ~60 TPS upper bound. Anything tighter is unrealistic for the simulation. */
-    public static final long MIN_TICK_INTERVAL_MS = 16L;
+    /** 0ms floor — no gating, server ticks as fast as the loop can run. */
+    public static final long MIN_TICK_INTERVAL_MS = 0L;
 
     /** 1 TPS lower bound (slower than vanilla, useful for low-power servers). */
     public static final long MAX_TICK_INTERVAL_MS = 1000L;
@@ -115,12 +115,12 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                 LOGGER.info(
                         "Storm: server tick interval = {}ms (~{} TPS) [vanilla]",
                         resolved,
-                        1000L / resolved);
+                        formatTps(resolved));
             } else {
                 LOGGER.info(
                         "Storm: server tick interval = {}ms (~{} TPS) [override via -D{}]",
                         resolved,
-                        1000L / resolved,
+                        formatTps(resolved),
                         TICK_INTERVAL_PROPERTY);
             }
             UpdateLimit limit = new UpdateLimit(resolved);
@@ -169,7 +169,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             LOGGER.info(
                     "Storm: server tick interval updated to {}ms (~{} TPS)",
                     applied,
-                    1000L / applied);
+                    formatTps(applied));
             return applied;
         }
 
@@ -260,6 +260,10 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         static void clearServerTickLimiterForTest() {
             serverTickLimiter = null;
             currentTickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
+        }
+
+        private static String formatTps(long intervalMs) {
+            return intervalMs <= 0 ? "unbounded" : Long.toString(1000L / intervalMs);
         }
     }
 }
