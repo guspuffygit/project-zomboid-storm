@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
@@ -196,6 +197,68 @@ class GameServerTickRatePatchTest implements UnitTest {
         UpdateLimitFactory.checkAndCount(serverLimiter);
         // After firing, the counter should reset.
         assertEquals(0, UpdateLimitFactory.observedTicksForTest());
+    }
+
+    // -------- setTickIntervalMs() --------
+
+    @Test
+    void setTickIntervalMsThrowsWhenLimiterNotInstalled() {
+        UpdateLimitFactory.clearServerTickLimiterForTest();
+        assertThrows(IllegalStateException.class, () -> UpdateLimitFactory.setTickIntervalMs(50L));
+    }
+
+    @Test
+    void setTickIntervalMsUpdatesLiveLimiterDelay() {
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertEquals(100L, limit.getDelay());
+
+        long applied = UpdateLimitFactory.setTickIntervalMs(33L);
+        assertEquals(33L, applied);
+        assertEquals(33L, limit.getDelay());
+        assertEquals(33L, UpdateLimitFactory.getCurrentTickIntervalMs());
+        // The same UpdateLimit instance is mutated in place — handler does not swap references.
+        assertSame(limit, UpdateLimitFactory.serverTickLimiterForTest());
+    }
+
+    @Test
+    void setTickIntervalMsClampsBelowMinimum() {
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        long applied = UpdateLimitFactory.setTickIntervalMs(1L);
+        assertEquals(GameServerTickRatePatch.MIN_TICK_INTERVAL_MS, applied);
+        assertEquals(GameServerTickRatePatch.MIN_TICK_INTERVAL_MS, limit.getDelay());
+        assertEquals(
+                GameServerTickRatePatch.MIN_TICK_INTERVAL_MS,
+                UpdateLimitFactory.getCurrentTickIntervalMs());
+    }
+
+    @Test
+    void setTickIntervalMsClampsAboveMaximum() {
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        long applied = UpdateLimitFactory.setTickIntervalMs(999_999L);
+        assertEquals(GameServerTickRatePatch.MAX_TICK_INTERVAL_MS, applied);
+        assertEquals(GameServerTickRatePatch.MAX_TICK_INTERVAL_MS, limit.getDelay());
+        assertEquals(
+                GameServerTickRatePatch.MAX_TICK_INTERVAL_MS,
+                UpdateLimitFactory.getCurrentTickIntervalMs());
+    }
+
+    @Test
+    void setTickIntervalMsResetsTickCounter() throws InterruptedException {
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "5");
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        Thread.sleep(20);
+        UpdateLimitFactory.checkAndCount(limit);
+        assertEquals(1, UpdateLimitFactory.observedTicksForTest());
+
+        UpdateLimitFactory.setTickIntervalMs(50L);
+        assertEquals(0, UpdateLimitFactory.observedTicksForTest());
+    }
+
+    @Test
+    void getCurrentTickIntervalMsReflectsCreateValue() {
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "40");
+        UpdateLimitFactory.create(100L);
+        assertEquals(40L, UpdateLimitFactory.getCurrentTickIntervalMs());
     }
 
     // -------- bytecode --------

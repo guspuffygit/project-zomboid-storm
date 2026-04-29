@@ -99,6 +99,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         private static final long LOG_WINDOW_NANOS_DEFAULT = TimeUnit.MINUTES.toNanos(1);
 
         private static volatile UpdateLimit serverTickLimiter;
+        private static volatile long currentTickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
         private static long observedTicks;
         private static long windowStartNanos = System.nanoTime();
 
@@ -124,9 +125,52 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             }
             UpdateLimit limit = new UpdateLimit(resolved);
             serverTickLimiter = limit;
+            currentTickIntervalMs = resolved;
             observedTicks = 0;
             windowStartNanos = System.nanoTime();
             return limit;
+        }
+
+        /** Current effective tick interval in ms. */
+        public static long getCurrentTickIntervalMs() {
+            return currentTickIntervalMs;
+        }
+
+        /**
+         * Live-updates the server tick interval, clamping to {@link #MIN_TICK_INTERVAL_MS}..{@link
+         * #MAX_TICK_INTERVAL_MS}. Returns the value actually applied. Throws {@link
+         * IllegalStateException} if the server tick limiter has not been installed yet (i.e.
+         * before {@code GameServer.main} has run the patched constructor).
+         */
+        public static long setTickIntervalMs(long requestedMs) {
+            UpdateLimit limit = serverTickLimiter;
+            if (limit == null) {
+                throw new IllegalStateException(
+                        "Server tick limiter not yet initialized; cannot set interval");
+            }
+            long applied = requestedMs;
+            if (applied < MIN_TICK_INTERVAL_MS) {
+                LOGGER.warn(
+                        "Storm: tick interval {}ms below floor, clamping to {}ms",
+                        requestedMs,
+                        MIN_TICK_INTERVAL_MS);
+                applied = MIN_TICK_INTERVAL_MS;
+            } else if (applied > MAX_TICK_INTERVAL_MS) {
+                LOGGER.warn(
+                        "Storm: tick interval {}ms above ceiling, clamping to {}ms",
+                        requestedMs,
+                        MAX_TICK_INTERVAL_MS);
+                applied = MAX_TICK_INTERVAL_MS;
+            }
+            limit.setUpdatePeriod(applied);
+            currentTickIntervalMs = applied;
+            observedTicks = 0;
+            windowStartNanos = System.nanoTime();
+            LOGGER.info(
+                    "Storm: server tick interval updated to {}ms (~{} TPS)",
+                    applied,
+                    1000L / applied);
+            return applied;
         }
 
         /**
@@ -210,6 +254,12 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         /** Test-only — current installed server tick limiter (or {@code null}). */
         static UpdateLimit serverTickLimiterForTest() {
             return serverTickLimiter;
+        }
+
+        /** Test-only — clears the installed server tick limiter reference. */
+        static void clearServerTickLimiterForTest() {
+            serverTickLimiter = null;
+            currentTickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
         }
     }
 }
