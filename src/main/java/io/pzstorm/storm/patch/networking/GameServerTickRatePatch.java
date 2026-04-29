@@ -127,18 +127,48 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         static long logWindowNanos = LOG_WINDOW_NANOS_DEFAULT;
 
         /**
-         * Source of the live player count consulted by auto mode. Defaults to {@code
-         * GameServer.getPlayerCount()}, returning {@code 0} if the server isn't initialised yet (so
-         * unit tests and pre-server-start calls don't NPE). Tests overwrite this directly.
+         * Source of the live player count consulted by auto mode. Defaults to {@link
+         * #countFullyConnectedPlayers()} so still-handshaking sessions don't inflate the load
+         * estimate (vanilla {@code GameServer.getPlayerCount()} counts player slots as soon as
+         * {@code playerIds[i]} is assigned, which happens before login/loading finishes). Returns
+         * {@code 0} if the server isn't initialised yet so unit tests and pre-server-start calls
+         * don't NPE. Tests overwrite this directly.
          */
         static IntSupplier playerCountSupplier =
                 () -> {
                     try {
-                        return zombie.network.GameServer.getPlayerCount();
+                        return countFullyConnectedPlayers();
                     } catch (Throwable t) {
                         return 0;
                     }
                 };
+
+        /**
+         * Counts only player slots on connections where {@link
+         * zombie.core.raknet.UdpConnection#isFullyConnected()} returns {@code true}. A connection
+         * becomes fully connected at the end of the login/world-load handshake (see {@code
+         * UdpConnection.setFullyConnected()}); before that point the player isn't actually ticking
+         * in the simulation and shouldn't drive the auto-mode load estimate.
+         */
+        public static int countFullyConnectedPlayers() {
+            zombie.core.raknet.UdpEngine engine = zombie.network.GameServer.udpEngine;
+            if (engine == null || engine.connections == null) {
+                return 0;
+            }
+            int count = 0;
+            for (int n = 0; n < engine.connections.size(); n++) {
+                zombie.core.raknet.UdpConnection c = engine.connections.get(n);
+                if (c == null || !c.isFullyConnected()) {
+                    continue;
+                }
+                for (int playerIndex = 0; playerIndex < c.playerIds.length; playerIndex++) {
+                    if (c.playerIds[playerIndex] != -1) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
 
         public static UpdateLimit create(long defaultDelayMs) {
             if (defaultDelayMs != DEFAULT_TICK_INTERVAL_MS) {
