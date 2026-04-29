@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.pzstorm.storm.UnitTest;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import java.io.InputStream;
+import java.util.function.IntSupplier;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
@@ -28,6 +29,7 @@ class GameServerTickRatePatchTest implements UnitTest {
 
     private String savedProperty;
     private long savedLogWindow;
+    private IntSupplier savedPlayerCountSupplier;
 
     @BeforeEach
     void captureState() {
@@ -37,6 +39,8 @@ class GameServerTickRatePatchTest implements UnitTest {
         // Disable per-window logging in unit tests by default.
         UpdateLimitFactory.logWindowNanos = Long.MAX_VALUE;
         UpdateLimitFactory.resetTickCounterForTest();
+        savedPlayerCountSupplier = UpdateLimitFactory.playerCountSupplier;
+        UpdateLimitFactory.clearServerTickLimiterForTest();
     }
 
     @AfterEach
@@ -48,6 +52,8 @@ class GameServerTickRatePatchTest implements UnitTest {
         }
         UpdateLimitFactory.logWindowNanos = savedLogWindow;
         UpdateLimitFactory.resetTickCounterForTest();
+        UpdateLimitFactory.playerCountSupplier = savedPlayerCountSupplier;
+        UpdateLimitFactory.clearServerTickLimiterForTest();
     }
 
     // -------- resolveTickIntervalMs() --------
@@ -259,6 +265,173 @@ class GameServerTickRatePatchTest implements UnitTest {
         System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "40");
         UpdateLimitFactory.create(100L);
         assertEquals(40L, UpdateLimitFactory.getCurrentTickIntervalMs());
+    }
+
+    // -------- auto mode --------
+
+    @Test
+    void isAutoModeRequestedDetectsValue() {
+        System.clearProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
+        assertFalse(UpdateLimitFactory.isAutoModeRequested());
+
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        assertTrue(UpdateLimitFactory.isAutoModeRequested());
+
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "  AUTO  ");
+        assertTrue(UpdateLimitFactory.isAutoModeRequested());
+
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "50");
+        assertFalse(UpdateLimitFactory.isAutoModeRequested());
+    }
+
+    @Test
+    void resolveTreatsAutoAsDefault() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        // resolveTickIntervalMs should not warn; auto handling is layered on top.
+        assertEquals(
+                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
+                UpdateLimitFactory.resolveTickIntervalMs());
+    }
+
+    @Test
+    void createInAutoModeStartsAtLowLoadInterval() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimitFactory.playerCountSupplier = () -> 0;
+
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertTrue(UpdateLimitFactory.isAutoModeActive());
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, limit.getDelay());
+        assertEquals(
+                GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS,
+                UpdateLimitFactory.getCurrentTickIntervalMs());
+    }
+
+    @Test
+    void recomputeAutoIntervalKeepsLowLoadBelowThreshold() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+
+        UpdateLimitFactory.playerCountSupplier =
+                () -> GameServerTickRatePatch.AUTO_PLAYER_THRESHOLD - 1;
+        UpdateLimitFactory.recomputeAutoInterval();
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, limit.getDelay());
+    }
+
+    @Test
+    void recomputeAutoIntervalSwitchesToHighLoadAtThreshold() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+
+        UpdateLimitFactory.playerCountSupplier =
+                () -> GameServerTickRatePatch.AUTO_PLAYER_THRESHOLD;
+        UpdateLimitFactory.recomputeAutoInterval();
+        assertEquals(GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS, limit.getDelay());
+        assertEquals(
+                GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS,
+                UpdateLimitFactory.getCurrentTickIntervalMs());
+    }
+
+    @Test
+    void recomputeAutoIntervalSwitchesBackUnderThreshold() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+
+        UpdateLimitFactory.playerCountSupplier = () -> 50;
+        UpdateLimitFactory.recomputeAutoInterval();
+        assertEquals(GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS, limit.getDelay());
+
+        UpdateLimitFactory.playerCountSupplier = () -> 10;
+        UpdateLimitFactory.recomputeAutoInterval();
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, limit.getDelay());
+    }
+
+    @Test
+    void recomputeAutoIntervalIsNoopOutsideAutoMode() {
+        // Numeric property — auto mode should not engage.
+        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "75");
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertFalse(UpdateLimitFactory.isAutoModeActive());
+
+        UpdateLimitFactory.playerCountSupplier = () -> 100;
+        UpdateLimitFactory.recomputeAutoInterval();
+        // Delay must remain at the explicitly-configured value.
+        assertEquals(75L, limit.getDelay());
+    }
+
+    @Test
+    void checkAndCountTriggersAutoRecompute() throws InterruptedException {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, limit.getDelay());
+
+        UpdateLimitFactory.playerCountSupplier =
+                () -> GameServerTickRatePatch.AUTO_PLAYER_THRESHOLD;
+        Thread.sleep(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS + 5);
+        UpdateLimitFactory.checkAndCount(limit);
+        assertEquals(GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS, limit.getDelay());
+    }
+
+    @Test
+    void enableAutoModeThrowsWhenLimiterNotInstalled() {
+        UpdateLimitFactory.clearServerTickLimiterForTest();
+        assertThrows(IllegalStateException.class, UpdateLimitFactory::enableAutoMode);
+    }
+
+    @Test
+    void enableAutoModeAppliesLowLoadIntervalBelowThreshold() {
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertFalse(UpdateLimitFactory.isAutoModeActive());
+
+        UpdateLimitFactory.playerCountSupplier = () -> 5;
+        long applied = UpdateLimitFactory.enableAutoMode();
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, applied);
+        assertEquals(GameServerTickRatePatch.AUTO_LOW_LOAD_INTERVAL_MS, limit.getDelay());
+        assertTrue(UpdateLimitFactory.isAutoModeActive());
+    }
+
+    @Test
+    void enableAutoModeAppliesHighLoadIntervalAtThreshold() {
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+
+        UpdateLimitFactory.playerCountSupplier =
+                () -> GameServerTickRatePatch.AUTO_PLAYER_THRESHOLD;
+        long applied = UpdateLimitFactory.enableAutoMode();
+        assertEquals(GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS, applied);
+        assertEquals(GameServerTickRatePatch.AUTO_HIGH_LOAD_INTERVAL_MS, limit.getDelay());
+        assertTrue(UpdateLimitFactory.isAutoModeActive());
+    }
+
+    @Test
+    void setTickIntervalMsDisablesAutoMode() {
+        System.setProperty(
+                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
+                GameServerTickRatePatch.AUTO_PROPERTY_VALUE);
+        UpdateLimit limit = UpdateLimitFactory.create(100L);
+        assertTrue(UpdateLimitFactory.isAutoModeActive());
+
+        UpdateLimitFactory.setTickIntervalMs(50L);
+        assertFalse(UpdateLimitFactory.isAutoModeActive());
+        assertEquals(50L, limit.getDelay());
+
+        // Subsequent recompute calls must not move the limiter back.
+        UpdateLimitFactory.playerCountSupplier =
+                () -> GameServerTickRatePatch.AUTO_PLAYER_THRESHOLD;
+        UpdateLimitFactory.recomputeAutoInterval();
+        assertEquals(50L, limit.getDelay());
     }
 
     // -------- bytecode --------

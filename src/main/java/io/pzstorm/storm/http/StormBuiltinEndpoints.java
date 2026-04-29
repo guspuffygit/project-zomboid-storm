@@ -1,6 +1,7 @@
 package io.pzstorm.storm.http;
 
 import io.pzstorm.storm.core.StormVersion;
+import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import java.io.IOException;
 
@@ -20,7 +21,15 @@ public class StormBuiltinEndpoints {
     @HttpEndpoint(path = "/storm/server/tickInterval")
     public static void getTickInterval(HttpRequestEvent event) throws IOException {
         long ms = UpdateLimitFactory.getCurrentTickIntervalMs();
-        event.sendJson(200, "{\"tickIntervalMs\":" + ms + ",\"tps\":" + formatTpsJson(ms) + "}");
+        event.sendJson(
+                200,
+                "{\"tickIntervalMs\":"
+                        + ms
+                        + ",\"tps\":"
+                        + formatTpsJson(ms)
+                        + ",\"auto\":"
+                        + UpdateLimitFactory.isAutoModeActive()
+                        + "}");
     }
 
     @HttpEndpoint(path = "/storm/server/tickInterval", method = "POST")
@@ -30,11 +39,29 @@ public class StormBuiltinEndpoints {
             event.send(400, "missing required query parameter: ms");
             return;
         }
+        String trimmed = msParam.trim();
+        if (GameServerTickRatePatch.AUTO_PROPERTY_VALUE.equalsIgnoreCase(trimmed)) {
+            long applied;
+            try {
+                applied = UpdateLimitFactory.enableAutoMode();
+            } catch (IllegalStateException e) {
+                event.send(503, e.getMessage());
+                return;
+            }
+            event.sendJson(
+                    200,
+                    "{\"requestedMs\":\"auto\",\"appliedMs\":"
+                            + applied
+                            + ",\"tps\":"
+                            + formatTpsJson(applied)
+                            + ",\"auto\":true}");
+            return;
+        }
         long requested;
         try {
-            requested = Long.parseLong(msParam.trim());
+            requested = Long.parseLong(trimmed);
         } catch (NumberFormatException e) {
-            event.send(400, "ms must be an integer, got: " + msParam);
+            event.send(400, "ms must be an integer or 'auto', got: " + msParam);
             return;
         }
         long applied;
@@ -52,7 +79,7 @@ public class StormBuiltinEndpoints {
                         + applied
                         + ",\"tps\":"
                         + formatTpsJson(applied)
-                        + "}");
+                        + ",\"auto\":false}");
     }
 
     private static String formatTpsJson(long intervalMs) {
