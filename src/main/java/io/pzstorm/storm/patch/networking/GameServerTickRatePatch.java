@@ -139,8 +139,8 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         /**
          * Live-updates the server tick interval, clamping to {@link #MIN_TICK_INTERVAL_MS}..{@link
          * #MAX_TICK_INTERVAL_MS}. Returns the value actually applied. Throws {@link
-         * IllegalStateException} if the server tick limiter has not been installed yet (i.e.
-         * before {@code GameServer.main} has run the patched constructor).
+         * IllegalStateException} if the server tick limiter has not been installed yet (i.e. before
+         * {@code GameServer.main} has run the patched constructor).
          */
         public static long setTickIntervalMs(long requestedMs) {
             UpdateLimit limit = serverTickLimiter;

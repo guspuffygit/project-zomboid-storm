@@ -22,7 +22,11 @@ public class StormBuiltinEndpoints {
         long ms = UpdateLimitFactory.getCurrentTickIntervalMs();
         event.sendJson(
                 200,
-                "{\"tickIntervalMs\":" + ms + ",\"tps\":" + String.format("%.2f", 1000.0 / ms) + "}");
+                "{\"tickIntervalMs\":"
+                        + ms
+                        + ",\"tps\":"
+                        + String.format("%.2f", 1000.0 / ms)
+                        + "}");
     }
 
     @HttpEndpoint(path = "/storm/server/tickInterval", method = "POST")
