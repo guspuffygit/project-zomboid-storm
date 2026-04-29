@@ -25,6 +25,7 @@ import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
+import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
@@ -86,6 +87,7 @@ public class StormClassTransformers {
         registerTransformer(new CompressIdenticalItemsPatch());
         registerTransformer(new IsoAnimalReattachBackToMomPatch());
         registerTransformer(new BaseVehicleSavePatch());
+        registerTransformer(new GameServerTickRatePatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
