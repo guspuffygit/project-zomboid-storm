@@ -36,7 +36,9 @@ public final class ChunkRemoveMetrics {
 
     private ChunkRemoveMetrics() {}
 
-    /** Called from advice on the server main thread for every {@code IsoChunk.removeFromWorld()}. */
+    /**
+     * Called from advice on the server main thread for every {@code IsoChunk.removeFromWorld()}.
+     */
     public static void recordRemoveNanos(long nanos) {
         totalNanos.addAndGet(nanos);
         callCount.incrementAndGet();

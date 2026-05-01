@@ -19,9 +19,7 @@ public class ServerCellUnloadPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "ServerCellUnloadAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "ServerCellUnloadAdvice").resolve(), locator)
                         .on(
                                 ElementMatchers.named("Unload")
                                         .and(ElementMatchers.takesArguments(0))));

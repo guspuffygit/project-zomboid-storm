@@ -13,8 +13,7 @@ public final class VehicleSendMetrics {
     private static volatile long windowStartMs = System.currentTimeMillis();
 
     static {
-        Thread reporter =
-                new Thread(VehicleSendMetrics::reporterLoop, "StormVehicleSendMetrics");
+        Thread reporter = new Thread(VehicleSendMetrics::reporterLoop, "StormVehicleSendMetrics");
         reporter.setDaemon(true);
         reporter.start();
     }

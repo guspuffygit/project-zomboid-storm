@@ -19,9 +19,7 @@ public class IsoPlayerUpdateRemotePatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "IsoPlayerUpdateRemoteAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "IsoPlayerUpdateRemoteAdvice").resolve(), locator)
                         .on(
                                 ElementMatchers.named("updateRemotePlayer")
                                         .and(ElementMatchers.takesArguments(0))));

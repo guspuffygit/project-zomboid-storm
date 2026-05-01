@@ -13,8 +13,7 @@ public final class LuaMainloopMetrics {
     private static volatile long windowStartMs = System.currentTimeMillis();
 
     static {
-        Thread reporter =
-                new Thread(LuaMainloopMetrics::reporterLoop, "StormLuaMainloopMetrics");
+        Thread reporter = new Thread(LuaMainloopMetrics::reporterLoop, "StormLuaMainloopMetrics");
         reporter.setDaemon(true);
         reporter.start();
     }

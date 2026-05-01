@@ -19,9 +19,7 @@ public class TestZombieSpotPlayerPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "TestZombieSpotPlayerAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "TestZombieSpotPlayerAdvice").resolve(), locator)
                         .on(ElementMatchers.named("TestZombieSpotPlayer")));
     }
 }

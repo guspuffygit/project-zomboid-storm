@@ -20,8 +20,6 @@ public class IsoChunkSavePatch extends StormClassTransformer {
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
                 Advice.to(typePool.describe(PKG + "IsoChunkSaveAdvice").resolve(), locator)
-                        .on(
-                                ElementMatchers.named("Save")
-                                        .and(ElementMatchers.takesArguments(1))));
+                        .on(ElementMatchers.named("Save").and(ElementMatchers.takesArguments(1))));
     }
 }

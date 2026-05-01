@@ -19,9 +19,7 @@ public class GameServerNetDataPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "GameServerNetDataAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "GameServerNetDataAdvice").resolve(), locator)
                         .on(ElementMatchers.named("mainLoopDealWithNetData")));
     }
 }

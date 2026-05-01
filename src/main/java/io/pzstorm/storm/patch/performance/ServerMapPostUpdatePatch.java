@@ -19,9 +19,7 @@ public class ServerMapPostUpdatePatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "ServerMapPostUpdateAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "ServerMapPostUpdateAdvice").resolve(), locator)
                         .on(
                                 ElementMatchers.named("postupdate")
                                         .and(ElementMatchers.takesArguments(0))));

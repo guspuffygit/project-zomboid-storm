@@ -26,8 +26,7 @@ public class MovingObjectUpdateSchedulerTickPatch extends StormClassTransformer 
         return builder.visit(
                 Advice.to(
                                 typePool.describe(
-                                                PKG
-                                                        + "MovingObjectUpdateSchedulerStartFrameAdvice")
+                                                PKG + "MovingObjectUpdateSchedulerStartFrameAdvice")
                                         .resolve(),
                                 locator)
                         .on(

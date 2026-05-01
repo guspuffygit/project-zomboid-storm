@@ -15,7 +15,8 @@ public final class ServerMapPostUpdateMetrics {
     static {
         Thread reporter =
                 new Thread(
-                        ServerMapPostUpdateMetrics::reporterLoop, "StormServerMapPostUpdateMetrics");
+                        ServerMapPostUpdateMetrics::reporterLoop,
+                        "StormServerMapPostUpdateMetrics");
         reporter.setDaemon(true);
         reporter.start();
     }

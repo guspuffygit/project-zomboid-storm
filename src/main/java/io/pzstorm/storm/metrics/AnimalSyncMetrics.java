@@ -13,8 +13,7 @@ public final class AnimalSyncMetrics {
     private static volatile long windowStartMs = System.currentTimeMillis();
 
     static {
-        Thread reporter =
-                new Thread(AnimalSyncMetrics::reporterLoop, "StormAnimalSyncMetrics");
+        Thread reporter = new Thread(AnimalSyncMetrics::reporterLoop, "StormAnimalSyncMetrics");
         reporter.setDaemon(true);
         reporter.start();
     }

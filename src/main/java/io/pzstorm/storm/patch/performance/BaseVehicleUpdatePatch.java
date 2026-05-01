@@ -19,9 +19,7 @@ public class BaseVehicleUpdatePatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "BaseVehicleUpdateAdvice").resolve(),
-                                locator)
+                Advice.to(typePool.describe(PKG + "BaseVehicleUpdateAdvice").resolve(), locator)
                         .on(
                                 ElementMatchers.named("update")
                                         .and(ElementMatchers.takesArguments(0))));

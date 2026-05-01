@@ -10,8 +10,8 @@ import zombie.network.GameServer;
  * <p>Captures wall-clock nanoseconds spent inside the method and forwards each measurement to
  * {@link AnimalUpdateMetrics}. Server-only &mdash; the metrics path is irrelevant on the client.
  *
- * <p>Advice bodies are inlined into the target method, so this class must use plain imperative
- * Java (no lambdas / streams) and reference only types resolvable from the target's class loader.
+ * <p>Advice bodies are inlined into the target method, so this class must use plain imperative Java
+ * (no lambdas / streams) and reference only types resolvable from the target's class loader.
  */
 public class IsoAnimalUpdateTimingAdvice {
 
