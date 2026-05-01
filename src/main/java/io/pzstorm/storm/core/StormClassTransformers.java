@@ -28,7 +28,9 @@ import io.pzstorm.storm.patch.networking.CoopMasterPatch;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
+import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
+import io.pzstorm.storm.patch.performance.MovingObjectUpdateSchedulerTickPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -90,6 +92,8 @@ public class StormClassTransformers {
         registerTransformer(new BaseVehicleSavePatch());
         registerTransformer(new GameServerTickRatePatch());
         registerTransformer(new IsoGeneratorElectricityPatch());
+        registerTransformer(new IsoAnimalUpdateTimingPatch());
+        registerTransformer(new MovingObjectUpdateSchedulerTickPatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
