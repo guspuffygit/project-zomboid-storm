@@ -243,6 +243,8 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                 throw new IllegalStateException(
                         "Server tick limiter not yet initialized; cannot set interval");
             }
+            boolean wasAuto = autoMode;
+            autoMode = false;
             long applied = requestedMs;
             if (applied < MIN_TICK_INTERVAL_MS) {
                 LOGGER.warn(
@@ -259,9 +261,8 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             }
             limit.setUpdatePeriod(applied);
             currentTickIntervalMs = applied;
-            if (autoMode) {
+            if (wasAuto) {
                 LOGGER.info("Storm: explicit setTickIntervalMs disables auto mode");
-                autoMode = false;
             }
             observedTicks = 0;
             windowStartNanos = System.nanoTime();
@@ -284,7 +285,6 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                 throw new IllegalStateException(
                         "Server tick limiter not yet initialized; cannot enable auto mode");
             }
-            autoMode = true;
             int players = playerCountSupplier.getAsInt();
             long target =
                     players >= AUTO_PLAYER_THRESHOLD
@@ -294,6 +294,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             currentTickIntervalMs = target;
             observedTicks = 0;
             windowStartNanos = System.nanoTime();
+            autoMode = true;
             LOGGER.info(
                     "Storm: auto mode enabled — tick interval = {}ms (~{} TPS), {} player(s)",
                     target,
