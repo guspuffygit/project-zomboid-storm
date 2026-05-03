@@ -4,7 +4,7 @@ local MODULE = "StormDiagnostics"
 local COMMAND = "ramAlloc"
 local SETTINGS_FILE = "StormRamAllocationSettings.txt"
 local LOW_RAM_THRESHOLD_GIB = 4
-local RECOMMENDED_ARG = "-Xmx8g"
+local RECOMMENDED_ARG = "-Xmx8g --"
 
 local function loadDontShowAgain()
     local settings = PersistedTable:read(SETTINGS_FILE)
@@ -22,8 +22,8 @@ end
 local function showLowRamModal(maxMb, maxGiB)
     local descriptionLines = {
         "LOW RAM ALLOCATION DETECTED",
-        string.format("Your game JVM is allocated only %.1f GiB of RAM (max=%d MB).", maxGiB, maxMb),
-        string.format("We recommend at least %d GiB for a smooth experience with this mod.", LOW_RAM_THRESHOLD_GIB * 2),
+        string.format("Your game has only allocated %.1f GiB of RAM (max=%d MB).", maxGiB, maxMb),
+        string.format("We recommend allocating %d GiB to reduce lag.", LOW_RAM_THRESHOLD_GIB * 2),
         "1. CLICK the button below to COPY the launch argument.",
         "2. Open Steam Library -> Right Click 'Project Zomboid' -> 'Properties...'",
         "3. Stay on the 'General' tab. Look at the bottom for 'LAUNCH OPTIONS'.",
