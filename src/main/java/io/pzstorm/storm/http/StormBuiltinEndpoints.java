@@ -1,11 +1,24 @@
 package io.pzstorm.storm.http;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.pzstorm.storm.core.StormVersion;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import java.io.IOException;
 
 /** Endpoints always registered by Storm when the HTTP server is enabled. */
 public class StormBuiltinEndpoints {
+
+    public record TickIntervalDto(
+            long tickIntervalMs,
+            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps) {}
+
+    public record TickIntervalUpdateDto(
+            long requestedMs,
+            long appliedMs,
+            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps) {}
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @HttpEndpoint(path = "/health")
     public static void health(HttpRequestEvent event) throws IOException {
@@ -20,7 +33,7 @@ public class StormBuiltinEndpoints {
     @HttpEndpoint(path = "/storm/server/tickInterval")
     public static void getTickInterval(HttpRequestEvent event) throws IOException {
         long ms = UpdateLimitFactory.getCurrentTickIntervalMs();
-        event.sendJson(200, "{\"tickIntervalMs\":" + ms + ",\"tps\":" + formatTpsJson(ms) + "}");
+        event.sendJson(200, MAPPER.writeValueAsString(new TickIntervalDto(ms, tps(ms))));
     }
 
     @HttpEndpoint(path = "/storm/server/tickInterval", method = "POST")
@@ -46,16 +59,10 @@ public class StormBuiltinEndpoints {
         }
         event.sendJson(
                 200,
-                "{\"requestedMs\":"
-                        + requested
-                        + ",\"appliedMs\":"
-                        + applied
-                        + ",\"tps\":"
-                        + formatTpsJson(applied)
-                        + "}");
+                MAPPER.writeValueAsString(new TickIntervalUpdateDto(requested, applied, tps(applied))));
     }
 
-    private static String formatTpsJson(long intervalMs) {
-        return intervalMs <= 0 ? "null" : String.format("%.2f", 1000.0 / intervalMs);
+    private static Double tps(long intervalMs) {
+        return intervalMs <= 0 ? null : 1000.0 / intervalMs;
     }
 }

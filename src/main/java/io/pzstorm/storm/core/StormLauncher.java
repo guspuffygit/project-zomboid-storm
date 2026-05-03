@@ -70,6 +70,12 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, transferHandler);
 
+            Class<?> ramAllocTracker =
+                    classLoader.loadClass("io.pzstorm.storm.diagnostics.RamAllocationTracker");
+            eventDispatcher
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, ramAllocTracker);
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());
