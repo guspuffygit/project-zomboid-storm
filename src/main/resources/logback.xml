@@ -22,8 +22,9 @@
 
     <appender name="ASYNC_STORM" class="ch.qos.logback.classic.AsyncAppender">
         <appender-ref ref="STORM_MAIN_FILE"/>
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
+        <queueSize>8192</queueSize>
+        <discardingThreshold>100</discardingThreshold>
+        <neverBlock>true</neverBlock>
         <includeCallerData>false</includeCallerData>
     </appender>
 
@@ -43,8 +44,9 @@
 
     <appender name="ASYNC_DEBUG" class="ch.qos.logback.classic.AsyncAppender">
         <appender-ref ref="STORM_DEBUG_FILE"/>
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
+        <queueSize>8192</queueSize>
+        <discardingThreshold>100</discardingThreshold>
+        <neverBlock>true</neverBlock>
         <includeCallerData>false</includeCallerData>
     </appender>
 
