@@ -16,6 +16,11 @@ public final class ChunkSaveCacheHitMetrics {
     private static final AtomicLong windowFirsts = new AtomicLong();
     private static final AtomicLong windowCalls = new AtomicLong();
 
+    private static final AtomicLong cleanHits = new AtomicLong();
+    private static final AtomicLong cleanMisses = new AtomicLong();
+    private static final AtomicLong dirtyHits = new AtomicLong();
+    private static final AtomicLong dirtyMisses = new AtomicLong();
+
     private static volatile long windowStartMs = System.currentTimeMillis();
 
     static {
@@ -27,7 +32,7 @@ public final class ChunkSaveCacheHitMetrics {
 
     private ChunkSaveCacheHitMetrics() {}
 
-    public static void observe(int wx, int wy, long crc) {
+    public static void observe(int wx, int wy, long crc, boolean wasClean) {
         windowCalls.incrementAndGet();
         long key = ((long) wx << 32) | (wy & 0xFFFFFFFFL);
         ChunkState fresh = null;
@@ -47,10 +52,20 @@ public final class ChunkSaveCacheHitMetrics {
             if (prev.lastCrc == crc) {
                 prev.hits++;
                 windowHits.incrementAndGet();
+                if (wasClean) {
+                    cleanHits.incrementAndGet();
+                } else {
+                    dirtyHits.incrementAndGet();
+                }
             } else {
                 prev.misses++;
                 prev.lastCrc = crc;
                 windowMisses.incrementAndGet();
+                if (wasClean) {
+                    cleanMisses.incrementAndGet();
+                } else {
+                    dirtyMisses.incrementAndGet();
+                }
             }
         }
     }
@@ -76,6 +91,10 @@ public final class ChunkSaveCacheHitMetrics {
         long hits = windowHits.getAndSet(0L);
         long misses = windowMisses.getAndSet(0L);
         long firsts = windowFirsts.getAndSet(0L);
+        long ch = cleanHits.getAndSet(0L);
+        long cm = cleanMisses.getAndSet(0L);
+        long dh = dirtyHits.getAndSet(0L);
+        long dm = dirtyMisses.getAndSet(0L);
         long now = System.currentTimeMillis();
         long windowMs = now - windowStartMs;
         windowStartMs = now;
@@ -125,7 +144,8 @@ public final class ChunkSaveCacheHitMetrics {
         StormLogger.LOGGER.info(
                 "ChunkSaveCacheHitMetrics: window={}ms calls={} firsts={} hits={} misses={}"
                         + " windowHitRate={}% distinctChunks={} chunksObservedMultipleTimes={}"
-                        + " perChunkHitRateBuckets[0-10..90-100]=[{}]",
+                        + " perChunkHitRateBuckets[0-10..90-100]=[{}]"
+                        + " crossTab[cleanHit={} cleanMiss={} dirtyHit={} dirtyMiss={}]",
                 windowMs,
                 calls,
                 firsts,
@@ -134,7 +154,11 @@ public final class ChunkSaveCacheHitMetrics {
                 String.format("%.1f", hitRate),
                 distinctChunks,
                 chunksMulti,
-                bucketStr.toString());
+                bucketStr.toString(),
+                ch,
+                cm,
+                dh,
+                dm);
     }
 
     private static final class ChunkState {
