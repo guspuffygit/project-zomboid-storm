@@ -7,8 +7,8 @@ import zombie.characters.CharacterStat;
 /**
  * Advice for {@code zombie.characters.Stats.get(CharacterStat)}.
  *
- * <p>The vanilla body is {@code return this.stats.getOrDefault(stat, stat.getDefaultValue())}.
- * Java evaluates the second argument eagerly, autoboxing the primitive {@code float} into a {@link
+ * <p>The vanilla body is {@code return this.stats.getOrDefault(stat, stat.getDefaultValue())}. Java
+ * evaluates the second argument eagerly, autoboxing the primitive {@code float} into a {@link
  * Float} on every call, even when the map already contains an entry for {@code stat}. JFR analysis
  * showed this single autobox dominating main-thread allocation (~92% of pressure), driven by
  * per-tick LOS calls into {@code IsoGameCharacter.getDetectionRange} for every remote player.

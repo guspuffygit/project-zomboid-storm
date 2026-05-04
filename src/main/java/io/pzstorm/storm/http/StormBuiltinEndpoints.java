@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.pzstorm.storm.core.StormVersion;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
+import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import java.io.IOException;
 
 /** Endpoints always registered by Storm when the HTTP server is enabled. */
@@ -17,6 +18,10 @@ public class StormBuiltinEndpoints {
             long requestedMs,
             long appliedMs,
             @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps) {}
+
+    public record AnimalLOSTickIntervalDto(int tickInterval) {}
+
+    public record AnimalLOSTickIntervalUpdateDto(int requested, int applied) {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -61,6 +66,32 @@ public class StormBuiltinEndpoints {
                 200,
                 MAPPER.writeValueAsString(
                         new TickIntervalUpdateDto(requested, applied, tps(applied))));
+    }
+
+    @HttpEndpoint(path = "/storm/animalLOS/tickInterval")
+    public static void getAnimalLOSTickInterval(HttpRequestEvent event) throws IOException {
+        int ticks = AnimalLOSTickInterval.getCurrentTickInterval();
+        event.sendJson(200, MAPPER.writeValueAsString(new AnimalLOSTickIntervalDto(ticks)));
+    }
+
+    @HttpEndpoint(path = "/storm/animalLOS/tickInterval", method = "POST")
+    public static void setAnimalLOSTickInterval(HttpRequestEvent event) throws IOException {
+        String ticksParam = event.getQueryParams().get("ticks");
+        if (ticksParam == null || ticksParam.isEmpty()) {
+            event.send(400, "missing required query parameter: ticks");
+            return;
+        }
+        int requested;
+        try {
+            requested = Integer.parseInt(ticksParam.trim());
+        } catch (NumberFormatException e) {
+            event.send(400, "ticks must be an integer, got: " + ticksParam);
+            return;
+        }
+        int applied = AnimalLOSTickInterval.setTickInterval(requested);
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(new AnimalLOSTickIntervalUpdateDto(requested, applied)));
     }
 
     private static Double tps(long intervalMs) {

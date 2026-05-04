@@ -9,8 +9,8 @@ import net.bytebuddy.pool.TypePool;
 import zombie.characters.CharacterStat;
 
 /**
- * Replaces {@code zombie.characters.Stats.get(CharacterStat)} with a non-boxing implementation.
- * See {@link io.pzstorm.storm.advice.statsget.StatsGetAdvice} for the rationale.
+ * Replaces {@code zombie.characters.Stats.get(CharacterStat)} with a non-boxing implementation. See
+ * {@link io.pzstorm.storm.advice.statsget.StatsGetAdvice} for the rationale.
  *
  * <p>Targets only the single-argument {@code float get(CharacterStat)} overload (not the unrelated
  * inherited {@code Object} accessors).

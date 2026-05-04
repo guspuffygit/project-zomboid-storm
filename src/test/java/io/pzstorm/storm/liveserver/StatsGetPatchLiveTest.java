@@ -79,11 +79,9 @@ class StatsGetPatchLiveTest implements IntegrationTest {
         System.out.println("[test] " + result);
 
         Assertions.assertFalse(
-                result.contains("RESULT ERROR"),
-                "stormteststatsget reported an error: " + result);
+                result.contains("RESULT ERROR"), "stormteststatsget reported an error: " + result);
         Assertions.assertTrue(
-                result.contains("ok=true"),
-                "stormteststatsget did not report ok=true: " + result);
+                result.contains("ok=true"), "stormteststatsget did not report ok=true: " + result);
         Assertions.assertTrue(
                 result.contains("correctness=pass"),
                 "Stats.get returned wrong values for one or more cases: " + result);
