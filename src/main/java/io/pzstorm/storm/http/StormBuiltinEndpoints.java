@@ -59,7 +59,8 @@ public class StormBuiltinEndpoints {
         }
         event.sendJson(
                 200,
-                MAPPER.writeValueAsString(new TickIntervalUpdateDto(requested, applied, tps(applied))));
+                MAPPER.writeValueAsString(
+                        new TickIntervalUpdateDto(requested, applied, tps(applied))));
     }
 
     private static Double tps(long intervalMs) {

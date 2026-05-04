@@ -14,7 +14,8 @@ class TwoDecimalDoubleSerializerTest implements UnitTest {
 
     @Test
     void roundsRepeatingDecimalToTwoPlaces() throws Exception {
-        Assertions.assertEquals("{\"tps\":33.33}", MAPPER.writeValueAsString(new Wrapper(1000.0 / 30)));
+        Assertions.assertEquals(
+                "{\"tps\":33.33}", MAPPER.writeValueAsString(new Wrapper(1000.0 / 30)));
     }
 
     @Test
@@ -31,7 +32,8 @@ class TwoDecimalDoubleSerializerTest implements UnitTest {
     void writesAsJsonNumberNotString() throws Exception {
         String json = MAPPER.writeValueAsString(new Wrapper(33.333333333));
         Assertions.assertEquals("{\"tps\":33.33}", json);
-        Assertions.assertFalse(json.contains(":\""), "tps value should be a number, not a string: " + json);
+        Assertions.assertFalse(
+                json.contains(":\""), "tps value should be a number, not a string: " + json);
     }
 
     @Test

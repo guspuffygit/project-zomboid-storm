@@ -42,8 +42,9 @@ public class RamAllocationTracker {
         List<RamAllocationDto> dtos = new ArrayList<>(SNAPSHOTS.size());
         for (var entry : SNAPSHOTS.entrySet()) {
             Snapshot s = entry.getValue();
-            dtos.add(new RamAllocationDto(
-                    entry.getKey(), Long.toString(s.steamId), s.ramAllocationMb));
+            dtos.add(
+                    new RamAllocationDto(
+                            entry.getKey(), Long.toString(s.steamId), s.ramAllocationMb));
         }
         event.sendJson(200, MAPPER.writeValueAsString(dtos));
     }
