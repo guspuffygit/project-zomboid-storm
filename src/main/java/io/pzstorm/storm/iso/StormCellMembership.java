@@ -1,11 +1,14 @@
 package io.pzstorm.storm.iso;
 
+import io.pzstorm.storm.metrics.CellObjectAddMetrics;
+import io.pzstorm.storm.metrics.CellObjectRemoveMetrics;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoObject;
 import zombie.iso.IsoWorld;
@@ -42,6 +45,9 @@ public final class StormCellMembership {
 
     private static final Map<IsoCell, Entry> CELL_TABLE = new WeakHashMap<>();
 
+    private static final AtomicLong ADD_CALLS = new AtomicLong();
+    private static final AtomicLong REMOVE_CALLS = new AtomicLong();
+
     private static Entry entryFor(IsoCell cell) {
         synchronized (CELL_TABLE) {
             Entry e = CELL_TABLE.get(cell);
@@ -66,6 +72,15 @@ public final class StormCellMembership {
         if (object == null) {
             return;
         }
+        long callIndex = ADD_CALLS.incrementAndGet();
+        boolean sample = (callIndex & CellObjectAddMetrics.VANILLA_SAMPLE_MASK) == 0L;
+        if (sample) {
+            long sStart = System.nanoTime();
+            removeList.indexOf(object);
+            processList.indexOf(object);
+            CellObjectAddMetrics.recordVanillaSimulatedNanos(System.nanoTime() - sStart);
+        }
+        long t0 = System.nanoTime();
         Entry e = entryFor(cell);
         if (e.processIsoObjectRemoveSet.remove(object)) {
             removeList.remove(object);
@@ -73,6 +88,7 @@ public final class StormCellMembership {
         if (e.processIsoObjectSet.add(object)) {
             processList.add(object);
         }
+        CellObjectAddMetrics.recordFastNanos(System.nanoTime() - t0);
     }
 
     /**
@@ -80,18 +96,33 @@ public final class StormCellMembership {
      * implementation does two ArrayList linear scans per call; here both are O(1).
      */
     public static void addToProcessIsoObjectRemove(
-            IsoCell cell, IsoObject object, ArrayList<IsoObject> removeList) {
+            IsoCell cell,
+            IsoObject object,
+            ArrayList<IsoObject> processList,
+            ArrayList<IsoObject> removeList) {
         if (object == null) {
             return;
         }
+        long callIndex = REMOVE_CALLS.incrementAndGet();
+        boolean sample = (callIndex & CellObjectRemoveMetrics.VANILLA_SAMPLE_MASK) == 0L;
+        if (sample) {
+            long sStart = System.nanoTime();
+            processList.indexOf(object);
+            removeList.indexOf(object);
+            CellObjectRemoveMetrics.recordVanillaSimulatedNanos(System.nanoTime() - sStart);
+        }
+        long t0 = System.nanoTime();
         Entry e = entryFor(cell);
         if (!e.processIsoObjectSet.contains(object)) {
+            CellObjectRemoveMetrics.recordFastNanos(System.nanoTime() - t0);
             return;
         }
         if (!e.processIsoObjectRemoveSet.add(object)) {
+            CellObjectRemoveMetrics.recordFastNanos(System.nanoTime() - t0);
             return;
         }
         removeList.add(object);
+        CellObjectRemoveMetrics.recordFastNanos(System.nanoTime() - t0);
     }
 
     /**

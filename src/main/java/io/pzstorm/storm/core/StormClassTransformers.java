@@ -31,9 +31,7 @@ import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.performance.AnimalSyncManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleUpdatePatch;
 import io.pzstorm.storm.patch.performance.CellAddToProcessObjectFastPatch;
-import io.pzstorm.storm.patch.performance.CellAddToProcessObjectPatch;
 import io.pzstorm.storm.patch.performance.CellAddToProcessObjectRemoveFastPatch;
-import io.pzstorm.storm.patch.performance.CellAddToProcessObjectRemovePatch;
 import io.pzstorm.storm.patch.performance.CellAddToStaticUpdaterFastPatch;
 import io.pzstorm.storm.patch.performance.CellProcessIsoObjectFlushPatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerUpdatePatch;
@@ -123,8 +121,6 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalUpdateTimingPatch());
         registerTransformer(new MovingObjectUpdateSchedulerTickPatch());
         registerTransformer(new IsoChunkRemoveFromWorldPatch());
-        registerTransformer(new CellAddToProcessObjectRemovePatch());
-        registerTransformer(new CellAddToProcessObjectPatch());
         registerTransformer(new CellAddToProcessObjectFastPatch());
         registerTransformer(new CellAddToProcessObjectRemoveFastPatch());
         registerTransformer(new CellAddToStaticUpdaterFastPatch());

@@ -23,8 +23,9 @@ public class AddToProcessIsoObjectRemoveFastAdvice {
     public static boolean onEnter(
             @Advice.This IsoCell cell,
             @Advice.Argument(0) IsoObject object,
+            @Advice.FieldValue("processIsoObject") ArrayList<IsoObject> processList,
             @Advice.FieldValue("processIsoObjectRemove") ArrayList<IsoObject> removeList) {
-        StormCellMembership.addToProcessIsoObjectRemove(cell, object, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, object, processList, removeList);
         return true;
     }
 }

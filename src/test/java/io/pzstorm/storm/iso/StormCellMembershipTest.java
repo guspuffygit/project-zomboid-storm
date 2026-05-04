@@ -212,7 +212,7 @@ class StormCellMembershipTest implements UnitTest {
         ArrayList<IsoObject> removeList = new ArrayList<>();
 
         StormCellMembership.addToProcessIsoObject(cell, a, processList, removeList);
-        StormCellMembership.addToProcessIsoObjectRemove(cell, a, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, a, processList, removeList);
         assertTrue(StormCellMembership.processIsoObjectPendingRemove(cell, a));
         assertEquals(1, removeList.size());
 
@@ -229,9 +229,10 @@ class StormCellMembershipTest implements UnitTest {
     @Test
     void addToProcessIsoObjectRemoveNoopsWhenObjectNotInProcessSet() throws Exception {
         IsoObject orphan = newObject();
+        ArrayList<IsoObject> processList = new ArrayList<>();
         ArrayList<IsoObject> removeList = new ArrayList<>();
 
-        StormCellMembership.addToProcessIsoObjectRemove(cell, orphan, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, orphan, processList, removeList);
 
         assertTrue(removeList.isEmpty());
         assertFalse(StormCellMembership.processIsoObjectPendingRemove(cell, orphan));
@@ -244,8 +245,8 @@ class StormCellMembershipTest implements UnitTest {
         ArrayList<IsoObject> removeList = new ArrayList<>();
 
         StormCellMembership.addToProcessIsoObject(cell, a, processList, removeList);
-        StormCellMembership.addToProcessIsoObjectRemove(cell, a, removeList);
-        StormCellMembership.addToProcessIsoObjectRemove(cell, a, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, a, processList, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, a, processList, removeList);
 
         assertEquals(1, removeList.size());
     }
@@ -259,7 +260,7 @@ class StormCellMembershipTest implements UnitTest {
 
         StormCellMembership.addToProcessIsoObject(cell, keep, processList, removeList);
         StormCellMembership.addToProcessIsoObject(cell, drop, processList, removeList);
-        StormCellMembership.addToProcessIsoObjectRemove(cell, drop, removeList);
+        StormCellMembership.addToProcessIsoObjectRemove(cell, drop, processList, removeList);
 
         StormCellMembership.flushProcessIsoObjectRemoves(cell);
 
