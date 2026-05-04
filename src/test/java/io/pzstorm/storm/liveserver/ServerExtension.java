@@ -47,6 +47,7 @@ public class ServerExtension
     @Getter private static Process serverProcess;
     private static Thread outputReaderThread;
     @Getter private static Path logFile;
+    @Getter private static Path stormMainLogFile;
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
@@ -84,6 +85,12 @@ public class ServerExtension
         Files.deleteIfExists(logFile);
         Files.createFile(logFile);
 
+        Path stormLogDir = buildDir.toPath().resolve("storm-logs").toAbsolutePath();
+        Files.createDirectories(stormLogDir.resolve("storm"));
+        stormMainLogFile = stormLogDir.resolve("storm").resolve("main.log");
+        Files.deleteIfExists(stormMainLogFile);
+        Files.deleteIfExists(stormLogDir.resolve("storm").resolve("debug.log"));
+
         Path cacheDir = buildDir.toPath().resolve("zomboid").toAbsolutePath();
         Files.createDirectories(cacheDir);
 
@@ -91,6 +98,7 @@ public class ServerExtension
                 new ProcessBuilder(
                                 "./start-server.sh",
                                 "-DLOG_LEVEL=debug",
+                                "-DSTORM_LOG_DIR=" + stormLogDir,
                                 "-Dstorm.testing=true",
                                 "-Dstorm.http.port=" + TEST_HTTP_PORT,
                                 "-Dstorm.server=true",
