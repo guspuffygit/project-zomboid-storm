@@ -4,14 +4,19 @@ import io.pzstorm.storm.metrics.BitHeaderMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-/** Counts each {@code BitHeader$BitHeaderLong.release()} call. Server-only. */
+/**
+ * Server-side: counts each {@code BitHeader$BitHeaderLong.release()} call <em>and</em>
+ * short-circuits the original body so {@code pool_long.offer(this)} never runs. See {@code
+ * BitHeaderByteReleaseAdvice} for the rationale.
+ */
 public class BitHeaderLongReleaseAdvice {
 
-    @Advice.OnMethodEnter
-    public static void onEnter() {
+    @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+    public static boolean onEnter() {
         if (!GameServer.server) {
-            return;
+            return false;
         }
         BitHeaderMetrics.observeReleaseLong();
+        return true;
     }
 }
