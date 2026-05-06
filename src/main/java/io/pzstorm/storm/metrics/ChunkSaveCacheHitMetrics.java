@@ -32,7 +32,7 @@ public final class ChunkSaveCacheHitMetrics {
 
     private ChunkSaveCacheHitMetrics() {}
 
-    public static void observe(int wx, int wy, long crc, boolean wasClean) {
+    public static boolean observe(int wx, int wy, long crc, boolean wasClean) {
         windowCalls.incrementAndGet();
         long key = ((long) wx << 32) | (wy & 0xFFFFFFFFL);
         ChunkState fresh = null;
@@ -44,7 +44,7 @@ public final class ChunkSaveCacheHitMetrics {
             ChunkState raced = CHUNKS.putIfAbsent(key, fresh);
             if (raced == null) {
                 windowFirsts.incrementAndGet();
-                return;
+                return false;
             }
             prev = raced;
         }
@@ -57,14 +57,17 @@ public final class ChunkSaveCacheHitMetrics {
                 } else {
                     dirtyHits.incrementAndGet();
                 }
+                return false;
             } else {
                 prev.misses++;
                 prev.lastCrc = crc;
                 windowMisses.incrementAndGet();
                 if (wasClean) {
                     cleanMisses.incrementAndGet();
+                    return true;
                 } else {
                     dirtyMisses.incrementAndGet();
+                    return false;
                 }
             }
         }
