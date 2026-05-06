@@ -60,6 +60,7 @@ import io.pzstorm.storm.patch.performance.IsoObjectRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectStaticUpdaterRemoveSubstPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
+import io.pzstorm.storm.patch.performance.ItemContainerMutateDirtyPatch;
 import io.pzstorm.storm.patch.performance.LootRespawnCheckChunkDirtyPatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
 import io.pzstorm.storm.patch.performance.MovingObjectUpdateSchedulerTickPatch;
@@ -161,6 +162,7 @@ public class StormClassTransformers {
         registerTransformer(new IsoGridSquareChunkDirtyPatch());
         registerTransformer(new IsoObjectChunkDirtyPatch());
         registerTransformer(new InventoryItemUpdateDirtyPatch());
+        registerTransformer(new ItemContainerMutateDirtyPatch());
         registerTransformer(new FoodChunkDirtyPatch());
         registerTransformer(new DrainableComboItemUpdateDirtyPatch());
         registerTransformer(new LootRespawnCheckChunkDirtyPatch());

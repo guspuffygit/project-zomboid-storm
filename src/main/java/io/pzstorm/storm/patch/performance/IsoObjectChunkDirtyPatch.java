@@ -33,6 +33,18 @@ public class IsoObjectChunkDirtyPatch extends StormClassTransformer {
                                         .or(ElementMatchers.named("setOverlaySpriteColor"))
                                         .or(ElementMatchers.named("setKeyId"))
                                         .or(ElementMatchers.named("setMovedThumpable"))
-                                        .or(ElementMatchers.named("setSpriteModelName"))));
+                                        .or(ElementMatchers.named("setSpriteModelName"))
+                                        .or(ElementMatchers.named("setOutlineOnMouseover"))
+                                        .or(ElementMatchers.named("setSpecialTooltip"))
+                                        .or(ElementMatchers.named("setUsesExternalWaterSource"))
+                                        .or(ElementMatchers.named("setModData"))
+                                        .or(ElementMatchers.named("setTable"))
+                                        .or(ElementMatchers.named("setChildSprites"))
+                                        .or(ElementMatchers.named("addAttachedAnimSpriteInstance"))
+                                        .or(ElementMatchers.named("addAttachedAnimSprite"))
+                                        .or(ElementMatchers.named("addAttachedAnimSpriteByName"))
+                                        .or(ElementMatchers.named("RemoveAttachedAnims"))
+                                        .or(ElementMatchers.named("RemoveAttachedAnim"))
+                                        .or(ElementMatchers.named("clearAttachedAnimSprite"))));
     }
 }

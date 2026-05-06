@@ -28,6 +28,11 @@ public class IsoGridSquareChunkDirtyPatch extends StormClassTransformer {
                                         .or(ElementMatchers.named("setOverlayDone"))
                                         .or(ElementMatchers.named("setTrapPositionX"))
                                         .or(ElementMatchers.named("setTrapPositionY"))
-                                        .or(ElementMatchers.named("setTrapPositionZ"))));
+                                        .or(ElementMatchers.named("setTrapPositionZ"))
+                                        .or(ElementMatchers.named("BurnWalls"))
+                                        .or(ElementMatchers.named("Burn"))
+                                        .or(ElementMatchers.named("stopFire"))
+                                        .or(ElementMatchers.named("ClearTileObjects"))
+                                        .or(ElementMatchers.named("ClearTileObjectsExceptFloor"))));
     }
 }
