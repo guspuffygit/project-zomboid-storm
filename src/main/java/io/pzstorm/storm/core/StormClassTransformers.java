@@ -68,6 +68,7 @@ import io.pzstorm.storm.patch.performance.LootRespawnCheckChunkDirtyPatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
 import io.pzstorm.storm.patch.performance.MovingObjectUpdateSchedulerTickPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
+import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
 import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
@@ -184,6 +185,7 @@ public class StormClassTransformers {
         registerTransformer(new NetworkZombieManagerAuthPatch());
         registerTransformer(new AnimalSyncManagerUpdatePatch());
         registerTransformer(new LuaMainloopPatch());
+        registerTransformer(new PacketsCacheLimitBypassPatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
