@@ -44,7 +44,6 @@ import io.pzstorm.storm.patch.performance.GameEntityManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.GameServerNetDataPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
-import io.pzstorm.storm.patch.performance.IsoCellGetObjectListPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkLoadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
@@ -146,7 +145,6 @@ public class StormClassTransformers {
         registerTransformer(new ServerLOSUpdatePatch());
         registerTransformer(new ServerLOSFindDataPatch());
         registerTransformer(new ServerLOSRemovePlayerPatch());
-        registerTransformer(new IsoCellGetObjectListPatch());
         registerTransformer(new StatsGetPatch());
         registerTransformer(new IsoPlayerUpdateRemotePatch());
         registerTransformer(new TestZombieSpotPlayerPatch());
