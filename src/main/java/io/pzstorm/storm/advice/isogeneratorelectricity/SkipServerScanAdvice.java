@@ -44,6 +44,13 @@ import zombie.network.ServerMap;
  * {@code @Advice.FieldValue} on the private static &mdash; same source of truth, public API, no
  * Byte Buddy field-binding edge cases.
  *
+ * <p>{@code totalPowerUsing} guard: this field is not persisted by {@code save()/load()} (it
+ * defaults to {@code 0.0F} on every world load) and is the multiplier for fuel drain in {@code
+ * update()}'s hourly loop &mdash; if it stays at {@code 0}, fuel never decreases. The first call
+ * to {@code setSurroundingElectricity()} sets the baseline {@code 0.02F}, so the guard below lets
+ * the original method run when {@code totalPowerUsing <= 0}, then the cheap path takes over once
+ * the baseline is set.
+ *
  * <p>No lambdas / streams &mdash; advice bodies are inlined into the target method and must be
  * plain imperative Java.
  */
@@ -53,11 +60,15 @@ public class SkipServerScanAdvice {
     public static void onEnter(
             @Advice.This IsoGenerator self,
             @Advice.FieldValue(value = "updateSurrounding", readOnly = false)
-                    boolean updateSurrounding) {
+                    boolean updateSurrounding,
+            @Advice.FieldValue("totalPowerUsing") float totalPowerUsing) {
         if (!GameServer.server) {
             return;
         }
         if (!updateSurrounding) {
+            return;
+        }
+        if (totalPowerUsing <= 0.0F) {
             return;
         }
         IsoGridSquare square = self.getSquare();
