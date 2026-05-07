@@ -70,6 +70,8 @@ import io.pzstorm.storm.patch.performance.MovingObjectUpdateSchedulerTickPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
 import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
+import io.pzstorm.storm.patch.performance.ServerLOSFindDataPatch;
+import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.StatsGetPatch;
@@ -151,6 +153,8 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalUpdateLOSPatch());
         registerTransformer(new IsoPlayerUpdateLOSPatch());
         registerTransformer(new ServerLOSUpdatePatch());
+        registerTransformer(new ServerLOSFindDataPatch());
+        registerTransformer(new ServerLOSRemovePlayerPatch());
         registerTransformer(new StatsGetPatch());
         registerTransformer(new IsoPlayerUpdateRemotePatch());
         registerTransformer(new TestZombieSpotPlayerPatch());
