@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.pzstorm.storm.core.StormVersion;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
+import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
@@ -32,6 +33,20 @@ public class StormBuiltinEndpoints {
     public record IsoPhysicsServerFpsDto(int fps) {}
 
     public record IsoPhysicsServerFpsUpdateDto(int requested, int applied) {}
+
+    public record ServerFpsDto(
+            long tickIntervalMs,
+            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps,
+            int lockFps,
+            int physicsFps) {}
+
+    public record ServerFpsUpdateDto(
+            int requestedFps,
+            int appliedFps,
+            long tickIntervalMs,
+            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps,
+            int lockFps,
+            int physicsFps) {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -153,6 +168,52 @@ public class StormBuiltinEndpoints {
         event.sendJson(
                 200,
                 MAPPER.writeValueAsString(new IsoPhysicsServerFpsUpdateDto(requested, applied)));
+    }
+
+    @HttpEndpoint(path = "/storm/server/fps")
+    public static void getServerFps(HttpRequestEvent event) throws IOException {
+        long intervalMs = UpdateLimitFactory.getCurrentTickIntervalMs();
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(
+                        new ServerFpsDto(
+                                intervalMs,
+                                tps(intervalMs),
+                                ServerLockFpsConfig.getCurrentLockFps(),
+                                IsoPhysicsObjectFpsConfig.getCurrentPhysicsFps())));
+    }
+
+    @HttpEndpoint(path = "/storm/server/fps", method = "POST")
+    public static void setServerFps(HttpRequestEvent event) throws IOException {
+        String fpsParam = event.getQueryParams().get("fps");
+        if (fpsParam == null || fpsParam.isEmpty()) {
+            event.send(400, "missing required query parameter: fps");
+            return;
+        }
+        int requested;
+        try {
+            requested = Integer.parseInt(fpsParam.trim());
+        } catch (NumberFormatException e) {
+            event.send(400, "fps must be an integer, got: " + fpsParam);
+            return;
+        }
+        ServerFpsConfig.AppliedFps applied;
+        try {
+            applied = ServerFpsConfig.applyUnifiedFps(requested);
+        } catch (IllegalStateException e) {
+            event.send(503, e.getMessage());
+            return;
+        }
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(
+                        new ServerFpsUpdateDto(
+                                applied.requestedFps(),
+                                applied.appliedFps(),
+                                applied.appliedTickIntervalMs(),
+                                tps(applied.appliedTickIntervalMs()),
+                                applied.appliedLockFps(),
+                                applied.appliedPhysicsFps())));
     }
 
     private static Double tps(long intervalMs) {

@@ -2,6 +2,7 @@ package io.pzstorm.storm.patch.performance;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import zombie.core.PerformanceSettings;
 import zombie.network.GameServer;
 
@@ -90,13 +91,14 @@ public final class IsoPhysicsObjectFpsConfig {
 
     /**
      * Reads {@link #PHYSICS_FPS_PROPERTY}, clamping to {@link #MIN_PHYSICS_FPS}..{@link
-     * #MAX_PHYSICS_FPS}. Returns {@link #DEFAULT_PHYSICS_FPS} when the property is unset or
-     * unparseable.
+     * #MAX_PHYSICS_FPS}. When the specific property is unset or unparseable, falls back to {@link
+     * ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
+     * #DEFAULT_PHYSICS_FPS}.
      */
     public static int resolvePhysicsFps() {
         String prop = System.getProperty(PHYSICS_FPS_PROPERTY);
         if (prop == null || prop.isEmpty()) {
-            return DEFAULT_PHYSICS_FPS;
+            return resolveFromUnifiedOrDefault();
         }
         int parsed;
         try {
@@ -107,9 +109,17 @@ public final class IsoPhysicsObjectFpsConfig {
                     PHYSICS_FPS_PROPERTY,
                     prop,
                     DEFAULT_PHYSICS_FPS);
-            return DEFAULT_PHYSICS_FPS;
+            return resolveFromUnifiedOrDefault();
         }
         return clamp(parsed);
+    }
+
+    private static int resolveFromUnifiedOrDefault() {
+        int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
+        if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
+            return clamp(unifiedFps);
+        }
+        return DEFAULT_PHYSICS_FPS;
     }
 
     private static int clamp(int requested) {
@@ -131,7 +141,7 @@ public final class IsoPhysicsObjectFpsConfig {
     }
 
     /** Test-only — overrides the current value without clamping or logging. */
-    static void setCurrentPhysicsFpsForTest(int value) {
+    public static void setCurrentPhysicsFpsForTest(int value) {
         currentPhysicsFps = value;
     }
 }

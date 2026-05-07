@@ -77,12 +77,14 @@ public final class ServerLockFpsConfig {
 
     /**
      * Reads {@link #LOCK_FPS_PROPERTY}, clamping to {@link #MIN_LOCK_FPS}..{@link #MAX_LOCK_FPS}.
-     * Returns {@link #DEFAULT_LOCK_FPS} when the property is unset or unparseable.
+     * When the specific property is unset or unparseable, falls back to {@link
+     * ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
+     * #DEFAULT_LOCK_FPS}.
      */
     public static int resolveLockFps() {
         String prop = System.getProperty(LOCK_FPS_PROPERTY);
         if (prop == null || prop.isEmpty()) {
-            return DEFAULT_LOCK_FPS;
+            return resolveFromUnifiedOrDefault();
         }
         int parsed;
         try {
@@ -93,9 +95,17 @@ public final class ServerLockFpsConfig {
                     LOCK_FPS_PROPERTY,
                     prop,
                     DEFAULT_LOCK_FPS);
-            return DEFAULT_LOCK_FPS;
+            return resolveFromUnifiedOrDefault();
         }
         return clamp(parsed);
+    }
+
+    private static int resolveFromUnifiedOrDefault() {
+        int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
+        if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
+            return clamp(unifiedFps);
+        }
+        return DEFAULT_LOCK_FPS;
     }
 
     private static int clamp(int requested) {

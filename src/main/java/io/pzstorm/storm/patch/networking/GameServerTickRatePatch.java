@@ -202,13 +202,14 @@ public class GameServerTickRatePatch extends StormClassTransformer {
 
         /**
          * Reads {@link #TICK_INTERVAL_PROPERTY}, clamping to {@link #MIN_TICK_INTERVAL_MS}..{@link
-         * #MAX_TICK_INTERVAL_MS}. Returns {@link #DEFAULT_TICK_INTERVAL_MS} when the property is
-         * unset or unparseable.
+         * #MAX_TICK_INTERVAL_MS}. When the specific property is unset or unparseable, falls back to
+         * {@link ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
+         * #DEFAULT_TICK_INTERVAL_MS}.
          */
         public static long resolveTickIntervalMs() {
             String prop = System.getProperty(TICK_INTERVAL_PROPERTY);
             if (prop == null || prop.isEmpty()) {
-                return DEFAULT_TICK_INTERVAL_MS;
+                return resolveFromUnifiedOrDefault();
             }
             long parsed;
             try {
@@ -219,7 +220,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                         TICK_INTERVAL_PROPERTY,
                         prop,
                         DEFAULT_TICK_INTERVAL_MS);
-                return DEFAULT_TICK_INTERVAL_MS;
+                return resolveFromUnifiedOrDefault();
             }
             if (parsed < MIN_TICK_INTERVAL_MS) {
                 LOGGER.warn(
@@ -238,6 +239,14 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                 return MAX_TICK_INTERVAL_MS;
             }
             return parsed;
+        }
+
+        private static long resolveFromUnifiedOrDefault() {
+            int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
+            if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
+                return ServerFpsConfig.fpsToTickIntervalMs(unifiedFps);
+            }
+            return DEFAULT_TICK_INTERVAL_MS;
         }
 
         /** Test-only — resets the per-window tick counter and re-anchors the window. */
