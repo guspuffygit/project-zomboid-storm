@@ -13,11 +13,11 @@ import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies that {@link IsoGeneratorElectricityPatch} inserts the {@code totalPowerUsing <= 0}
- * guard at the head of {@code IsoGenerator.update()} so the advice falls through to the original
- * {@code setSurroundingElectricity()} when the field is uninitialized. Without this guard, fuel
- * stays at 100% forever after a world load because {@code totalPowerUsing} is not persisted by
- * {@code save()/load()} and the hourly fuel loop multiplies by it.
+ * Verifies that {@link IsoGeneratorElectricityPatch} inserts the {@code totalPowerUsing <= 0} guard
+ * at the head of {@code IsoGenerator.update()} so the advice falls through to the original {@code
+ * setSurroundingElectricity()} when the field is uninitialized. Without this guard, fuel stays at
+ * 100% forever after a world load because {@code totalPowerUsing} is not persisted by {@code
+ * save()/load()} and the hourly fuel loop multiplies by it.
  *
  * <p>The patch is applied to the real {@code IsoGenerator.class} pulled from the test classpath
  * (via {@code projectzomboid.jar}). We compare the unpatched and patched bytecode to confirm the

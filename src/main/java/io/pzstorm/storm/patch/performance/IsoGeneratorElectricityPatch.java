@@ -34,9 +34,8 @@ import net.bytebuddy.pool.TypePool;
  * <p>{@code totalPowerUsing} is not serialized in {@code save()/load()} &mdash; it defaults to
  * {@code 0.0F} on every world load. Because it's also the multiplier the hourly fuel-drain loop
  * uses, an uninitialized value means fuel never decreases. The advice guards against this by
- * letting the original {@code setSurroundingElectricity()} run once when {@code totalPowerUsing
- * <= 0}; subsequent ticks (where it's at the {@code 0.02F} baseline or higher) take the fast
- * path.
+ * letting the original {@code setSurroundingElectricity()} run once when {@code totalPowerUsing <=
+ * 0}; subsequent ticks (where it's at the {@code 0.02F} baseline or higher) take the fast path.
  *
  * <p>Advice loaded via {@code typePool.describe().resolve()} (ASM-only parsing) so Byte Buddy
  * doesn't trigger class loading of the transform target.

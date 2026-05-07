@@ -46,10 +46,10 @@ import zombie.network.ServerMap;
  *
  * <p>{@code totalPowerUsing} guard: this field is not persisted by {@code save()/load()} (it
  * defaults to {@code 0.0F} on every world load) and is the multiplier for fuel drain in {@code
- * update()}'s hourly loop &mdash; if it stays at {@code 0}, fuel never decreases. The first call
- * to {@code setSurroundingElectricity()} sets the baseline {@code 0.02F}, so the guard below lets
- * the original method run when {@code totalPowerUsing <= 0}, then the cheap path takes over once
- * the baseline is set.
+ * update()}'s hourly loop &mdash; if it stays at {@code 0}, fuel never decreases. The first call to
+ * {@code setSurroundingElectricity()} sets the baseline {@code 0.02F}, so the guard below lets the
+ * original method run when {@code totalPowerUsing <= 0}, then the cheap path takes over once the
+ * baseline is set.
  *
  * <p>No lambdas / streams &mdash; advice bodies are inlined into the target method and must be
  * plain imperative Java.
