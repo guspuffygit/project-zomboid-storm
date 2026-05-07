@@ -40,6 +40,7 @@ import io.pzstorm.storm.patch.performance.CellAddToProcessObjectRemoveFastPatch;
 import io.pzstorm.storm.patch.performance.CellAddToStaticUpdaterFastPatch;
 import io.pzstorm.storm.patch.performance.CellProcessIsoObjectFlushPatch;
 import io.pzstorm.storm.patch.performance.DrainableComboItemUpdateDirtyPatch;
+import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquareDirtyPatch;
 import io.pzstorm.storm.patch.performance.ErosionWorldUpdateDirtyPatch;
 import io.pzstorm.storm.patch.performance.FoodChunkDirtyPatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerChunkDirtyPatch;
@@ -170,6 +171,7 @@ public class StormClassTransformers {
         registerTransformer(new DrainableComboItemUpdateDirtyPatch());
         registerTransformer(new LootRespawnCheckChunkDirtyPatch());
         registerTransformer(new ErosionWorldUpdateDirtyPatch());
+        registerTransformer(new ErosionMainLoadGridsquareDirtyPatch());
         registerTransformer(new BitHeaderGetHeaderPatch());
         registerTransformer(new BitHeaderByteReleasePatch());
         registerTransformer(new BitHeaderShortReleasePatch());
