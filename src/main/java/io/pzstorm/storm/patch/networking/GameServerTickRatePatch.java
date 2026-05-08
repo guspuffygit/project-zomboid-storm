@@ -12,6 +12,7 @@ import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 import zombie.core.utils.UpdateLimit;
+import zombie.network.GameServer;
 
 /**
  * Allows the dedicated server's main-loop tick rate to be configured via the {@code
@@ -189,10 +190,11 @@ public class GameServerTickRatePatch extends StormClassTransformer {
                     double seconds = elapsed / 1_000_000_000.0;
                     double tps = observedTicks / seconds;
                     LOGGER.info(
-                            "Storm: avg server TPS over last {}s = {} ({} ticks)",
+                            "Storm: avg server TPS over last {}s = {} ({} ticks, {} players)",
                             String.format("%.1f", seconds),
                             String.format("%.2f", tps),
-                            observedTicks);
+                            observedTicks,
+                            GameServer.Players.size());
                     observedTicks = 0;
                     windowStartNanos = now;
                 }
