@@ -1,4 +1,4 @@
-require "TimedActions/ISInventoryTransferAction"
+require("TimedActions/ISInventoryTransferAction")
 
 -- Storm Transfer Fix: replaces the vanilla byte-ID Transaction system with UUID-keyed
 -- transactions sent via sendClientCommand. Covers player inventory, bags, world object
@@ -22,14 +22,22 @@ local stormTransactions = {} -- uuid -> { state = "pending"|"accepted"|"done"|"r
 ---------------------------------------------------------------------------
 
 local function onServerCommand(module, command, args)
-    if module ~= MODULE then return end
-    if command ~= "result" then return end
+    if module ~= MODULE then
+        return
+    end
+    if command ~= "result" then
+        return
+    end
 
     local uuid = args.uuid
-    if not uuid then return end
+    if not uuid then
+        return
+    end
 
     local t = stormTransactions[uuid]
-    if not t then return end
+    if not t then
+        return
+    end
 
     local status = args.status
     if status == "accepted" then
@@ -87,7 +95,16 @@ local function getContainerRef(container, character)
         end
         if objectIndex >= 0 then
             local containerIndex = parent:getContainerIndex(container)
-            return "object:" .. tostring(sq:getX()) .. ":" .. tostring(sq:getY()) .. ":" .. tostring(sq:getZ()) .. ":" .. tostring(objectIndex) .. ":" .. tostring(containerIndex)
+            return "object:"
+                .. tostring(sq:getX())
+                .. ":"
+                .. tostring(sq:getY())
+                .. ":"
+                .. tostring(sq:getZ())
+                .. ":"
+                .. tostring(objectIndex)
+                .. ":"
+                .. tostring(containerIndex)
         end
     end
     -- Placed container on the ground (bag/crate placed as world item).
@@ -105,7 +122,14 @@ local function getContainerRef(container, character)
                 end
             end
             if objectIndex >= 0 then
-                return "worlditem:" .. tostring(sq:getX()) .. ":" .. tostring(sq:getY()) .. ":" .. tostring(sq:getZ()) .. ":" .. tostring(objectIndex)
+                return "worlditem:"
+                    .. tostring(sq:getX())
+                    .. ":"
+                    .. tostring(sq:getY())
+                    .. ":"
+                    .. tostring(sq:getZ())
+                    .. ":"
+                    .. tostring(objectIndex)
             end
         end
     end
@@ -113,9 +137,10 @@ local function getContainerRef(container, character)
 end
 
 local function shouldUseStormTransfer(src, dest, character)
-    if not isClient() then return false end
-    return getContainerRef(src, character) ~= nil
-       and getContainerRef(dest, character) ~= nil
+    if not isClient() then
+        return false
+    end
+    return getContainerRef(src, character) ~= nil and getContainerRef(dest, character) ~= nil
 end
 
 local function createStormTransaction(character, item, srcContainer, destContainer)
@@ -148,7 +173,9 @@ end
 
 local function getStormTransactionDuration(uuid)
     local t = stormTransactions[uuid]
-    if t and t.duration and t.duration > 0 then return t.duration end
+    if t and t.duration and t.duration > 0 then
+        return t.duration
+    end
     return -1
 end
 
@@ -170,7 +197,9 @@ local STORM_TIMEOUT_MS = 15000
 
 local function isStormTransactionTimedOut(uuid)
     local t = stormTransactions[uuid]
-    if not t then return false end
+    if not t then
+        return false
+    end
     return (getTimestampMs() - t.startTime) > STORM_TIMEOUT_MS
 end
 
@@ -205,10 +234,20 @@ function ISInventoryTransferAction:start()
     end
 
     -- Stop microwave working when putting new stuff in it
-    if self.destContainer and self.destContainer:getType() == "microwave" and self.destContainer:getParent() and self.destContainer:getParent():Activated() then
+    if
+        self.destContainer
+        and self.destContainer:getType() == "microwave"
+        and self.destContainer:getParent()
+        and self.destContainer:getParent():Activated()
+    then
         self.destContainer:getParent():setActivated(false)
     end
-    if self.srcContainer and self.srcContainer:getType() == "microwave" and self.srcContainer:getParent() and self.srcContainer:getParent():Activated() then
+    if
+        self.srcContainer
+        and self.srcContainer:getType() == "microwave"
+        and self.srcContainer:getParent()
+        and self.srcContainer:getParent():Activated()
+    then
         self.srcContainer:getParent():setActivated(false)
     end
 
@@ -221,13 +260,20 @@ function ISInventoryTransferAction:start()
 
     if self.item and self.item:getType() == "Animal" then
         -- Hack: breed sound played by IsoGridSquare.AddWorldInventoryItem()
-    elseif not ISInventoryTransferAction.putSound or not self.character:getEmitter():isPlaying(ISInventoryTransferAction.putSound) then
+    elseif
+        not ISInventoryTransferAction.putSound
+        or not self.character:getEmitter():isPlaying(ISInventoryTransferAction.putSound)
+    then
         local soundName = self:getTransferStartSoundName()
         if soundName then
             ISInventoryTransferAction.putSoundContainer = self.destContainer
-            if ISInventoryTransferAction.putSoundTime + ISInventoryTransferAction.putSoundDelay < getTimestamp() then
+            if
+                ISInventoryTransferAction.putSoundTime + ISInventoryTransferAction.putSoundDelay
+                < getTimestamp()
+            then
                 ISInventoryTransferAction.putSoundTime = getTimestamp()
-                ISInventoryTransferAction.putSound = self.character:getEmitter():playSound(soundName)
+                ISInventoryTransferAction.putSound =
+                    self.character:getEmitter():playSound(soundName)
             end
         end
     end
@@ -242,7 +288,8 @@ function ISInventoryTransferAction:start()
 
     -- KEY CHANGE: UUID-based transaction instead of vanilla byte ID
     self._stormTransfer = true
-    self._stormUUID = createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
+    self._stormUUID =
+        createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
     self.started = true
 end
 
@@ -261,16 +308,33 @@ function ISInventoryTransferAction:update()
     -- Replicate vanilla update() non-transaction logic (lines 128-156)
 
     -- Unhappiness from stripping corpse items
-    if self.character and (not self.character:hasTrait(CharacterTrait.DESENSITIZED)) and self.srcContainer and self.srcContainer:getType() and (self.srcContainer:getType() == "inventoryfemale" or self.srcContainer:getType() == "inventorymale") then
+    if
+        self.character
+        and (not self.character:hasTrait(CharacterTrait.DESENSITIZED))
+        and self.srcContainer
+        and self.srcContainer:getType()
+        and (
+            self.srcContainer:getType() == "inventoryfemale"
+            or self.srcContainer:getType() == "inventorymale"
+        )
+    then
         local rate = getGameTime():getMultiplier()
-        if self.character:hasTrait(CharacterTrait.COWARDLY) then rate = rate * 2
-        elseif self.character:hasTrait(CharacterTrait.BRAVE) then rate = rate / 2 end
+        if self.character:hasTrait(CharacterTrait.COWARDLY) then
+            rate = rate * 2
+        elseif self.character:hasTrait(CharacterTrait.BRAVE) then
+            rate = rate / 2
+        end
         local stats = self.character:getStats()
         stats:add(CharacterStat.UNHAPPINESS, rate / 100)
     end
 
     -- Blood fear stress
-    if self.character and self.character:hasTrait(CharacterTrait.HEMOPHOBIC) and self.item and self.item:getBloodLevel() > 0 then
+    if
+        self.character
+        and self.character:hasTrait(CharacterTrait.HEMOPHOBIC)
+        and self.item
+        and self.item:getBloodLevel() > 0
+    then
         local rate = self.item:getBloodLevelAdjustedLow() * getGameTime():getMultiplier()
         local stats = self.character:getStats()
         stats:add(CharacterStat.STRESS, rate / 10000)
@@ -282,9 +346,13 @@ function ISInventoryTransferAction:update()
             self.character:faceThisObject(self.selectedContainer:getParent())
         end
         if self.character:shouldBeTurning() then
-            getPlayerLoot(self.character:getPlayerNum()):setForceSelectedContainer(self.selectedContainer)
+            getPlayerLoot(self.character:getPlayerNum()):setForceSelectedContainer(
+                self.selectedContainer
+            )
         end
-        getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(self.selectedContainer)
+        getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(
+            self.selectedContainer
+        )
     end
 
     self.item:setJobDelta(self.action:getJobDelta())
@@ -334,7 +402,9 @@ function ISInventoryTransferAction:perform()
     local queuedItem = table.remove(self.queueList, 1)
 
     if self.selectedContainer then
-        getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(self.selectedContainer)
+        getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(
+            self.selectedContainer
+        )
     end
 
     if queuedItem ~= nil then
@@ -366,7 +436,8 @@ function ISInventoryTransferAction:perform()
         self:resetJobDelta()
         self:startActionAnim()
         -- KEY CHANGE: UUID-based transaction for next item
-        self._stormUUID = createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
+        self._stormUUID =
+            createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
     else
         -- Queue empty — clean up
         self:playSourceContainerCloseSound()
@@ -379,7 +450,16 @@ function ISInventoryTransferAction:perform()
 
         if self.onCompleteFunc then
             local args = self.onCompleteArgs
-            self.onCompleteFunc(args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
+            self.onCompleteFunc(
+                args[1],
+                args[2],
+                args[3],
+                args[4],
+                args[5],
+                args[6],
+                args[7],
+                args[8]
+            )
         end
 
         ISBaseTimedAction.perform(self)

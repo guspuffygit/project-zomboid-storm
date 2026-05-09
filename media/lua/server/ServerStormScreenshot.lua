@@ -1,4 +1,4 @@
-require "StormBase64"
+require("StormBase64")
 
 local pendingScreenshots = {}
 
@@ -48,7 +48,13 @@ local function onScreenshotChunk(player, args)
         end
         local base64str = table.concat(parts)
 
-        print("[Storm] Screenshot complete from " .. playerName .. ": " .. string.len(base64str) .. " Base64 chars")
+        print(
+            "[Storm] Screenshot complete from "
+                .. playerName
+                .. ": "
+                .. string.len(base64str)
+                .. " Base64 chars"
+        )
 
         local bytes = StormBase64.decode(base64str)
         local filename = "storm_screenshot_" .. playerName .. "_" .. id .. ".png"

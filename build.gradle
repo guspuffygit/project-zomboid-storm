@@ -311,6 +311,61 @@ tasks.register('installStorm', Sync) {
 	into destDir
 }
 
+def styluaVersion = '2.4.1'
+def styluaBinaryName = os.isWindows() ? 'stylua.exe' : 'stylua'
+def styluaCacheDir = layout.buildDirectory.dir("stylua/${styluaVersion}").get().asFile
+def styluaBinary = new File(styluaCacheDir, styluaBinaryName)
+
+tasks.register('installStylua') {
+	group = 'verification'
+	description = "Downloads StyLua v${styluaVersion} if not already cached."
+	outputs.file(styluaBinary)
+
+	doLast {
+		if (styluaBinary.exists() && styluaBinary.canExecute()) {
+			return
+		}
+
+		def arch = System.getProperty('os.arch')
+		def normalizedArch
+		if (arch == 'amd64' || arch == 'x86_64') {
+			normalizedArch = 'x86_64'
+		} else if (arch == 'aarch64' || arch == 'arm64') {
+			normalizedArch = 'aarch64'
+		} else {
+			throw new GradleException("Unsupported architecture for StyLua: ${arch}")
+		}
+
+		def platform
+		if (os.isMacOsX()) {
+			platform = "macos-${normalizedArch}"
+		} else if (os.isLinux()) {
+			platform = "linux-${normalizedArch}"
+		} else if (os.isWindows()) {
+			platform = "windows-${normalizedArch}"
+		} else {
+			throw new GradleException("Unsupported OS for StyLua")
+		}
+
+		def url = "https://github.com/JohnnyMorganz/StyLua/releases/download/v${styluaVersion}/stylua-${platform}.zip"
+		styluaCacheDir.mkdirs()
+		def zipFile = new File(styluaCacheDir, "stylua-${platform}.zip")
+
+		logger.lifecycle("Downloading StyLua v${styluaVersion} from ${url}")
+		new URL(url).withInputStream { input ->
+			zipFile.withOutputStream { it << input }
+		}
+
+		ant.unzip(src: zipFile, dest: styluaCacheDir)
+		zipFile.delete()
+
+		if (!styluaBinary.exists()) {
+			throw new GradleException("StyLua binary not found at ${styluaBinary} after extraction")
+		}
+		styluaBinary.setExecutable(true)
+	}
+}
+
 spotless {
 	java {
 		target 'src/**/*.java', 'zombie/**/*.java'
@@ -328,6 +383,22 @@ spotless {
 		target '**/*.json'
 		gson().indentWithSpaces(2)
 	}
+	format 'lua', {
+		target 'media/lua/**/*.lua', 'src/main/resources/lua/**/*.lua', 'lua/**/*.lua'
+		nativeCmd('stylua', styluaBinary.absolutePath, ['-'])
+		trimTrailingWhitespace()
+		endWithNewline()
+	}
+}
+
+afterEvaluate {
+	tasks.matching {
+		it.name in [
+			'spotlessLuaCheck',
+			'spotlessLuaApply'
+		]
+	}
+	.configureEach { dependsOn 'installStylua' }
 }
 
 tasks.register('generateWorkshopFile') {

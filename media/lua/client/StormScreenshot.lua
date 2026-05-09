@@ -1,4 +1,4 @@
-require "StormBase64"
+require("StormBase64")
 
 StormScreenshot = StormScreenshot or {}
 
@@ -29,27 +29,32 @@ local function sendChunks(screenshotId, base64str)
 end
 
 local function processCapture()
-    if not pendingCapture then return end
+    if not pendingCapture then
+        return
+    end
 
     local state = pendingCapture.state
 
     if state == "polling" then
         pendingCapture.ticks = pendingCapture.ticks + 1
-        if pendingCapture.ticks < POLL_DELAY_TICKS then return end
+        if pendingCapture.ticks < POLL_DELAY_TICKS then
+            return
+        end
         if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
---             print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
+            --             print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
             pendingCapture = nil
             return
         end
         local stream = getFileInput(pendingCapture.filename)
-        if not stream then return end
+        if not stream then
+            return
+        end
         pendingCapture.bytes = stream:readAllBytes()
         stream:close()
---         print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
+        --         print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
         pendingCapture.encodePos = 1
         pendingCapture.encodedParts = {}
         pendingCapture.state = "encoding"
-
     elseif state == "encoding" then
         local bytes = pendingCapture.bytes
         local pos = pendingCapture.encodePos
@@ -62,11 +67,11 @@ local function processCapture()
         pendingCapture.encodePos = endPos + 1
         if pendingCapture.encodePos > #bytes then
             local base64str = table.concat(parts)
---             print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
+            --             print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
             pendingCapture.bytes = nil
             pendingCapture.encodedParts = nil
             sendChunks(pendingCapture.id, base64str)
---             print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
+            --             print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
             pendingCapture = nil
         end
     end
@@ -94,7 +99,9 @@ function StormScreenshot.captureAndSend(screenshotId)
 end
 
 local function onServerCommand(module, command, args)
-    if module ~= "stormScreenshot" then return end
+    if module ~= "stormScreenshot" then
+        return
+    end
     if command == "request" and args and args.requestId then
         StormScreenshot.captureAndSend(args.requestId)
     end

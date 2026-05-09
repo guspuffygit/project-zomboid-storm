@@ -1,4 +1,4 @@
-require "PersistedTable"
+require("PersistedTable")
 
 local MODULE = "StormDiagnostics"
 local COMMAND = "ramAlloc"
@@ -52,10 +52,18 @@ local function showLowRamModal(maxMb, maxGiB)
     local btnCopyY = modal:getHeight() - btnHgt - pad - btnHgt - pad - btnHgt - pad
 
     local tickBox
-    local btnCopy = ISButton:new(btnX, btnCopyY, btnWid, btnHgt, "Copy " .. RECOMMENDED_ARG, modal, function(self)
-        Clipboard.setClipboard(RECOMMENDED_ARG)
-        self:setTitle("Copied!")
-    end)
+    local btnCopy = ISButton:new(
+        btnX,
+        btnCopyY,
+        btnWid,
+        btnHgt,
+        "Copy " .. RECOMMENDED_ARG,
+        modal,
+        function(self)
+            Clipboard.setClipboard(RECOMMENDED_ARG)
+            self:setTitle("Copied!")
+        end
+    )
     btnCopy:initialise()
     modal:addChild(btnCopy)
 
@@ -67,10 +75,18 @@ local function showLowRamModal(maxMb, maxGiB)
 
     local closeBtnWid = 80
     local closeBtnX = (width - closeBtnWid) / 2
-    local btnClose = ISButton:new(closeBtnX, btnCopyY + btnHgt + pad + btnHgt + pad, closeBtnWid, btnHgt, "Close", modal, function(self)
-        saveDontShowAgain(tickBox)
-        modal:destroy()
-    end)
+    local btnClose = ISButton:new(
+        closeBtnX,
+        btnCopyY + btnHgt + pad + btnHgt + pad,
+        closeBtnWid,
+        btnHgt,
+        "Close",
+        modal,
+        function(self)
+            saveDontShowAgain(tickBox)
+            modal:destroy()
+        end
+    )
     btnClose:initialise()
     modal:addChild(btnClose)
 

@@ -1,9 +1,11 @@
 StormBase64 = StormBase64 or {}
 
-local CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 local ENCODE = {}
-for i = 0, 63 do ENCODE[i] = string.byte(CHARS, i + 1) end
+for i = 0, 63 do
+    ENCODE[i] = string.byte(CHARS, i + 1)
+end
 
 local DECODE_LOOKUP = nil
 
@@ -26,9 +28,15 @@ function StormBase64.encode(bytes, startIdx, endIdx)
         local b1 = bytes[i] or 0
         local b2 = bytes[i + 1] or 0
         local b3 = bytes[i + 2] or 0
-        if b1 < 0 then b1 = b1 + 256 end
-        if b2 < 0 then b2 = b2 + 256 end
-        if b3 < 0 then b3 = b3 + 256 end
+        if b1 < 0 then
+            b1 = b1 + 256
+        end
+        if b2 < 0 then
+            b2 = b2 + 256
+        end
+        if b3 < 0 then
+            b3 = b3 + 256
+        end
 
         local idx1 = math.floor(b1 / 4)
         local idx2 = (b1 % 4) * 16 + math.floor(b2 / 16)

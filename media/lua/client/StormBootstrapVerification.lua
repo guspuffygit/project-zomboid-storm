@@ -1,4 +1,4 @@
-require "PersistedTable"
+require("PersistedTable")
 
 local SETTINGS_FILE = "StormBootstrapSettings.txt"
 
@@ -16,7 +16,7 @@ local function saveDontShowAgain(tickBox)
 end
 
 local function createOSModal()
-    local core = getCore();
+    local core = getCore()
 
     local descriptionLines = {
         "OPTIONAL SETUP",
@@ -31,77 +31,113 @@ local function createOSModal()
     local description = table.concat(descriptionLines, "\n\n")
 
     local width, height = ISModalDialog.CalcSize(0, 0, description)
-    height = height + 100;
-    local x = (core:getScreenWidth() / 2) - (width / 2);
-    local y = (core:getScreenHeight() / 2) - (height / 2);
+    height = height + 100
+    local x = (core:getScreenWidth() / 2) - (width / 2)
+    local y = (core:getScreenHeight() / 2) - (height / 2)
 
-    local windowsCopy = '-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --'
-    local linuxCopy = '-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
-    local macCopy = '-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --'
+    local windowsCopy =
+        "-agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --"
+    local linuxCopy =
+        "-javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --"
+    local macCopy =
+        "-javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --"
 
-    local modal = ISModalDialog:new(x, y, width, height, description, false, nil, nil, nil);
-    modal:initialise();
-    modal:addToUIManager();
+    local modal = ISModalDialog:new(x, y, width, height, description, false, nil, nil, nil)
+    modal:initialise()
+    modal:addToUIManager()
 
     if modal.ok then
-        modal:removeChild(modal.ok);
-        modal.ok = nil;
+        modal:removeChild(modal.ok)
+        modal.ok = nil
     end
 
-    local btnWid = 100;
-    local btnHgt = 25;
-    local pad = 10;
-    local totalBtnWidth = (btnWid * 3) + (pad * 2);
-    local startX = (width - totalBtnWidth) / 2;
-    local btnY = modal:getHeight() - btnHgt - pad - btnHgt - pad - btnHgt - 10;
+    local btnWid = 100
+    local btnHgt = 25
+    local pad = 10
+    local totalBtnWidth = (btnWid * 3) + (pad * 2)
+    local startX = (width - totalBtnWidth) / 2
+    local btnY = modal:getHeight() - btnHgt - pad - btnHgt - pad - btnHgt - 10
 
-    local btnWindows = ISButton:new(startX, btnY, btnWid, btnHgt, "Copy Windows", modal, function(self)
-        print('Windows')
-        Clipboard.setClipboard(windowsCopy)
-        saveDontShowAgain(tickBox)
-        self:destroy();
-    end);
-    btnWindows:initialise();
-    modal:addChild(btnWindows);
+    local btnWindows = ISButton:new(
+        startX,
+        btnY,
+        btnWid,
+        btnHgt,
+        "Copy Windows",
+        modal,
+        function(self)
+            print("Windows")
+            Clipboard.setClipboard(windowsCopy)
+            saveDontShowAgain(tickBox)
+            self:destroy()
+        end
+    )
+    btnWindows:initialise()
+    modal:addChild(btnWindows)
 
-    local btnLinux = ISButton:new(startX + btnWindows.width + pad, btnY, btnWid, btnHgt, "Copy Linux", modal, function(self)
-        print('Linux')
-        Clipboard.setClipboard(linuxCopy)
-        saveDontShowAgain(tickBox)
-        self:destroy();
-    end);
-    btnLinux:initialise();
-    modal:addChild(btnLinux);
+    local btnLinux = ISButton:new(
+        startX + btnWindows.width + pad,
+        btnY,
+        btnWid,
+        btnHgt,
+        "Copy Linux",
+        modal,
+        function(self)
+            print("Linux")
+            Clipboard.setClipboard(linuxCopy)
+            saveDontShowAgain(tickBox)
+            self:destroy()
+        end
+    )
+    btnLinux:initialise()
+    modal:addChild(btnLinux)
 
-    local btnMac = ISButton:new(startX + btnWindows.width + pad + btnLinux.width + pad, btnY, btnWid, btnHgt, "Copy Mac", modal, function(self)
-        print('Mac')
-        Clipboard.setClipboard(macCopy)
-        saveDontShowAgain(tickBox)
-        self:destroy();
-    end);
+    local btnMac = ISButton:new(
+        startX + btnWindows.width + pad + btnLinux.width + pad,
+        btnY,
+        btnWid,
+        btnHgt,
+        "Copy Mac",
+        modal,
+        function(self)
+            print("Mac")
+            Clipboard.setClipboard(macCopy)
+            saveDontShowAgain(tickBox)
+            self:destroy()
+        end
+    )
 
-    btnMac:initialise();
-    modal:addChild(btnMac);
+    btnMac:initialise()
+    modal:addChild(btnMac)
 
-    local tickBox = ISTickBox:new(startX, btnY + btnHgt + pad, width - (startX * 2), btnHgt, "", nil, nil);
-    tickBox:initialise();
-    tickBox:instantiate();
-    tickBox:addOption("Don't show this again");
-    modal:addChild(tickBox);
+    local tickBox =
+        ISTickBox:new(startX, btnY + btnHgt + pad, width - (startX * 2), btnHgt, "", nil, nil)
+    tickBox:initialise()
+    tickBox:instantiate()
+    tickBox:addOption("Don't show this again")
+    modal:addChild(tickBox)
 
-    local closeBtnWid = 80;
-    local closeBtnX = (width - closeBtnWid) / 2;
-    local btnClose = ISButton:new(closeBtnX, btnY + btnHgt + pad + btnHgt + pad, closeBtnWid, btnHgt, "Close", modal, function(self)
-        saveDontShowAgain(tickBox)
-        self:destroy();
-    end);
-    btnClose:initialise();
-    modal:addChild(btnClose);
+    local closeBtnWid = 80
+    local closeBtnX = (width - closeBtnWid) / 2
+    local btnClose = ISButton:new(
+        closeBtnX,
+        btnY + btnHgt + pad + btnHgt + pad,
+        closeBtnWid,
+        btnHgt,
+        "Close",
+        modal,
+        function(self)
+            saveDontShowAgain(tickBox)
+            self:destroy()
+        end
+    )
+    btnClose:initialise()
+    modal:addChild(btnClose)
 
     modal.x = (core:getScreenWidth() / 2) - (modal.x / 2)
     modal.y = (core:getScreenHeight() / 2) - (modal.y / 2)
 
-    return modal;
+    return modal
 end
 
 local function checkStorm()

@@ -1,9 +1,11 @@
-require "TimedActions/ISTakeWaterAction"
+require("TimedActions/ISTakeWaterAction")
 
 local NATURAL_WATER_DURATION = 100
 
 local function isNaturalWater(waterObject)
-    if not waterObject then return false end
+    if not waterObject then
+        return false
+    end
     local props = waterObject:getProperties()
     return props ~= nil and props:has(IsoFlagType.water)
 end
