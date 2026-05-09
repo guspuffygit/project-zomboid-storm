@@ -1,5 +1,6 @@
 package io.pzstorm.storm.http;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.pzstorm.storm.IntegrationTest;
 import io.pzstorm.storm.core.StormVersion;
@@ -180,6 +181,16 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
         Assertions.assertEquals("missing request body", response.body());
     }
 
+    @Test
+    void typedBodyHandlerRejectsMissingRequiredField() throws Exception {
+        HttpResponse<String> response = postJson("/test/echo", "{\"count\":7}");
+
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertTrue(
+                response.body().startsWith("invalid JSON:") && response.body().contains("name"),
+                "expected invalid-JSON message naming the missing field, got: " + response.body());
+    }
+
     private HttpResponse<String> postJson(String path, String body) throws Exception {
         HttpRequest request =
                 HttpRequest.newBuilder()
@@ -193,7 +204,7 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
 
     public static class TypedBodyEchoEndpoints {
 
-        public record EchoRequest(String name, int count) {}
+        public record EchoRequest(@JsonProperty(required = true) String name, int count) {}
 
         private static final ObjectMapper MAPPER = new ObjectMapper();
 
