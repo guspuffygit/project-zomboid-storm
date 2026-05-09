@@ -2,6 +2,8 @@ package io.pzstorm.storm.http;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -15,8 +17,15 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Registry and dispatcher for {@link HttpEndpoint}-annotated handler methods. Exact path matching
  * only; query strings are read from the event but not used for routing.
+ *
+ * <p>Handler methods may declare a second parameter of any non-{@link HttpRequestEvent} type. That
+ * parameter is treated as the JSON request body and is deserialized by Jackson before the handler
+ * runs. The dispatcher rejects empty or malformed bodies with a 400 response, so handlers can
+ * assume the bound argument is non-null and well-formed.
  */
 public class HttpEndpointDispatcher {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final Map<String, HandlerMethod> HANDLERS = new HashMap<>();
 
@@ -110,15 +119,36 @@ public class HttpEndpointDispatcher {
     private static class HandlerMethod {
         private final Method method;
         private final @Nullable Object handler;
+        private final @Nullable Class<?> bodyType;
 
         private HandlerMethod(Method method, @Nullable Object handler) {
             this.method = method;
             this.handler = handler;
+            Class<?>[] params = method.getParameterTypes();
+            this.bodyType = params.length == 2 ? params[1] : null;
         }
 
         private void invoke(HttpRequestEvent event) throws Throwable {
+            Object[] args;
+            if (bodyType == null) {
+                args = new Object[] {event};
+            } else {
+                String raw = event.getRequestBodyAsString();
+                if (raw == null || raw.isBlank()) {
+                    event.send(400, "missing request body");
+                    return;
+                }
+                Object body;
+                try {
+                    body = MAPPER.readValue(raw, bodyType);
+                } catch (JsonProcessingException e) {
+                    event.send(400, "invalid JSON: " + e.getOriginalMessage());
+                    return;
+                }
+                args = new Object[] {event, body};
+            }
             try {
-                method.invoke(handler, event);
+                method.invoke(handler, args);
             } catch (java.lang.reflect.InvocationTargetException e) {
                 throw e.getCause() != null ? e.getCause() : e;
             } catch (ReflectiveOperationException e) {

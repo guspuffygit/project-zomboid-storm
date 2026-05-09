@@ -3,4 +3,4 @@ function StormClient:present()
     return true
 end
 
-print('StormClient lua initialized.')
+print("StormClient lua initialized.")

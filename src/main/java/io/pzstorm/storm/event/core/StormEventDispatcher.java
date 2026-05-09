@@ -159,11 +159,21 @@ public class StormEventDispatcher {
 
         if (method.isAnnotationPresent(HttpEndpoint.class)) {
             Class<?>[] parameters = method.getParameterTypes();
-            if (parameters.length != 1 || !HttpRequestEvent.class.isAssignableFrom(parameters[0])) {
+            if (parameters.length < 1
+                    || parameters.length > 2
+                    || !HttpRequestEvent.class.isAssignableFrom(parameters[0])) {
                 throw new IllegalArgumentException(
                         "@HttpEndpoint method "
                                 + method.getName()
-                                + " must have exactly one HttpRequestEvent parameter");
+                                + " must have signature (HttpRequestEvent) or (HttpRequestEvent,"
+                                + " BodyType)");
+            }
+            if (parameters.length == 2 && HttpRequestEvent.class.isAssignableFrom(parameters[1])) {
+                throw new IllegalArgumentException(
+                        "@HttpEndpoint method "
+                                + method.getName()
+                                + " second parameter must be the JSON body type, not"
+                                + " HttpRequestEvent");
             }
             if (method.getReturnType() != void.class) {
                 throw new IllegalArgumentException(

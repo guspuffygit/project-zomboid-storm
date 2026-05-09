@@ -3,4 +3,4 @@ function StormServer:present()
     return true
 end
 
-print('StormServer lua initialized.')
+print("StormServer lua initialized.")
