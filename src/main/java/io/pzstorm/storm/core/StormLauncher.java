@@ -76,6 +76,14 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, ramAllocTracker);
 
+            if (StormEnv.isStormServer()) {
+                Class<?> losReportHandler =
+                        classLoader.loadClass("io.pzstorm.storm.los.PlayerLOSReportHandler");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, losReportHandler);
+            }
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());
