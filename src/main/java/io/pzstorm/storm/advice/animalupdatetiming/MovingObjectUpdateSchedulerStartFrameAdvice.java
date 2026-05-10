@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.animalupdatetiming;
 
+import io.pzstorm.storm.los.PlayerLOSAuthorityManager;
 import io.pzstorm.storm.metrics.AnimalSyncMetrics;
 import io.pzstorm.storm.metrics.AnimalUpdateLOSMetrics;
 import io.pzstorm.storm.metrics.AnimalUpdateMetrics;
@@ -56,5 +57,6 @@ public class MovingObjectUpdateSchedulerStartFrameAdvice {
         ZombieManagerAuthMetrics.recordTick();
         AnimalSyncMetrics.recordTick();
         LuaMainloopMetrics.recordTick();
+        PlayerLOSAuthorityManager.INSTANCE.tick();
     }
 }
