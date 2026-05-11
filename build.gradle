@@ -40,9 +40,9 @@ def getModId = {
 
 def getModName = {
 	switch (env) {
-		case 'prod':  return 'Storm - Core b42'
-		case 'stage': return '[STAGE] Storm - Core b42'
-		default: return '[DEV] Storm - Core b42'
+		case 'prod':  return 'Storm - Core b42 by Gus Puffy'
+		case 'stage': return '[STAGE] Storm - Core b42 by Gus Puffy'
+		default: return '[DEV] Storm - Core b42 by Gus Puffy'
 	}
 }
 
