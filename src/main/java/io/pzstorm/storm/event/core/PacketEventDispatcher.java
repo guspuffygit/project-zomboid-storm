@@ -52,7 +52,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.AddTicketPacket",
                     "zombie.network.packets.AddUserlogPacket",
                     "zombie.network.packets.AddWarningPointPacket",
-                    "zombie.network.packets.AddXpPacket",
                     "zombie.network.packets.BanUnbanUserActionPacket",
                     "zombie.network.packets.BodyDamageUpdatePacket",
                     "zombie.network.packets.BuildActionPacket",
