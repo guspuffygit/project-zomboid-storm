@@ -51,6 +51,7 @@ import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectStaticUpdaterRemoveSubstPatch;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
+import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSAuthorityPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
@@ -142,6 +143,7 @@ public class StormClassTransformers {
         registerTransformer(new IsoObjectStaticUpdaterRemoveSubstPatch());
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new IsoAnimalUpdateLOSPatch());
+        registerTransformer(new IsoPlayerUpdateLOSAuthorityPatch());
         registerTransformer(new IsoPlayerUpdateLOSPatch());
         registerTransformer(new ServerLOSUpdatePatch());
         registerTransformer(new ServerLOSFindDataPatch());

@@ -75,12 +75,52 @@ class PlayerLOSReportCacheTest implements UnitTest {
         assertEquals(3, PlayerLOSReportCache.INSTANCE.size());
     }
 
+    @Test
+    void getLatestReturnsFreshReport() {
+        PlayerLOSReportCache.Report report = newReportAt((short) 5, 1_000_000L);
+        PlayerLOSReportCache.INSTANCE.put(report);
+
+        // now = 1_000_050 (50ms after arrival), max age 300ms → fresh.
+        assertSame(report, PlayerLOSReportCache.INSTANCE.getLatest((short) 5, 1_000_050L, 300L));
+    }
+
+    @Test
+    void getLatestReturnsNullForStaleReport() {
+        PlayerLOSReportCache.Report report = newReportAt((short) 5, 1_000_000L);
+        PlayerLOSReportCache.INSTANCE.put(report);
+
+        // now = 1_000_400 (400ms after arrival), max age 300ms → stale.
+        assertNull(PlayerLOSReportCache.INSTANCE.getLatest((short) 5, 1_000_400L, 300L));
+    }
+
+    @Test
+    void getLatestReturnsNullForUnknownId() {
+        assertNull(PlayerLOSReportCache.INSTANCE.getLatest((short) 99, 1_000_000L, 300L));
+    }
+
+    @Test
+    void getLatestAtExactMaxAgeIsFresh() {
+        PlayerLOSReportCache.Report report = newReportAt((short) 5, 1_000_000L);
+        PlayerLOSReportCache.INSTANCE.put(report);
+
+        // Boundary: now - arrivedMs == maxAgeMs → still fresh (strict `>` rejects).
+        assertSame(report, PlayerLOSReportCache.INSTANCE.getLatest((short) 5, 1_000_300L, 300L));
+    }
+
     private static PlayerLOSReportCache.Report newReport(short id, long clientTick) {
+        return newReportAt(id, System.currentTimeMillis(), clientTick);
+    }
+
+    private static PlayerLOSReportCache.Report newReportAt(short id, long arrivedMs) {
+        return newReportAt(id, arrivedMs, 0L);
+    }
+
+    private static PlayerLOSReportCache.Report newReportAt(short id, long arrivedMs, long tick) {
         return new PlayerLOSReportCache.Report(
                 id,
-                clientTick,
+                tick,
                 0L,
-                System.currentTimeMillis(),
+                arrivedMs,
                 false,
                 false,
                 new short[0],
