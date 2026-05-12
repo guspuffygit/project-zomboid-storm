@@ -245,7 +245,16 @@ public class StormEventDispatcher {
         if (handlerMethods != null) {
             for (EventHandlerMethod method : handlerMethods) {
                 LOGGER.trace("Dispatching event {}", event.getClass().getName());
-                method.invoke(event);
+                try {
+                    method.invoke(event);
+                } catch (RuntimeException e) {
+                    LOGGER.error(
+                            "Event handler {}.{} threw on {}",
+                            method.method.getDeclaringClass().getName(),
+                            method.method.getName(),
+                            event.getClass().getName(),
+                            e);
+                }
             }
         }
 
