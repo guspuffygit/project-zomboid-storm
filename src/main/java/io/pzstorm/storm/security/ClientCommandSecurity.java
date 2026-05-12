@@ -13,24 +13,24 @@ import zombie.characters.Role;
  *
  * <p>Replaces the (broken) Lua hardening that used to live in {@code StormSecurityPatch.lua}: in
  * vanilla PZ, {@code Commands} is a file-local in each command module rather than a global, so the
- * Lua wrappers could never actually intercept the command dispatch. Vanilla also gates
- * {@code vehicle.remove} behind {@code NetworkPlayerAI.isDismantleAllowed()} which is hard-coded to
- * return {@code true} — effectively no gate. There is no vanilla gate on
- * {@code player.onHealthCheatCurrentPlayer}.
+ * Lua wrappers could never actually intercept the command dispatch. Vanilla also gates {@code
+ * vehicle.remove} behind {@code NetworkPlayerAI.isDismantleAllowed()} which is hard-coded to return
+ * {@code true} — effectively no gate. There is no vanilla gate on {@code
+ * player.onHealthCheatCurrentPlayer}.
  *
- * <p>{@link #gatedTriggerOnClientCommand} is substituted into the only
- * {@code LuaEventManager.triggerEvent("OnClientCommand", ...)} call site, in
- * {@code GameServer.receiveClientCommand}, by {@code GameServerReceiveClientCommandPatch}.
+ * <p>{@link #gatedTriggerOnClientCommand} is substituted into the only {@code
+ * LuaEventManager.triggerEvent("OnClientCommand", ...)} call site, in {@code
+ * GameServer.receiveClientCommand}, by {@code GameServerReceiveClientCommandPatch}.
  */
 public final class ClientCommandSecurity {
 
     private ClientCommandSecurity() {}
 
     /**
-     * Substitution target for the {@code LuaEventManager.triggerEvent} call inside
-     * {@code GameServer.receiveClientCommand}. Signature must match the 5-arg overload
-     * {@code (String, Object, Object, Object, Object)} exactly. Delegates to the original event
-     * dispatch only when {@link #isAllowed} permits.
+     * Substitution target for the {@code LuaEventManager.triggerEvent} call inside {@code
+     * GameServer.receiveClientCommand}. Signature must match the 5-arg overload {@code (String,
+     * Object, Object, Object, Object)} exactly. Delegates to the original event dispatch only when
+     * {@link #isAllowed} permits.
      */
     public static void gatedTriggerOnClientCommand(
             String event, Object module, Object command, Object player, Object args) {
