@@ -10,6 +10,12 @@ import zombie.network.GameServer;
  * Server-only ingestion handler for the client-Lua LOS rollout. Receives per-tick {@code
  * storm_los:report} commands and stores them in {@link PlayerLOSReportCache} for Phase 4's {@code
  * updateLOS} substitution to consume.
+ *
+ * <p><b>Thread contract:</b> {@link #onLOSReport} runs on the GameServer main update thread. UDP
+ * packets are queued by {@code UdpEngine} on its receiver thread but drained on the main thread via
+ * {@code mainLoopDealWithNetData} before {@code ClientCommandDispatcher} fires this handler, so the
+ * {@link se.krka.kahlua.vm.KahluaTable} reads here happen on the same thread that produced the
+ * table.
  */
 public final class PlayerLOSReportHandler {
 

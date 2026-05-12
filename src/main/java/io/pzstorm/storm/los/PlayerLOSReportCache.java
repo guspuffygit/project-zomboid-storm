@@ -6,6 +6,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Server-side cache of the latest client-Lua LOS report per player. Source for the Phase 4 {@code
  * updateLOS} substitution.
+ *
+ * <p><b>Thread contract:</b> backing storage is a {@link ConcurrentHashMap}, and {@link Report}
+ * instances are effectively immutable (final fields, defensive-copied arrays). All cache operations
+ * are safe to call from any thread; readers always observe a fully-published {@code Report}.
  */
 public final class PlayerLOSReportCache {
 
@@ -58,7 +62,13 @@ public final class PlayerLOSReportCache {
         return reports.size();
     }
 
-    /** Latest entry for a single player. {@code arrivedMs} is stamped on receipt by the server. */
+    /**
+     * Latest entry for a single player. {@code arrivedMs} is stamped on receipt by the server.
+     *
+     * <p>Effectively immutable: the array fields are defensive-copied in the constructor, so a
+     * {@code Report} placed in the cache is safe to publish and read from any thread. Callers must
+     * not mutate the arrays they receive via the public fields; treat them as read-only views.
+     */
     public static final class Report {
 
         public final short playerOnlineID;
@@ -87,9 +97,9 @@ public final class PlayerLOSReportCache {
             this.arrivedMs = arrivedMs;
             this.selfSpotted = selfSpotted;
             this.truncated = truncated;
-            this.ids = ids;
-            this.couldSee = couldSee;
-            this.canSee = canSee;
+            this.ids = ids.clone();
+            this.couldSee = couldSee.clone();
+            this.canSee = canSee.clone();
         }
     }
 }

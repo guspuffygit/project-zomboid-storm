@@ -1,8 +1,10 @@
 package io.pzstorm.storm.los;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
 import java.lang.reflect.Field;
@@ -105,6 +107,32 @@ class PlayerLOSReportCacheTest implements UnitTest {
 
         // Boundary: now - arrivedMs == maxAgeMs → still fresh (strict `>` rejects).
         assertSame(report, PlayerLOSReportCache.INSTANCE.getLatest((short) 5, 1_000_300L, 300L));
+    }
+
+    @Test
+    void reportConstructorDefensiveCopiesArrays() {
+        // Source arrays the caller might mutate after handing them off.
+        short[] ids = {10, 20, 30};
+        boolean[] couldSee = {true, false, true};
+        boolean[] canSee = {false, true, false};
+
+        PlayerLOSReportCache.Report report =
+                new PlayerLOSReportCache.Report(
+                        (short) 5, 1L, 0L, 1_000_000L, false, false, ids, couldSee, canSee);
+
+        // Identity must differ — Report should hold copies, not the originals.
+        assertFalse(ids == report.ids, "ids should be defensive-copied");
+        assertFalse(couldSee == report.couldSee, "couldSee should be defensive-copied");
+        assertFalse(canSee == report.canSee, "canSee should be defensive-copied");
+
+        // Mutating the source arrays must not corrupt the cached Report.
+        ids[0] = 999;
+        couldSee[0] = false;
+        canSee[0] = true;
+
+        assertEquals(10, report.ids[0]);
+        assertTrue(report.couldSee[0]);
+        assertFalse(report.canSee[0]);
     }
 
     private static PlayerLOSReportCache.Report newReport(short id, long clientTick) {

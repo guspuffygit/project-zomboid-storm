@@ -8,6 +8,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * IsoPlayerUpdateLOSAuthorityAdvice} decision wins per 60-second window so we can confirm the gate
  * is firing for the population we expect (solo + fresh report) and quantify fallback rates while
  * validating the rollout.
+ *
+ * <p><b>Thread contract:</b> recorder methods are called from the GameServer main update thread
+ * (from the {@code updateLOS} advice and {@link io.pzstorm.storm.los.PlayerLOSReportApplier}). The
+ * static {@code StormPlayerUpdateLOSAuthorityMetrics} daemon reports from its own thread, but it
+ * only touches the {@link AtomicLong} counters and the {@code volatile windowStartMs} — it does not
+ * read or mutate any state in {@link io.pzstorm.storm.los.PlayerLOSAuthorityManager} or {@link
+ * io.pzstorm.storm.los.PlayerLOSReportCache}.
  */
 public final class PlayerUpdateLOSAuthorityMetrics {
 

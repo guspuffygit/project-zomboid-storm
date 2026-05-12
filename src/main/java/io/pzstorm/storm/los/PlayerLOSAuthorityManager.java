@@ -3,10 +3,9 @@ package io.pzstorm.storm.los;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import zombie.characters.IsoPlayer;
 import zombie.network.GameServer;
 
@@ -30,6 +29,11 @@ import zombie.network.GameServer;
  * <p>Phase 1 is observability-only: nothing reads {@link #isSolo(short)} yet, no client packets, no
  * LOS routing change. Transitions are logged so the state machine can be validated against real
  * player movement before any behavior is wired up.
+ *
+ * <p><b>Thread contract:</b> {@link #tick()} is expected on the GameServer main update thread (it
+ * is driven from {@code MovingObjectUpdateSchedulerStartFrameAdvice}). {@link #isSolo(short)} is
+ * safe to call from any thread: backing storage is a {@link ConcurrentHashMap} and the per-player
+ * {@code solo} flag is {@code volatile}, so readers always see a fully-published value.
  */
 public final class PlayerLOSAuthorityManager {
 
@@ -42,8 +46,7 @@ public final class PlayerLOSAuthorityManager {
     private static final float GROUPED_THRESHOLD_SQ =
             GROUPED_THRESHOLD_SQUARES * GROUPED_THRESHOLD_SQUARES;
 
-    private final Map<Short, AuthorityState> states = new HashMap<>();
-    private final HashSet<Short> presentScratch = new HashSet<>();
+    private final Map<Short, AuthorityState> states = new ConcurrentHashMap<>();
 
     private PlayerLOSAuthorityManager() {}
 
@@ -59,26 +62,27 @@ public final class PlayerLOSAuthorityManager {
         ArrayList<IsoPlayer> players = GameServer.Players;
         int n = players.size();
 
-        presentScratch.clear();
+        HashSet<Short> present = new HashSet<>(n);
         for (int i = 0; i < n; i++) {
             IsoPlayer p = players.get(i);
             if (p == null) {
                 continue;
             }
-            presentScratch.add(p.getOnlineID());
+            present.add(p.getOnlineID());
         }
 
-        Iterator<Map.Entry<Short, AuthorityState>> it = states.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Short, AuthorityState> e = it.next();
-            if (!presentScratch.contains(e.getKey())) {
-                LOGGER.info(
-                        "[LOSAuthority] disconnected onlineID={} (was {})",
-                        e.getKey(),
-                        e.getValue().solo ? "SOLO" : "GROUPED");
-                it.remove();
-            }
-        }
+        states.entrySet()
+                .removeIf(
+                        e -> {
+                            if (present.contains(e.getKey())) {
+                                return false;
+                            }
+                            LOGGER.info(
+                                    "[LOSAuthority] disconnected onlineID={} (was {})",
+                                    e.getKey(),
+                                    e.getValue().solo ? "SOLO" : "GROUPED");
+                            return true;
+                        });
 
         for (int i = 0; i < n; i++) {
             IsoPlayer p = players.get(i);
@@ -96,9 +100,13 @@ public final class PlayerLOSAuthorityManager {
         AuthorityState state = states.get(id);
         if (state == null) {
             boolean initialSolo = (nearestSq < 0f || nearestSq >= SOLO_THRESHOLD_SQ);
-            states.put(id, new AuthorityState(initialSolo));
-            logTransition(player, "INITIAL " + (initialSolo ? "SOLO" : "GROUPED"), nearestSq);
-            return;
+            AuthorityState fresh = new AuthorityState(initialSolo);
+            AuthorityState existing = states.putIfAbsent(id, fresh);
+            if (existing == null) {
+                logTransition(player, "INITIAL " + (initialSolo ? "SOLO" : "GROUPED"), nearestSq);
+                return;
+            }
+            state = existing;
         }
 
         boolean newSolo = state.solo;
@@ -147,7 +155,7 @@ public final class PlayerLOSAuthorityManager {
     }
 
     private static final class AuthorityState {
-        boolean solo;
+        volatile boolean solo;
 
         AuthorityState(boolean solo) {
             this.solo = solo;

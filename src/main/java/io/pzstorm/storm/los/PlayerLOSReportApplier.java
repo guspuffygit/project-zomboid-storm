@@ -38,6 +38,14 @@ import zombie.network.ServerMap;
  * room, ghost/fakeDead state, lastSpotted membership) is read from authoritative server state.
  * Distance is recomputed server-side to keep the visibility gate from depending on client-supplied
  * numbers.
+ *
+ * <p><b>Thread contract:</b> {@link #apply} mutates {@code player.spottedList}, {@code lastSpotted}
+ * and {@code stats}, and reads vanilla {@code GameServer.IDToPlayerMap} / {@code
+ * ServerMap.zombieMap} via {@link #resolve}. It must be called on the GameServer main update thread
+ * (the thread that owns {@code IsoPlayer} state); today that is enforced by the {@code
+ * IsoPlayer.updateLOS} advice firing from the main tick loop. The {@link
+ * PlayerLOSReportCache.Report} argument itself is effectively immutable and safe to read here even
+ * if {@link PlayerLOSReportCache#put} runs concurrently on another thread.
  */
 public final class PlayerLOSReportApplier {
 

@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.pzstorm.storm.UnitTest;
 import java.lang.reflect.Field;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -296,6 +299,97 @@ class PlayerLOSAuthorityManagerTest implements UnitTest {
         PlayerLOSAuthorityManager.INSTANCE.tick();
 
         assertTrue(PlayerLOSAuthorityManager.INSTANCE.isSolo((short) 1));
+    }
+
+    // -------- concurrent access --------
+
+    @Test
+    void concurrentIsSoloAndTickDoNotCorruptStateOrThrow() throws Exception {
+        // Sanity check the defensive-future-proofing contract: many isSolo readers may run
+        // alongside a single tick writer without NPE / ConcurrentModificationException / hang.
+        int playerCount = 8;
+        IsoPlayer[] players = new IsoPlayer[playerCount];
+        for (int i = 0; i < playerCount; i++) {
+            players[i] = newPlayer((short) (i + 1), "p" + i, i * 100f, 0, 0);
+            GameServer.Players.add(players[i]);
+        }
+
+        int readerCount = 4;
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicBoolean stop = new AtomicBoolean(false);
+        CountDownLatch ready = new CountDownLatch(readerCount + 1);
+        CountDownLatch start = new CountDownLatch(1);
+
+        Thread[] readers = new Thread[readerCount];
+        for (int t = 0; t < readerCount; t++) {
+            readers[t] =
+                    new Thread(
+                            () -> {
+                                try {
+                                    ready.countDown();
+                                    start.await();
+                                    while (!stop.get()) {
+                                        // Mix known and unknown ids to exercise both hit and miss
+                                        // paths through the ConcurrentHashMap.
+                                        for (short i = 1; i <= playerCount + 4; i++) {
+                                            PlayerLOSAuthorityManager.INSTANCE.isSolo(i);
+                                        }
+                                    }
+                                } catch (Throwable e) {
+                                    failure.compareAndSet(null, e);
+                                }
+                            },
+                            "LOS-reader-" + t);
+            readers[t].setDaemon(true);
+            readers[t].start();
+        }
+
+        Thread writer =
+                new Thread(
+                        () -> {
+                            try {
+                                ready.countDown();
+                                start.await();
+                                int iter = 0;
+                                while (!stop.get()) {
+                                    // Toggle one player's x between near and far so tick must
+                                    // cross hysteresis thresholds and rewrite state.
+                                    IsoPlayer p = players[iter % playerCount];
+                                    float x = (iter % 2 == 0) ? 5f : 1000f;
+                                    setField(IsoMovingObject.class, p, "x", x);
+                                    PlayerLOSAuthorityManager.INSTANCE.tick();
+                                    iter++;
+                                }
+                            } catch (Throwable e) {
+                                failure.compareAndSet(null, e);
+                            }
+                        },
+                        "LOS-writer");
+        writer.setDaemon(true);
+        writer.start();
+
+        ready.await();
+        start.countDown();
+        Thread.sleep(250L);
+        stop.set(true);
+
+        writer.join(2_000L);
+        for (Thread r : readers) {
+            r.join(2_000L);
+        }
+
+        Throwable t = failure.get();
+        if (t != null) {
+            throw new AssertionError("Concurrent access failed", t);
+        }
+
+        // Final sanity: all players still have a state entry and isSolo is internally consistent.
+        for (int i = 0; i < playerCount; i++) {
+            short id = (short) (i + 1);
+            assertTrue(
+                    states.containsKey(id),
+                    "expected state entry for onlineID=" + id + " after concurrent run");
+        }
     }
 
     // -------- helpers --------
