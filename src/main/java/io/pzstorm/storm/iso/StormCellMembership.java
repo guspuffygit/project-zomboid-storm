@@ -163,6 +163,14 @@ public final class StormCellMembership {
      * <p>Order is not preserved — verified safe at all four call sites ({@code
      * IsoCell.ProcessStaticUpdaters}, {@code IsoCell:3500}, {@code FBORenderCell:292}, {@code
      * ServerGUI:299}, {@code TutorialManager:54}); none depend on insertion order.
+     *
+     * <p>If the sidecar has no entry for {@code object}, falls through to the vanilla {@code
+     * ArrayList.remove(Object)} linear scan. This handles cases where the object was appended
+     * directly to {@code staticUpdaterObjectList} without going through {@code
+     * IsoCell.addToStaticUpdaterObjectList} — notably {@code IsoDeadBody.setReanimateTime}, which
+     * is the one vanilla site that bypasses the patched add path. Without this fallback, those
+     * objects could never be removed by {@code IsoObject.removeFromWorld()}, leaving e.g.
+     * reanimating corpses ticking forever and spawning a zombie per frame.
      */
     public static boolean removeStaticUpdater(
             IsoCell cell, IsoObject object, ArrayList<IsoObject> list) {
@@ -172,12 +180,12 @@ public final class StormCellMembership {
         Entry e = entryFor(cell);
         Integer idx = e.staticUpdaterIndex.remove(object);
         if (idx == null) {
-            return false;
+            return list.remove(object);
         }
         int i = idx;
         int last = list.size() - 1;
         if (i < 0 || i > last) {
-            return false;
+            return list.remove(object);
         }
         if (i != last) {
             IsoObject moved = list.get(last);
