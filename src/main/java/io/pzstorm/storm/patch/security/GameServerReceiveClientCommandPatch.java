@@ -10,8 +10,8 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Replaces the {@code LuaEventManager.triggerEvent("OnClientCommand", ...)} call inside
- * {@code GameServer.receiveClientCommand} with the gated wrapper in {@code ClientCommandSecurity}.
+ * Replaces the {@code LuaEventManager.triggerEvent("OnClientCommand", ...)} call inside {@code
+ * GameServer.receiveClientCommand} with the gated wrapper in {@code ClientCommandSecurity}.
  *
  * <p>{@code receiveClientCommand} contains exactly one 5-arg {@code triggerEvent} invocation, so
  * scoping the substitution by method name + arg count uniquely identifies the call site. The

@@ -29,7 +29,9 @@ class ClientCommandSecurityTest implements UnitTest {
 
     @Test
     void nonPlayerSendersArePassedThrough() {
-        assertTrue(ClientCommandSecurity.isAllowed("OnClientCommand", "vehicle", "remove", null, null));
+        assertTrue(
+                ClientCommandSecurity.isAllowed(
+                        "OnClientCommand", "vehicle", "remove", null, null));
     }
 
     @Test
@@ -59,7 +61,11 @@ class ClientCommandSecurityTest implements UnitTest {
         IsoPlayer player = newPlayer("alice", (short) 1, role);
         assertTrue(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand", "vehicle", "remove", player, tableWith("vehicle", 42.0)));
+                        "OnClientCommand",
+                        "vehicle",
+                        "remove",
+                        player,
+                        tableWith("vehicle", 42.0)));
     }
 
     @Test
@@ -76,11 +82,7 @@ class ClientCommandSecurityTest implements UnitTest {
         KahluaTable args = tableWith("id", 7.0);
         assertTrue(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand",
-                        "player",
-                        "onHealthCheatCurrentPlayer",
-                        player,
-                        args));
+                        "OnClientCommand", "player", "onHealthCheatCurrentPlayer", player, args));
     }
 
     @Test
@@ -90,11 +92,7 @@ class ClientCommandSecurityTest implements UnitTest {
         args.rawset("action", "bleeding");
         assertFalse(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand",
-                        "player",
-                        "onHealthCheatCurrentPlayer",
-                        player,
-                        args));
+                        "OnClientCommand", "player", "onHealthCheatCurrentPlayer", player, args));
     }
 
     @Test
@@ -105,11 +103,7 @@ class ClientCommandSecurityTest implements UnitTest {
         KahluaTable args = tableWith("id", 9.0);
         assertTrue(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand",
-                        "player",
-                        "onHealthCheatCurrentPlayer",
-                        player,
-                        args));
+                        "OnClientCommand", "player", "onHealthCheatCurrentPlayer", player, args));
     }
 
     @Test
@@ -117,14 +111,11 @@ class ClientCommandSecurityTest implements UnitTest {
         IsoPlayer player = newPlayer("alice", (short) 7, new Role("User"));
         assertFalse(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand",
-                        "player",
-                        "onHealthCheatCurrentPlayer",
-                        player,
-                        null));
+                        "OnClientCommand", "player", "onHealthCheatCurrentPlayer", player, null));
     }
 
-    private static IsoPlayer newPlayer(String username, short onlineId, Role role) throws Exception {
+    private static IsoPlayer newPlayer(String username, short onlineId, Role role)
+            throws Exception {
         IsoPlayer player = (IsoPlayer) UNSAFE.allocateInstance(IsoPlayer.class);
         setField(IsoPlayer.class, player, "username", username);
         setField(IsoPlayer.class, player, "onlineId", onlineId);
