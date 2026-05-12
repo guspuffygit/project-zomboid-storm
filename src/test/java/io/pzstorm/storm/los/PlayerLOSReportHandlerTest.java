@@ -19,10 +19,7 @@ import sun.misc.Unsafe;
 import zombie.characters.IsoPlayer;
 import zombie.network.GameServer;
 
-/**
- * Unit tests for {@link PlayerLOSReportHandler#onLOSReport}. {@code onEveryOneMinute} is exercised
- * end-to-end on a live server; here we focus on payload parsing and the cache write contract.
- */
+/** Unit tests for {@link PlayerLOSReportHandler#onLOSReport}: payload parsing and cache writes. */
 class PlayerLOSReportHandlerTest implements UnitTest {
 
     private static final Unsafe UNSAFE = unsafe();
