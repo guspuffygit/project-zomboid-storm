@@ -1,94 +1,44 @@
 package io.pzstorm.storm.metrics;
 
-import io.pzstorm.storm.logging.StormLogger;
-import java.util.concurrent.atomic.AtomicLong;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.Histogram;
 
 public final class CellObjectAddMetrics {
 
-    private static final long REPORT_WINDOW_MS = 60_000L;
-
     public static final int VANILLA_SAMPLE_MASK = 1023;
 
-    private static final AtomicLong fastNanos = new AtomicLong();
-    private static final AtomicLong fastCalls = new AtomicLong();
-    private static final AtomicLong vanillaSimNanos = new AtomicLong();
-    private static final AtomicLong vanillaSimSamples = new AtomicLong();
-    private static final AtomicLong tickCount = new AtomicLong();
-    private static volatile long windowStartMs = System.currentTimeMillis();
+    private static final Histogram CALL_DURATION_FAST =
+            Histogram.builder()
+                    .name("pz_cell_object_add_fast_duration_seconds")
+                    .help("Fast-path duration for IsoCell add operations.")
+                    .nativeOnly()
+                    .register(StormPrometheus.registry());
 
-    static {
-        Thread reporter =
-                new Thread(CellObjectAddMetrics::reporterLoop, "StormCellObjectAddMetrics");
-        reporter.setDaemon(true);
-        reporter.start();
-    }
+    private static final Histogram CALL_DURATION_VANILLA_SIMULATED =
+            Histogram.builder()
+                    .name("pz_cell_object_add_vanilla_simulated_duration_seconds")
+                    .help(
+                            "Simulated vanilla-path duration for IsoCell add operations. Sampled 1-in-1024.")
+                    .nativeOnly()
+                    .register(StormPrometheus.registry());
+
+    private static final Counter TICKS =
+            Counter.builder()
+                    .name("pz_cell_object_add_ticks_total")
+                    .help("MovingObjectUpdateScheduler ticks observed.")
+                    .register(StormPrometheus.registry());
 
     private CellObjectAddMetrics() {}
 
     public static void recordFastNanos(long nanos) {
-        fastNanos.addAndGet(nanos);
-        fastCalls.incrementAndGet();
+        CALL_DURATION_FAST.observe(nanos / 1e9);
     }
 
     public static void recordVanillaSimulatedNanos(long nanos) {
-        vanillaSimNanos.addAndGet(nanos);
-        vanillaSimSamples.incrementAndGet();
+        CALL_DURATION_VANILLA_SIMULATED.observe(nanos / 1e9);
     }
 
     public static void recordTick() {
-        tickCount.incrementAndGet();
-    }
-
-    private static void reporterLoop() {
-        while (true) {
-            try {
-                Thread.sleep(REPORT_WINDOW_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            try {
-                report();
-            } catch (Throwable t) {
-                StormLogger.LOGGER.warn("CellObjectAddMetrics reporter failed", t);
-            }
-        }
-    }
-
-    private static void report() {
-        long fNanos = fastNanos.getAndSet(0L);
-        long fCalls = fastCalls.getAndSet(0L);
-        long vNanos = vanillaSimNanos.getAndSet(0L);
-        long vSamples = vanillaSimSamples.getAndSet(0L);
-        long ticks = tickCount.getAndSet(0L);
-        long now = System.currentTimeMillis();
-        long windowMs = now - windowStartMs;
-        windowStartMs = now;
-
-        if (ticks == 0L && fCalls == 0L) {
-            StormLogger.LOGGER.info(
-                    "CellObjectAddMetrics: window={}ms ticks=0 calls=0 (no activity)", windowMs);
-            return;
-        }
-
-        double fastAvgUs = fCalls == 0L ? 0.0 : fNanos / 1_000.0 / fCalls;
-        double vanillaAvgUs = vSamples == 0L ? 0.0 : vNanos / 1_000.0 / vSamples;
-        double ratio = fastAvgUs == 0.0 ? 0.0 : vanillaAvgUs / fastAvgUs;
-        double projectedVanillaTotalMs = vanillaAvgUs * fCalls / 1_000.0;
-        double fastTotalMs = fNanos / 1_000_000.0;
-
-        StormLogger.LOGGER.info(
-                "CellObjectAddMetrics: window={}ms ticks={} calls={} fastAvgUs={}"
-                        + " fastTotalMs={} vanillaSamples={} vanillaAvgUs={}"
-                        + " projectedVanillaTotalMs={} speedup={}x",
-                windowMs,
-                ticks,
-                fCalls,
-                String.format("%.3f", fastAvgUs),
-                String.format("%.2f", fastTotalMs),
-                vSamples,
-                String.format("%.2f", vanillaAvgUs),
-                String.format("%.2f", projectedVanillaTotalMs),
-                String.format("%.1f", ratio));
+        TICKS.inc();
     }
 }
