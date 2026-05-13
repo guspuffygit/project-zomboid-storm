@@ -3,6 +3,7 @@ package io.pzstorm.storm.transfer;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.OnClientCommand;
+import io.pzstorm.storm.metrics.TransferMetrics;
 import io.pzstorm.storm.transfer.commands.CancelTransferCommand;
 import io.pzstorm.storm.transfer.commands.TransferItemCommand;
 import java.util.Iterator;
@@ -47,7 +48,17 @@ public class StormTransferHandler {
             new ConcurrentHashMap<>();
 
     private record PendingTransfer(
-            IsoPlayer player, int itemId, ItemContainer src, ItemContainer dest, long endTime) {}
+            IsoPlayer player,
+            int itemId,
+            ItemContainer src,
+            ItemContainer dest,
+            long endTime,
+            long acceptedAt) {}
+
+    /** Accessor for {@link TransferMetrics} to observe the pending map size at scrape time. */
+    public static int pendingSize() {
+        return pendingTransfers.size();
+    }
 
     @OnClientCommand
     public static void onTransferItem(TransferItemCommand event) {
@@ -76,6 +87,7 @@ public class StormTransferHandler {
                     src == null ? "null" : "ok",
                     dest == null ? "null" : "ok",
                     src == dest);
+            TransferMetrics.recordRejected();
             sendResult(player, uuid, "rejected", 0);
             return;
         }
@@ -86,6 +98,7 @@ public class StormTransferHandler {
                     "transferItem: item {} not found in source for {}",
                     itemId,
                     player.getUsername());
+            TransferMetrics.recordRejected();
             sendResult(player, uuid, "rejected", 0);
             return;
         }
@@ -100,11 +113,13 @@ public class StormTransferHandler {
                     itemId,
                     player.getUsername(),
                     uuid);
+            TransferMetrics.recordRejected();
             sendResult(player, uuid, "rejected", 0);
             return;
         }
 
         if (!dest.isItemAllowed(item)) {
+            TransferMetrics.recordRejected();
             sendResult(player, uuid, "rejected", 0);
             return;
         }
@@ -124,6 +139,7 @@ public class StormTransferHandler {
                                         })
                                 .sum();
         if (!hasRoomForWeight(dest, player, item.getUnequippedWeight() + pendingWeight)) {
+            TransferMetrics.recordRejected();
             sendResult(player, uuid, "rejected", 0);
             return;
         }
@@ -131,13 +147,15 @@ public class StormTransferHandler {
         long duration = calculateDuration(item, src, dest, player);
         long endTime = GameTime.getServerTimeMills() + duration;
 
-        pendingTransfers.put(uuid, new PendingTransfer(player, itemId, src, dest, endTime));
+        pendingTransfers.put(
+                uuid, new PendingTransfer(player, itemId, src, dest, endTime, System.nanoTime()));
 
         LOGGER.debug(
                 "transferItem: accepted uuid={} duration={}ms for {}",
                 uuid,
                 duration,
                 player.getUsername());
+        TransferMetrics.recordAccepted();
         sendAccepted(player, uuid, duration);
     }
 
@@ -147,6 +165,7 @@ public class StormTransferHandler {
         PendingTransfer pending = pendingTransfers.get(uuid);
         if (pending != null && pending.player == event.getPlayer()) {
             pendingTransfers.remove(uuid);
+            TransferMetrics.recordCancelled();
             LOGGER.debug(
                     "cancelTransfer: removed uuid={} for {}",
                     uuid,
@@ -181,6 +200,7 @@ public class StormTransferHandler {
                         "processPending: item {} gone from source, rejecting uuid={}",
                         p.itemId,
                         uuid);
+                TransferMetrics.recordRejected();
                 sendResult(p.player, uuid, "rejected", 0);
                 continue;
             }
@@ -188,6 +208,7 @@ public class StormTransferHandler {
             if (!p.dest.isItemAllowed(item)
                     || !hasRoomForWeight(p.dest, p.player, item.getUnequippedWeight())) {
                 LOGGER.debug("processPending: dest can't accept item, rejecting uuid={}", uuid);
+                TransferMetrics.recordRejected();
                 sendResult(p.player, uuid, "rejected", 0);
                 continue;
             }
@@ -237,6 +258,7 @@ public class StormTransferHandler {
                     item.getFullType(),
                     p.player.getUsername(),
                     uuid);
+            TransferMetrics.recordDone(p.acceptedAt);
             sendResult(p.player, uuid, "done", 1);
         }
     }
@@ -255,6 +277,7 @@ public class StormTransferHandler {
                                         "cancelAllForPlayer: removing uuid={} for {}",
                                         entry.getKey(),
                                         player.getUsername());
+                                TransferMetrics.recordCancelled();
                                 return true;
                             }
                             return false;

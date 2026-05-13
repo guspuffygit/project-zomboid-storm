@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.packet.PacketEvent;
 import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
+import io.pzstorm.storm.metrics.PacketDispatchMetrics;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -211,14 +212,17 @@ public class PacketEventDispatcher {
     public static @Nullable Object createTypedEvent(Object packet, UdpConnection connection) {
         String simpleName = packet.getClass().getSimpleName();
         if (NO_TYPED_EVENT.contains(simpleName)) {
+            PacketDispatchMetrics.recordTypedEvent(simpleName, "none");
             return null;
         }
 
         Constructor<? extends PacketEvent> ctor = TYPED_EVENT_CACHE.get(simpleName);
+        boolean cacheHit = ctor != null;
         if (ctor == null) {
             ctor = resolveTypedEventConstructor(simpleName);
             if (ctor == null) {
                 NO_TYPED_EVENT.add(simpleName);
+                PacketDispatchMetrics.recordTypedEvent(simpleName, "none");
                 return null;
             }
             TYPED_EVENT_CACHE.put(simpleName, ctor);
@@ -227,9 +231,11 @@ public class PacketEventDispatcher {
         try {
             PacketEvent typedEvent = ctor.newInstance(packet, connection);
             typedEvent.capturePreState();
+            PacketDispatchMetrics.recordTypedEvent(simpleName, cacheHit ? "hit" : "miss");
             return typedEvent;
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to create typed packet event for {}", simpleName, e);
+            PacketDispatchMetrics.recordTypedEvent(simpleName, "error");
             return null;
         }
     }
@@ -246,6 +252,8 @@ public class PacketEventDispatcher {
      */
     public static void dispatchPacket(
             Object packet, UdpConnection connection, @Nullable Object preBuiltEvent) {
+        PacketDispatchMetrics.recordDispatch(packet.getClass().getSimpleName());
+
         // Dispatch the generic event (for @SubscribeEvent and @OnPacketReceived handlers)
         OnPacketReceivedEvent event = new OnPacketReceivedEvent(packet, connection);
         StormEventDispatcher.dispatchEvent(event);
@@ -292,9 +300,15 @@ public class PacketEventDispatcher {
             return;
         }
 
-        for (HandlerMethod handlerMethod : handlers) {
-            LOGGER.trace("Dispatching packet event {} to handler", event.packetClassName);
-            handlerMethod.invoke(event);
+        long start = System.nanoTime();
+        try {
+            for (HandlerMethod handlerMethod : handlers) {
+                LOGGER.trace("Dispatching packet event {} to handler", event.packetClassName);
+                handlerMethod.invoke(event);
+            }
+        } finally {
+            PacketDispatchMetrics.recordHandlerNanos(
+                    event.packetClassName, System.nanoTime() - start);
         }
     }
 

@@ -8,6 +8,7 @@ import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
 import io.pzstorm.storm.http.HttpEndpoint;
 import io.pzstorm.storm.http.HttpEndpointDispatcher;
 import io.pzstorm.storm.http.HttpRequestEvent;
+import io.pzstorm.storm.metrics.EventDispatchMetrics;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -241,13 +242,17 @@ public class StormEventDispatcher {
      * @param event {@link ZomboidEvent} to dispatch.
      */
     public static void dispatchEvent(ZomboidEvent event) {
+        String eventName = event.getClass().getSimpleName();
         Set<EventHandlerMethod> handlerMethods = DISPATCH_REGISTRY.get(event.getClass());
         if (handlerMethods != null) {
+            EventDispatchMetrics.recordDispatch(eventName);
+            long t0 = System.nanoTime();
             for (EventHandlerMethod method : handlerMethods) {
                 LOGGER.trace("Dispatching event {}", event.getClass().getName());
                 try {
                     method.invoke(event);
                 } catch (RuntimeException e) {
+                    EventDispatchMetrics.recordError(eventName);
                     LOGGER.error(
                             "Event handler {}.{} threw on {}",
                             method.method.getDeclaringClass().getName(),
@@ -256,6 +261,7 @@ public class StormEventDispatcher {
                             e);
                 }
             }
+            EventDispatchMetrics.recordHandlerNanos(eventName, System.nanoTime() - t0);
         }
 
         if (event instanceof OnClientCommandEvent clientCommandEvent) {

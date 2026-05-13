@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
+import io.pzstorm.storm.metrics.HttpEndpointMetrics;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -72,34 +73,50 @@ public class HttpEndpointDispatcher {
      * 404, 405, or 500 if the handler is missing or throws.
      */
     public static void dispatch(HttpExchange exchange) {
+        long startNanos = System.nanoTime();
         String httpMethod = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
         String path = exchange.getRequestURI().getPath();
         HandlerMethod handler = HANDLERS.get(key(httpMethod, path));
+        String metricPath = (handler != null || KNOWN_PATHS.contains(path)) ? path : "unknown";
 
-        if (handler == null) {
-            int status = KNOWN_PATHS.contains(path) ? 405 : 404;
-            sendStatus(exchange, status);
-            return;
-        }
-
-        HttpRequestEvent event = new HttpRequestEvent(exchange);
+        HttpRequestEvent event = null;
+        int fallbackStatus = -1;
         try {
-            handler.invoke(event);
-            if (!event.wasResponseSent()) {
-                event.sendEmpty(204);
+            if (handler == null) {
+                fallbackStatus = KNOWN_PATHS.contains(path) ? 405 : 404;
+                sendStatus(exchange, fallbackStatus);
+                return;
             }
-        } catch (Throwable t) {
-            LOGGER.error(
-                    "@HttpEndpoint handler {}.{} threw while serving {} {}",
-                    handler.method.getDeclaringClass().getSimpleName(),
-                    handler.method.getName(),
-                    httpMethod,
-                    path,
-                    t);
-            if (!event.wasResponseSent()) {
-                sendStatus(exchange, 500);
+
+            event = new HttpRequestEvent(exchange);
+            try {
+                handler.invoke(event);
+                if (!event.wasResponseSent()) {
+                    event.sendEmpty(204);
+                }
+            } catch (Throwable t) {
+                LOGGER.error(
+                        "@HttpEndpoint handler {}.{} threw while serving {} {}",
+                        handler.method.getDeclaringClass().getSimpleName(),
+                        handler.method.getName(),
+                        httpMethod,
+                        path,
+                        t);
+                if (!event.wasResponseSent()) {
+                    fallbackStatus = 500;
+                    sendStatus(exchange, fallbackStatus);
+                }
             }
         } finally {
+            int status =
+                    (event != null && event.getResponseStatus() != -1)
+                            ? event.getResponseStatus()
+                            : fallbackStatus;
+            if (status != -1) {
+                HttpEndpointMetrics.recordRequest(httpMethod, metricPath, status);
+            }
+            HttpEndpointMetrics.recordDuration(
+                    httpMethod, metricPath, System.nanoTime() - startNanos);
             exchange.close();
         }
     }

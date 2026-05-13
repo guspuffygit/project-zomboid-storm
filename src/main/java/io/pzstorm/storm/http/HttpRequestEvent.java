@@ -23,6 +23,7 @@ public class HttpRequestEvent {
 
     private final HttpExchange exchange;
     private boolean responseSent;
+    private int responseStatus = -1;
 
     public HttpRequestEvent(HttpExchange exchange) {
         this.exchange = exchange;
@@ -92,6 +93,7 @@ public class HttpRequestEvent {
 
     public void send(int status, byte[] body) throws IOException {
         responseSent = true;
+        responseStatus = status;
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
@@ -109,11 +111,16 @@ public class HttpRequestEvent {
 
     public void sendEmpty(int status) throws IOException {
         responseSent = true;
+        responseStatus = status;
         exchange.sendResponseHeaders(status, -1);
     }
 
     boolean wasResponseSent() {
         return responseSent;
+    }
+
+    int getResponseStatus() {
+        return responseStatus;
     }
 
     Headers rawResponseHeaders() {
