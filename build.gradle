@@ -622,10 +622,18 @@ tasks.register('runProjectZomboidServer', Exec) {
 
 	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
 
-	commandLine "${dir}/start-server.sh",
-			"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar",
-			'-DLOG_LEVEL=debug', '-Dstorm.server=true', '--',
-			'-servername', 'storm2'
+	def cmd = [
+		"${dir}/start-server.sh".toString(),
+		"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar".toString(),
+		'-DLOG_LEVEL=debug',
+		'-Dstorm.server=true'
+	]
+	def prometheusPort = getLocalProperty('prometheusPort').getOrNull()
+	if (prometheusPort) {
+		cmd.add("-DprometheusPort=${prometheusPort}".toString())
+	}
+	cmd.addAll(['--', '-servername', 'storm2'])
+	commandLine cmd
 	standardInput = System.in
 	standardOutput = System.out
 	errorOutput = System.err
