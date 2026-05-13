@@ -15,14 +15,14 @@ public final class NetDataMetrics {
 
     private static final Histogram CALL_DURATION =
             Histogram.builder()
-                    .name("storm_netdata_call_duration_seconds")
+                    .name("pz_netdata_call_duration_seconds")
                     .help("Duration of GameServer NetData advice invocations.")
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
     private static final Counter TICKS =
             Counter.builder()
-                    .name("storm_netdata_ticks_total")
+                    .name("pz_netdata_ticks_total")
                     .help("MovingObjectUpdateScheduler ticks observed.")
                     .register(StormPrometheus.registry());
 
