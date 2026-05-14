@@ -10,6 +10,7 @@ import io.pzstorm.storm.commands.TestSeedActionCommand;
 import io.pzstorm.storm.commands.TestStatsGetCommand;
 import io.pzstorm.storm.commands.TestStormKahluaTableCommand;
 import io.pzstorm.storm.commands.TestStormLuaCallFrameCommand;
+import io.pzstorm.storm.commands.TestWhisperChatStateCommand;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.util.StormEnv;
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ public class StormCommandRegistry {
             MOD_COMMANDS.add(TestStatsGetCommand.class);
             MOD_COMMANDS.add(TestStormLuaCallFrameCommand.class);
             MOD_COMMANDS.add(TestStormKahluaTableCommand.class);
+            MOD_COMMANDS.add(TestWhisperChatStateCommand.class);
         }
     }
 

@@ -224,6 +224,21 @@ public final class LiveServerClient implements AutoCloseable {
         PacketTypes.PacketType.GeneralAction.send(connection);
     }
 
+    /**
+     * Sends a raw {@code PlayerStartPMChat} packet mirroring what vanilla {@code
+     * ChatBase.sendStartWhisperChatPacketToServer(author, dest)} emits client-side. Two UTF
+     * strings: the as-typed author name and the as-typed destination name. The destination name is
+     * the bug surface — vanilla server resolves it case-sensitively, which {@link
+     * io.pzstorm.storm.advice.whisperchatfix.ChatServerWhisperAdvice} fixes.
+     */
+    public void sendPlayerStartPMChat(String authorName, String destName) {
+        ByteBufferWriter b = connection.startPacket();
+        PacketTypes.PacketType.PlayerStartPMChat.doPacket(b);
+        b.putUTF(authorName);
+        b.putUTF(destName);
+        PacketTypes.PacketType.PlayerStartPMChat.send(connection);
+    }
+
     @Override
     public void close() {
         if (connection != null) {

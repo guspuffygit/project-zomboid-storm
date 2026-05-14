@@ -25,6 +25,10 @@ import java.time.Duration;
  *   RSP: SENT
  *   RSP: ERROR &lt;message&gt;
  *
+ *   CLI: send-whisper-start &lt;authorName&gt; &lt;destName&gt;
+ *   RSP: SENT
+ *   RSP: ERROR &lt;message&gt;
+ *
  *   CLI: quit
  *   RSP: BYE                    — before exiting
  * </pre>
@@ -94,6 +98,20 @@ public final class LiveServerClientMain {
                                 }
                                 byte id = (byte) Integer.parseInt(parts[1]);
                                 client.sendGeneralActionReject(id);
+                                System.out.println("SENT");
+                                System.out.flush();
+                                break;
+                            }
+                        case "send-whisper-start":
+                            {
+                                if (client == null) {
+                                    System.out.println("ERROR not-connected");
+                                    System.out.flush();
+                                    break;
+                                }
+                                String authorName = parts[1];
+                                String destName = parts[2];
+                                client.sendPlayerStartPMChat(authorName, destName);
                                 System.out.println("SENT");
                                 System.out.flush();
                                 break;

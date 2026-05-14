@@ -14,6 +14,7 @@ import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
+import io.pzstorm.storm.patch.fixes.ChatServerProcessWhisperPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
@@ -170,6 +171,7 @@ public class StormClassTransformers {
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerReceiveClientCommandPatch());
         registerTransformer(new WorldMapAllKnownFixPatch());
+        registerTransformer(new ChatServerProcessWhisperPatch());
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {

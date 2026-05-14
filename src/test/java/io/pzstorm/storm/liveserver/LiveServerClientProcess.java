@@ -161,6 +161,14 @@ public final class LiveServerClientProcess implements AutoCloseable {
         }
     }
 
+    public void sendPlayerStartPMChat(String authorName, String destName) throws Exception {
+        send("send-whisper-start " + authorName + " " + destName);
+        String line = awaitResponse(Duration.ofSeconds(10));
+        if (line == null || !line.startsWith("SENT")) {
+            throw new IllegalStateException("[" + tag + "] send-whisper-start failed: " + line);
+        }
+    }
+
     private void send(String line) throws IOException {
         stdin.write(line);
         stdin.newLine();
