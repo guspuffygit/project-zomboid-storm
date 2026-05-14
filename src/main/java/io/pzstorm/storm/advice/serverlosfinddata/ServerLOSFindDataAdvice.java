@@ -36,11 +36,7 @@ public class ServerLOSFindDataAdvice {
         if (player == null) {
             return null;
         }
-        Object cached = ServerLOSPlayerDataCache.get(player);
-        if (cached != null) {
-            ServerLOSFindDataMetrics.recordHit();
-        }
-        return cached;
+        return ServerLOSPlayerDataCache.get(player);
     }
 
     @Advice.OnMethodExit

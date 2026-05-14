@@ -1,7 +1,11 @@
 package io.pzstorm.storm.metrics;
 
+import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Histogram;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class EventDispatchMetrics {
 
@@ -27,17 +31,23 @@ public final class EventDispatchMetrics {
                     .labelNames("event")
                     .register(StormPrometheus.registry());
 
+    private static final Map<String, CounterDataPoint> DISPATCH_DP = new ConcurrentHashMap<>();
+    private static final Map<String, DistributionDataPoint> DURATION_DP = new ConcurrentHashMap<>();
+    private static final Map<String, CounterDataPoint> ERRORS_DP = new ConcurrentHashMap<>();
+
     private EventDispatchMetrics() {}
 
     public static void recordDispatch(String event) {
-        DISPATCHES.labelValues(event).inc();
+        DISPATCH_DP.computeIfAbsent(event, e -> DISPATCHES.labelValues(e)).inc();
     }
 
     public static void recordHandlerNanos(String event, long nanos) {
-        HANDLER_DURATION.labelValues(event).observe(nanos / 1e9);
+        DURATION_DP
+                .computeIfAbsent(event, e -> HANDLER_DURATION.labelValues(e))
+                .observe(nanos / 1e9);
     }
 
     public static void recordError(String event) {
-        ERRORS.labelValues(event).inc();
+        ERRORS_DP.computeIfAbsent(event, e -> ERRORS.labelValues(e)).inc();
     }
 }

@@ -6,11 +6,11 @@ import io.pzstorm.storm.cache.ServerLOSPlayerDataCache;
 
 public final class ServerLOSFindDataMetrics {
 
-    private static final Counter LOOKUPS =
+    private static final Counter MISSES =
             Counter.builder()
-                    .name("storm_server_los_find_data_lookups_total")
-                    .help("ServerLOS find-data cache lookups by result.")
-                    .labelNames("result")
+                    .name("storm_server_los_find_data_misses_total")
+                    .help(
+                            "ServerLOS find-data cache misses (lookups that had to populate the cache).")
                     .register(StormPrometheus.registry());
 
     private static final GaugeWithCallback CACHE_SIZE =
@@ -22,11 +22,7 @@ public final class ServerLOSFindDataMetrics {
 
     private ServerLOSFindDataMetrics() {}
 
-    public static void recordHit() {
-        LOOKUPS.labelValues("hit").inc();
-    }
-
     public static void recordMiss() {
-        LOOKUPS.labelValues("miss").inc();
+        MISSES.inc();
     }
 }

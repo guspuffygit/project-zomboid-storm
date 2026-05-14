@@ -1,7 +1,11 @@
 package io.pzstorm.storm.metrics;
 
+import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Histogram;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class PacketDispatchMetrics {
 
@@ -27,17 +31,24 @@ public final class PacketDispatchMetrics {
                     .labelNames("packet", "result")
                     .register(StormPrometheus.registry());
 
+    private static final Map<String, CounterDataPoint> DISPATCH_DP = new ConcurrentHashMap<>();
+    private static final Map<String, DistributionDataPoint> DURATION_DP = new ConcurrentHashMap<>();
+    private static final Map<String, CounterDataPoint> TYPED_EVENT_DP = new ConcurrentHashMap<>();
+
     private PacketDispatchMetrics() {}
 
     public static void recordDispatch(String packet) {
-        DISPATCH.labelValues(packet).inc();
+        DISPATCH_DP.computeIfAbsent(packet, p -> DISPATCH.labelValues(p)).inc();
     }
 
     public static void recordHandlerNanos(String packet, long nanos) {
-        HANDLER_DURATION.labelValues(packet).observe(nanos / 1e9);
+        DURATION_DP
+                .computeIfAbsent(packet, p -> HANDLER_DURATION.labelValues(p))
+                .observe(nanos / 1e9);
     }
 
     public static void recordTypedEvent(String packet, String result) {
-        TYPED_EVENT.labelValues(packet, result).inc();
+        String key = packet + ":" + result;
+        TYPED_EVENT_DP.computeIfAbsent(key, k -> TYPED_EVENT.labelValues(packet, result)).inc();
     }
 }

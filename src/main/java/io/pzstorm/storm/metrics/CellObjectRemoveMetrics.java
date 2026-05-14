@@ -1,6 +1,5 @@
 package io.pzstorm.storm.metrics;
 
-import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Histogram;
 
 public final class CellObjectRemoveMetrics {
@@ -22,12 +21,6 @@ public final class CellObjectRemoveMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
-    private static final Counter TICKS =
-            Counter.builder()
-                    .name("pz_cell_object_remove_ticks_total")
-                    .help("MovingObjectUpdateScheduler ticks observed.")
-                    .register(StormPrometheus.registry());
-
     private CellObjectRemoveMetrics() {}
 
     public static void recordFastNanos(long nanos) {
@@ -36,9 +29,5 @@ public final class CellObjectRemoveMetrics {
 
     public static void recordVanillaSimulatedNanos(long nanos) {
         CALL_DURATION_VANILLA_SIMULATED.observe(nanos / 1e9);
-    }
-
-    public static void recordTick() {
-        TICKS.inc();
     }
 }

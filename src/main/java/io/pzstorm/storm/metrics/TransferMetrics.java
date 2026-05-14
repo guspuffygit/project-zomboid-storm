@@ -1,5 +1,6 @@
 package io.pzstorm.storm.metrics;
 
+import io.prometheus.metrics.core.datapoints.CounterDataPoint;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.GaugeWithCallback;
 import io.prometheus.metrics.core.metrics.Histogram;
@@ -13,6 +14,11 @@ public final class TransferMetrics {
                     .help("Storm transfer requests by terminal outcome.")
                     .labelNames("outcome")
                     .register(StormPrometheus.registry());
+
+    private static final CounterDataPoint ACCEPTED = REQUESTS.labelValues("accepted");
+    private static final CounterDataPoint REJECTED = REQUESTS.labelValues("rejected");
+    private static final CounterDataPoint DONE = REQUESTS.labelValues("done");
+    private static final CounterDataPoint CANCELLED = REQUESTS.labelValues("cancelled");
 
     private static final GaugeWithCallback PENDING_SIZE =
             GaugeWithCallback.builder()
@@ -31,19 +37,19 @@ public final class TransferMetrics {
     private TransferMetrics() {}
 
     public static void recordAccepted() {
-        REQUESTS.labelValues("accepted").inc();
+        ACCEPTED.inc();
     }
 
     public static void recordRejected() {
-        REQUESTS.labelValues("rejected").inc();
+        REJECTED.inc();
     }
 
     public static void recordDone(long acceptedAtNanos) {
-        REQUESTS.labelValues("done").inc();
+        DONE.inc();
         SETTLE_DURATION.observe((System.nanoTime() - acceptedAtNanos) / 1e9);
     }
 
     public static void recordCancelled() {
-        REQUESTS.labelValues("cancelled").inc();
+        CANCELLED.inc();
     }
 }

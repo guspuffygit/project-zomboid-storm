@@ -1,6 +1,5 @@
 package io.pzstorm.storm.metrics;
 
-import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Histogram;
 
 public final class ChunkLoadMetrics {
@@ -12,19 +11,9 @@ public final class ChunkLoadMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
-    private static final Counter TICKS =
-            Counter.builder()
-                    .name("pz_chunk_load_ticks_total")
-                    .help("ChunkLoad ticks observed.")
-                    .register(StormPrometheus.registry());
-
     private ChunkLoadMetrics() {}
 
     public static void recordNanos(long nanos) {
         CALL_DURATION.observe(nanos / 1e9);
-    }
-
-    public static void recordTick() {
-        TICKS.inc();
     }
 }

@@ -56,7 +56,6 @@ import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
-import io.pzstorm.storm.patch.performance.MovingObjectUpdateSchedulerTickPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
 import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
@@ -135,7 +134,6 @@ public class StormClassTransformers {
         registerTransformer(new IsoPhysicsObjectFpsPatch());
         registerTransformer(new IsoGeneratorElectricityPatch());
         registerTransformer(new IsoAnimalUpdateTimingPatch());
-        registerTransformer(new MovingObjectUpdateSchedulerTickPatch());
         registerTransformer(new IsoChunkRemoveFromWorldPatch());
         registerTransformer(new CellAddToProcessObjectFastPatch());
         registerTransformer(new CellAddToProcessObjectRemoveFastPatch());

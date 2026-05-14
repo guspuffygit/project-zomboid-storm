@@ -1,6 +1,5 @@
 package io.pzstorm.storm.metrics;
 
-import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Histogram;
 
 public final class ServerMapPostUpdateMetrics {
@@ -12,19 +11,9 @@ public final class ServerMapPostUpdateMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
-    private static final Counter TICKS =
-            Counter.builder()
-                    .name("pz_server_map_post_update_ticks_total")
-                    .help("ServerMapPostUpdate ticks observed.")
-                    .register(StormPrometheus.registry());
-
     private ServerMapPostUpdateMetrics() {}
 
     public static void recordNanos(long nanos) {
         CALL_DURATION.observe(nanos / 1e9);
-    }
-
-    public static void recordTick() {
-        TICKS.inc();
     }
 }
