@@ -33,9 +33,9 @@
         <file>${LOG_HOME}/storm/debug.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_ARCHIVE_PATTERN}-debug-%i.log.zip</fileNamePattern>
-            <maxFileSize>20MB</maxFileSize>
-            <maxHistory>5</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
         </rollingPolicy>
         <encoder>
             <pattern>${PATTERN_FILE}</pattern>
