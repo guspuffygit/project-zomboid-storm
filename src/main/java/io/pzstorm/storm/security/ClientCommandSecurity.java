@@ -9,14 +9,12 @@ import zombie.characters.IsoPlayer;
 import zombie.characters.Role;
 
 /**
- * Server-side capability gate for client-issued Lua commands.
+ * Server-side gate for client-issued Lua commands.
  *
  * <p>Replaces the (broken) Lua hardening that used to live in {@code StormSecurityPatch.lua}: in
  * vanilla PZ, {@code Commands} is a file-local in each command module rather than a global, so the
- * Lua wrappers could never actually intercept the command dispatch. Vanilla also gates {@code
- * vehicle.remove} behind {@code NetworkPlayerAI.isDismantleAllowed()} which is hard-coded to return
- * {@code true} — effectively no gate. There is no vanilla gate on {@code
- * player.onHealthCheatCurrentPlayer}.
+ * Lua wrappers could never actually intercept the command dispatch. There is no vanilla gate on
+ * {@code player.onHealthCheatCurrentPlayer}.
  *
  * <p>{@link #gatedTriggerOnClientCommand} is substituted into the only {@code
  * LuaEventManager.triggerEvent("OnClientCommand", ...)} call site, in {@code
@@ -50,25 +48,10 @@ public final class ClientCommandSecurity {
         if (!"OnClientCommand".equals(event) || !(player instanceof IsoPlayer p)) {
             return true;
         }
-        if ("vehicle".equals(module) && "remove".equals(command)) {
-            return checkVehicleRemove(p, args);
-        }
         if ("player".equals(module) && "onHealthCheatCurrentPlayer".equals(command)) {
             return checkHealthCheatCurrentPlayer(p, args);
         }
         return true;
-    }
-
-    private static boolean checkVehicleRemove(IsoPlayer player, Object args) {
-        if (hasCapability(player, Capability.ManipulateVehicle)) {
-            return true;
-        }
-        Object vehicleId = (args instanceof KahluaTable t) ? t.rawget("vehicle") : null;
-        LOGGER.warn(
-                "[StormSecurityPatch] BLOCKED vehicle.remove from {} vehicle={}",
-                player.getUsername(),
-                vehicleId);
-        return false;
     }
 
     private static boolean checkHealthCheatCurrentPlayer(IsoPlayer player, Object args) {

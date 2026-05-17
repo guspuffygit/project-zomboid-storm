@@ -24,14 +24,14 @@ class ClientCommandSecurityTest implements UnitTest {
         IsoPlayer player = newPlayer("alice", (short) 1, new Role("User"));
         assertTrue(
                 ClientCommandSecurity.isAllowed(
-                        "SomeOtherEvent", "vehicle", "remove", player, null));
+                        "SomeOtherEvent", "player", "onHealthCheatCurrentPlayer", player, null));
     }
 
     @Test
     void nonPlayerSendersArePassedThrough() {
         assertTrue(
                 ClientCommandSecurity.isAllowed(
-                        "OnClientCommand", "vehicle", "remove", null, null));
+                        "OnClientCommand", "player", "onHealthCheatCurrentPlayer", null, null));
     }
 
     @Test
@@ -43,37 +43,6 @@ class ClientCommandSecurityTest implements UnitTest {
         assertTrue(
                 ClientCommandSecurity.isAllowed(
                         "OnClientCommand", "player", "onSomethingElse", player, null));
-    }
-
-    @Test
-    void vehicleRemoveBlockedWithoutCapability() throws Exception {
-        IsoPlayer player = newPlayer("alice", (short) 1, new Role("User"));
-        KahluaTable args = tableWith("vehicle", 42.0);
-        assertFalse(
-                ClientCommandSecurity.isAllowed(
-                        "OnClientCommand", "vehicle", "remove", player, args));
-    }
-
-    @Test
-    void vehicleRemoveAllowedWithCapability() throws Exception {
-        Role role = new Role("Admin");
-        role.addCapability(Capability.ManipulateVehicle);
-        IsoPlayer player = newPlayer("alice", (short) 1, role);
-        assertTrue(
-                ClientCommandSecurity.isAllowed(
-                        "OnClientCommand",
-                        "vehicle",
-                        "remove",
-                        player,
-                        tableWith("vehicle", 42.0)));
-    }
-
-    @Test
-    void vehicleRemoveBlockedWhenRoleIsNull() throws Exception {
-        IsoPlayer player = newPlayer("alice", (short) 1, null);
-        assertFalse(
-                ClientCommandSecurity.isAllowed(
-                        "OnClientCommand", "vehicle", "remove", player, null));
     }
 
     @Test
