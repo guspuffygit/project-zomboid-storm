@@ -31,6 +31,19 @@ Successor to the original abandoned [Storm](https://github.com/pzstorm/storm)
 
 When you start the game, the main screen menu should show the Storm version in the right bottom of the screen.
 
+## Security Patches
+
+Storm enforces a server-side capability gate on inbound client commands. The gate lives in `ClientCommandSecurity` and is wired into the single `LuaEventManager.triggerEvent("OnClientCommand", ...)` call site inside `GameServer.receiveClientCommand` by `GameServerReceiveClientCommandPatch`. Non-`OnClientCommand` events and non-player senders pass through untouched.
+
+It currently covers two client commands that vanilla PZ leaves effectively unguarded:
+
+| Module / Command | Vanilla behavior | Storm gate |
+|---|---|---|
+| `vehicle.remove` | Gated behind `NetworkPlayerAI.isDismantleAllowed()`, which is hard-coded to return `true`. | Requires the `ManipulateVehicle` role capability. |
+| `player.onHealthCheatCurrentPlayer` | No vanilla gate. | Allowed when the target's `id` matches the sender's own `onlineID`; otherwise requires the `UseHealthCheat` role capability. |
+
+Blocked commands are logged at WARN with the prefix `[StormSecurityPatch]` and include the offending username plus the relevant arguments (vehicle ID, target ID, action), so server operators can grep `~/Zomboid/Logs/<date>_DebugLog-server.txt` for abuse attempts.
+
 ## Local Install:
 
 ### Setup local.properties
