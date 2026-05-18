@@ -29,10 +29,13 @@ import zombie.network.GameServer;
 public class ServerLOSFindDataAdvice {
 
     @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
-    public static Object onEnter(@Advice.Argument(0) IsoPlayer player) {
+    public static Object onEnter(
+            @Advice.Argument(0) IsoPlayer player, @Advice.Local("startNanos") long startNanos) {
         if (!GameServer.server) {
+            startNanos = 0L;
             return null;
         }
+        startNanos = System.nanoTime();
         if (player == null) {
             return null;
         }
@@ -43,9 +46,13 @@ public class ServerLOSFindDataAdvice {
     public static void onExit(
             @Advice.Argument(0) IsoPlayer player,
             @Advice.Enter Object cached,
-            @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object result) {
+            @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object result,
+            @Advice.Local("startNanos") long startNanos) {
         if (!GameServer.server) {
             return;
+        }
+        if (startNanos != 0L) {
+            ServerLOSFindDataMetrics.recordNanos(System.nanoTime() - startNanos);
         }
         if (cached != null) {
             result = cached;
