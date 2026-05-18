@@ -76,7 +76,6 @@ import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
-import io.pzstorm.storm.patch.security.GameServerReceiveClientCommandPatch;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -175,7 +174,6 @@ public class StormClassTransformers {
         registerTransformer(new AnimalSyncManagerUpdatePatch());
         registerTransformer(new LuaMainloopPatch());
         registerTransformer(new PacketsCacheLimitBypassPatch());
-        registerTransformer(new GameServerReceiveClientCommandPatch());
         registerTransformer(new WorldMapAllKnownFixPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
 
