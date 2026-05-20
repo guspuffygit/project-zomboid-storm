@@ -103,6 +103,16 @@ public class StormBootstrap {
                 Class.forName("io.pzstorm.storm.core.StormModRegistry", true, CLASS_LOADER);
         modRegistry.getDeclaredMethod("registerMods").invoke(null);
 
+        // Collect mod-provided class transformers BEFORE registering event handlers.
+        // Event handler registration calls getMethods()/getParameterTypes() on handler
+        // classes, which resolves typed event classes (e.g. WakeUpPlayerPacketEvent).
+        // Resolving those drags in the underlying PZ packet classes via StormClassLoader.
+        // If mod transformers aren't registered yet at that moment, only Storm's built-in
+        // transformers apply and the mod transformers are silently dropped — the packet
+        // class is then defineClass'd and findLoadedClass forever returns the un-mod-patched
+        // version, so re-registration after the fact has no effect.
+        TRANSFORMERS_CLASS.getDeclaredMethod("collectTransformers").invoke(null);
+
         // this class should have already been initialized, so just get the reference
         Class<?> zomboidModClass =
                 Class.forName("io.pzstorm.storm.mod.ZomboidMod", false, CLASS_LOADER);
@@ -111,9 +121,6 @@ public class StormBootstrap {
                 (Set<Object>) modRegistry.getDeclaredMethod("getRegisteredMods").invoke(null)) {
             zomboidModClass.getDeclaredMethod("registerEventHandlers").invoke(mod);
         }
-
-        // collect mod-provided class transformers before any PZ game classes are loaded
-        TRANSFORMERS_CLASS.getDeclaredMethod("collectTransformers").invoke(null);
 
         Class<?> commandRegistry =
                 Class.forName("io.pzstorm.storm.core.StormCommandRegistry", true, CLASS_LOADER);
