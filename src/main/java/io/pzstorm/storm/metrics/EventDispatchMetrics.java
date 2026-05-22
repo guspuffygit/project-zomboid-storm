@@ -35,6 +35,10 @@ public final class EventDispatchMetrics {
     private static final Map<String, DistributionDataPoint> DURATION_DP = new ConcurrentHashMap<>();
     private static final Map<String, CounterDataPoint> ERRORS_DP = new ConcurrentHashMap<>();
 
+    static {
+        GameTimeMetrics.ensureStarted();
+    }
+
     private EventDispatchMetrics() {}
 
     public static void recordDispatch(String event) {
