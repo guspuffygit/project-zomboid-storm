@@ -3,6 +3,8 @@ package io.pzstorm.storm.transfer;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.OnClientCommand;
+import io.pzstorm.storm.event.core.StormEventDispatcher;
+import io.pzstorm.storm.event.zomboid.OnItemTransferCompletedEvent;
 import io.pzstorm.storm.metrics.TransferMetrics;
 import io.pzstorm.storm.transfer.commands.CancelTransferCommand;
 import io.pzstorm.storm.transfer.commands.TransferItemCommand;
@@ -52,8 +54,11 @@ public class StormTransferHandler {
             int itemId,
             ItemContainer src,
             ItemContainer dest,
+            String srcRef,
+            String destRef,
             long endTime,
-            long acceptedAt) {}
+            long acceptedAt,
+            long durationMillis) {}
 
     /** Accessor for {@link TransferMetrics} to observe the pending map size at scrape time. */
     public static int pendingSize() {
@@ -148,7 +153,17 @@ public class StormTransferHandler {
         long endTime = GameTime.getServerTimeMills() + duration;
 
         pendingTransfers.put(
-                uuid, new PendingTransfer(player, itemId, src, dest, endTime, System.nanoTime()));
+                uuid,
+                new PendingTransfer(
+                        player,
+                        itemId,
+                        src,
+                        dest,
+                        srcRef,
+                        destRef,
+                        endTime,
+                        System.nanoTime(),
+                        duration));
 
         LOGGER.debug(
                 "transferItem: accepted uuid={} duration={}ms for {}",
@@ -260,6 +275,9 @@ public class StormTransferHandler {
                     uuid);
             TransferMetrics.recordDone(p.acceptedAt);
             sendResult(p.player, uuid, "done", 1);
+            StormEventDispatcher.dispatchEvent(
+                    new OnItemTransferCompletedEvent(
+                            p.player, item, p.srcRef, p.destRef, uuid, p.durationMillis));
         }
     }
 
