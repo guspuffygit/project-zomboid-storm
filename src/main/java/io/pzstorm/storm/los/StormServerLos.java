@@ -436,6 +436,8 @@ public final class StormServerLos {
                     throw new IllegalStateException("ServerLOS$UpdateStatus constants not found");
                 }
 
+                growLosUtilSlots();
+
                 initialized = true;
                 LOGGER.info("StormServerLos: ServerLOS reflection bridge initialized");
             } catch (ReflectiveOperationException e) {
@@ -450,5 +452,34 @@ public final class StormServerLos {
         for (Field f : fields) {
             f.setAccessible(true);
         }
+    }
+
+    /**
+     * Enlarges {@code LosUtil}'s per-slot scratch arrays from vanilla's length 4 to {@link
+     * StormServerLosConfig#MAX}, so worker slots {@code 4..MAX-1} have their own cache. The fields
+     * are {@code public static} and non-final; the server's only reader of {@code
+     * cachedresults[slot]} is the LOS scan path, and this runs once on the LOS thread before the
+     * first parallel tick, so the reassign cannot race a reader. New {@code PerPlayerData} entries
+     * lazily allocate their inner grid via {@code checkSize()} on first use, exactly like slot 0.
+     */
+    private static void growLosUtilSlots() {
+        int max = StormServerLosConfig.MAX;
+        if (LosUtil.cachedresults.length < max) {
+            LosUtil.PerPlayerData[] grown = new LosUtil.PerPlayerData[max];
+            System.arraycopy(LosUtil.cachedresults, 0, grown, 0, LosUtil.cachedresults.length);
+            for (int i = LosUtil.cachedresults.length; i < max; i++) {
+                grown[i] = new LosUtil.PerPlayerData();
+            }
+            LosUtil.cachedresults = grown;
+        }
+        if (LosUtil.cachecleared.length < max) {
+            boolean[] grown = new boolean[max];
+            System.arraycopy(LosUtil.cachecleared, 0, grown, 0, LosUtil.cachecleared.length);
+            for (int i = LosUtil.cachecleared.length; i < max; i++) {
+                grown[i] = true;
+            }
+            LosUtil.cachecleared = grown;
+        }
+        LOGGER.info("StormServerLos: enlarged LosUtil scratch arrays to {} slots", max);
     }
 }
