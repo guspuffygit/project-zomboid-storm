@@ -146,6 +146,16 @@ public class StormBootstrap {
                 .getDeclaredMethod("registerEventHandler", Class.class)
                 .invoke(null, builtinClass);
 
+        // Developer hot-reload endpoints (/eval, /reload) — opt-in, off by default.
+        if (Boolean.getBoolean("storm.hotreload")) {
+            Class<?> hotReloadClass =
+                    Class.forName(
+                            "io.pzstorm.storm.hotreload.HotReloadEndpoints", true, CLASS_LOADER);
+            dispatcherClass
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, hotReloadClass);
+        }
+
         httpServerClass.getDeclaredMethod("start", int.class).invoke(null, port);
         Runtime.getRuntime()
                 .addShutdownHook(

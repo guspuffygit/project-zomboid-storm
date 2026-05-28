@@ -70,6 +70,7 @@ import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRunInnerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
+import io.pzstorm.storm.patch.performance.ServerTickPatch;
 import io.pzstorm.storm.patch.performance.StatsGetPatch;
 import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
@@ -188,6 +189,15 @@ public class StormClassTransformers {
             registerTransformer(new ServerLOSRunInnerPatch());
             registerTransformer(new IsoGridSquareLosParallelPatch());
             registerTransformer(new IsoRoomOnSeePatch());
+        }
+
+        // Server tick-rate (TPS) + per-tick duration. StatisticManager.update(long) also runs on
+        // the
+        // client (via GameClient), so this MUST be registration-gated server-only rather than
+        // merely
+        // runtime-gated (HARD RULE: no Storm patch may run on the client JVM).
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new ServerTickPatch());
         }
 
         // Register generic packet event dispatching for all supported packet types

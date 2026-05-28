@@ -48,6 +48,7 @@ public class ServerExtension
     private static Thread outputReaderThread;
     @Getter private static Path logFile;
     @Getter private static Path stormMainLogFile;
+    @Getter private static Path evalClassesDir;
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
@@ -94,6 +95,11 @@ public class ServerExtension
         Path cacheDir = buildDir.toPath().resolve("zomboid").toAbsolutePath();
         Files.createDirectories(cacheDir);
 
+        // Hot-reload endpoints are gated behind -Dstorm.hotreload=true. /eval loads a compiled
+        // EvalScript from this absolute dir (the server JVM's cwd is the server dir, not here).
+        evalClassesDir = buildDir.toPath().resolve("eval-classes").toAbsolutePath();
+        Files.createDirectories(evalClassesDir);
+
         ProcessBuilder pb =
                 new ProcessBuilder(
                                 "./start-server.sh",
@@ -101,6 +107,8 @@ public class ServerExtension
                                 "-DSTORM_LOG_DIR=" + stormLogDir,
                                 "-Dstorm.testing=true",
                                 "-Dstorm.http.port=" + TEST_HTTP_PORT,
+                                "-Dstorm.hotreload=true",
+                                "-Dstorm.hotreload.eval.classes=" + evalClassesDir,
                                 "-Dstorm.server=true",
                                 "-javaagent:" + STORM_BOOTSTRAP_JAR,
                                 "--",
