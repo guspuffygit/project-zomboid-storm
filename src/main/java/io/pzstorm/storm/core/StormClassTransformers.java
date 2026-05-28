@@ -53,11 +53,13 @@ import io.pzstorm.storm.patch.performance.IsoChunkLoadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
+import io.pzstorm.storm.patch.performance.IsoGridSquareLosParallelPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectStaticUpdaterRemoveSubstPatch;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
+import io.pzstorm.storm.patch.performance.IsoRoomOnSeePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
@@ -65,6 +67,7 @@ import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSFindDataPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSIsCouldSeePatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
+import io.pzstorm.storm.patch.performance.ServerLOSRunInnerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.StatsGetPatch;
@@ -76,6 +79,7 @@ import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
+import io.pzstorm.storm.util.StormEnv;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -176,6 +180,15 @@ public class StormClassTransformers {
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new WorldMapAllKnownFixPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
+
+        // Parallel ServerLOS engine (Plan A). The IsoGridSquare / IsoRoom structural patches run on
+        // the client too, so these MUST be registration-gated server-only (HARD RULE) rather than
+        // runtime-gated. Inert until -Dstorm.serverLos.threads >= 2.
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new ServerLOSRunInnerPatch());
+            registerTransformer(new IsoGridSquareLosParallelPatch());
+            registerTransformer(new IsoRoomOnSeePatch());
+        }
 
         // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {

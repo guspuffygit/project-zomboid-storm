@@ -3,6 +3,7 @@ package io.pzstorm.storm.http;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.pzstorm.storm.core.StormVersion;
+import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
@@ -47,6 +48,10 @@ public class StormBuiltinEndpoints {
             @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps,
             int lockFps,
             int physicsFps) {}
+
+    public record ServerLosThreadsDto(int threads) {}
+
+    public record ServerLosThreadsUpdateDto(int requested, int applied) {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -214,6 +219,32 @@ public class StormBuiltinEndpoints {
                                 tps(applied.appliedTickIntervalMs()),
                                 applied.appliedLockFps(),
                                 applied.appliedPhysicsFps())));
+    }
+
+    @HttpEndpoint(path = "/storm/serverLos/threads")
+    public static void getServerLosThreads(HttpRequestEvent event) throws IOException {
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(new ServerLosThreadsDto(StormServerLosConfig.threads())));
+    }
+
+    @HttpEndpoint(path = "/storm/serverLos/threads", method = "POST")
+    public static void setServerLosThreads(HttpRequestEvent event) throws IOException {
+        String nParam = event.getQueryParams().get("n");
+        if (nParam == null || nParam.isEmpty()) {
+            event.send(400, "missing required query parameter: n");
+            return;
+        }
+        int requested;
+        try {
+            requested = Integer.parseInt(nParam.trim());
+        } catch (NumberFormatException e) {
+            event.send(400, "n must be an integer, got: " + nParam);
+            return;
+        }
+        int applied = StormServerLosConfig.setThreads(requested);
+        event.sendJson(
+                200, MAPPER.writeValueAsString(new ServerLosThreadsUpdateDto(requested, applied)));
     }
 
     private static Double tps(long intervalMs) {
