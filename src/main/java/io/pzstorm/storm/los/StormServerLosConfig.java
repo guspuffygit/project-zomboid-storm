@@ -7,9 +7,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>{@code threads} is the number of players whose LOS scan may run concurrently, one per scratch
  * slot. It is hard-capped at {@link #MAX} (= {@code 4}) because {@code LosUtil.cachedresults} and
- * {@code IsoGridSquare.lighting} are both length-4 per-slot arrays. The default is {@code 1}, which
- * keeps the vanilla single-threaded LOS path (the {@code runInner} advice does not skip the
- * original and the structural patches stay inert).
+ * {@code IsoGridSquare.lighting} are both length-4 per-slot arrays. The default is {@code 1}: the
+ * Storm engine still drives {@code runInner}, but runs the batch single-threaded on slot 0 (the
+ * onSee lock and helper pool stay inert and the {@code visible} grid is byte-identical to vanilla).
+ * This single-threaded run still records {@code storm_serverlos_*}, giving a baseline directly
+ * comparable to {@code threads >= 2}.
  *
  * <p>Initialised from {@code -Dstorm.serverLos.threads}; adjustable at runtime via the Storm HTTP
  * endpoint. Changing the value takes effect on the next LOS tick — no pool rebuild is needed

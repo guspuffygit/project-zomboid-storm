@@ -32,12 +32,13 @@ import zombie.network.ServerMap;
  * <p><b>Phase 1 (parity):</b> {@link #calcLOS(Object, int)} run single-threaded with {@code slot ==
  * 0} produces a byte-identical {@code visible} grid to vanilla (proven by the eval parity harness).
  *
- * <p><b>Phase 2 (parallel):</b> {@link #runInnerParallel(Object)} replaces the body of vanilla
- * {@code runInner} when {@code threads >= 2}: it reproduces vanilla's snapshot / status state
- * machine / park-wait protocol exactly, but fans the per-player {@code calcLOS} calls out across up
- * to {@link StormServerLosConfig#MAX} workers (the LOS thread itself is slot 0; helper threads are
- * slots 1..K-1). At {@code threads == 1} it returns {@code false} and vanilla {@code runInner} runs
- * unchanged.
+ * <p><b>Phase 2 (parallel):</b> {@link #runInnerParallel(Object)} always replaces the body of
+ * vanilla {@code runInner}: it reproduces vanilla's snapshot / status state machine / park-wait
+ * protocol exactly, but fans the per-player {@code calcLOS} calls out across up to {@link
+ * StormServerLosConfig#MAX} workers (the LOS thread itself is slot 0; helper threads are slots
+ * 1..K-1). At {@code threads == 1} the batch runs single-threaded on slot 0 — byte-identical to
+ * vanilla for the {@code visible} grid, with the onSee lock and helper pool never engaged — so its
+ * {@code storm_serverlos_*} timings form a like-for-like baseline against the parallel runs.
  *
  * <p>Per-slot state ({@code cachedresults[slot]}, {@code lighting[slot]}) is disjoint across
  * workers. The remaining shared-state hazards are handled by the server-only structural patches:
@@ -98,17 +99,17 @@ public final class StormServerLos {
     // ------------------------------------------------------------------------------------------
 
     /**
-     * Drop-in replacement for {@code ServerLOS$LOSThread.runInner}. Returns {@code true} when it
-     * has handled the tick (the caller must skip the vanilla body), {@code false} when the
-     * configured worker count is {@code <= 1} (the caller runs vanilla unchanged).
+     * Drop-in replacement for {@code ServerLOS$LOSThread.runInner}; always handles the tick and
+     * returns {@code true} so the caller skips the vanilla body. At {@code threads == 1} it runs
+     * the batch single-threaded on slot 0 (byte-identical {@code visible} grid to vanilla, with the
+     * onSee lock and helper pool never engaged) and still records {@code storm_serverlos_*}, so the
+     * single-threaded run is a like-for-like baseline for the parallel runs. At {@code threads >=
+     * 2} it fans the per-player scans across that many slots.
      *
      * @param losThread the {@code ServerLOS$LOSThread} instance ({@code @Advice.This}).
      */
     public static boolean runInnerParallel(Object losThread) {
         int k = StormServerLosConfig.threads();
-        if (k <= 1) {
-            return false;
-        }
         ensureInit();
         try {
             Object serverLos = fInstance.get(null);
