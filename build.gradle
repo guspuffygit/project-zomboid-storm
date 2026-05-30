@@ -494,19 +494,21 @@ tasks.register('writeWorkshopVdf') {
 	doLast {
 		def f = outputFile.get().asFile
 		f.parentFile.mkdirs()
-		f.text = """\
-			"workshopitem"
-			{
-			\t"appid" "${inputs.properties['appid']}"
-			\t"publishedfileid" "${inputs.properties['publishedfileid']}"
-			\t"contentfolder" "${inputs.properties['contentfolder']}"
-			\t"previewfile" "${inputs.properties['previewfile']}"
-			\t"visibility" "${inputs.properties['visibility']}"
-			\t"title" "${inputs.properties['title']}"
-			\t"description" "${inputs.properties['description']}"
-			\t"changenote" "${inputs.properties['changenote']}"
-			}
-		""".stripIndent()
+		def escDesc = inputs.properties['description'].replace('\r', '').readLines().collect { it.replaceFirst(/^\s+/, '') }.join('\n').trim().replace('"', "'")
+		def escTitle = inputs.properties['title'].replace('"', "'").replace('\r', '').replace('\n', ' ')
+		f.text = [
+			'"workshopitem"',
+			'{',
+			"\t\"appid\" \"${inputs.properties['appid']}\"",
+			"\t\"publishedfileid\" \"${inputs.properties['publishedfileid']}\"",
+			"\t\"contentfolder\" \"${inputs.properties['contentfolder']}\"",
+			"\t\"previewfile\" \"${inputs.properties['previewfile']}\"",
+			"\t\"visibility\" \"${inputs.properties['visibility']}\"",
+			"\t\"title\" \"${escTitle}\"",
+			"\t\"description\" \"${escDesc}\"",
+			"\t\"changenote\" \"${inputs.properties['changenote']}\"",
+			'}'
+		].join('\n') + '\n'
 	}
 }
 
