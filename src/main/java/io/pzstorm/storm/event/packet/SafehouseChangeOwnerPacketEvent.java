@@ -38,7 +38,7 @@ public class SafehouseChangeOwnerPacketEvent extends PacketEvent {
     }
 
     public String getPlayer() {
-        return getPacket().player;
+        return getPacket().getUsername();
     }
 
     /** Returns the safehouse owner before the ownership change was processed. */

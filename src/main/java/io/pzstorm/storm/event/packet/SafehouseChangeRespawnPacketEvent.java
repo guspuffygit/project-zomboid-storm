@@ -38,7 +38,8 @@ public class SafehouseChangeRespawnPacketEvent extends PacketEvent {
      * removed.
      */
     public boolean isAddingRespawn() {
-        return getPacket().doRemove;
+        Boolean v = (Boolean) getField("doRemove");
+        return v != null && v;
     }
 
     @Override
@@ -51,10 +52,11 @@ public class SafehouseChangeRespawnPacketEvent extends PacketEvent {
     }
 
     public String getPlayer() {
-        return getPacket().player;
+        return getPacket().getUsername();
     }
 
     public boolean doRemove() {
-        return getPacket().doRemove;
+        Boolean v = (Boolean) getField("doRemove");
+        return v != null && v;
     }
 }

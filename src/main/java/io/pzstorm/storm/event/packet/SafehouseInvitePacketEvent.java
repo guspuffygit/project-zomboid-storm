@@ -28,31 +28,11 @@ public class SafehouseInvitePacketEvent extends PacketEvent {
         return getPacket().getSafehouse();
     }
 
-    public int getX() {
-        return getPacket().x;
-    }
-
-    public int getY() {
-        return getPacket().y;
-    }
-
-    public short getW() {
-        return getPacket().w;
-    }
-
-    public short getH() {
-        return getPacket().h;
-    }
-
     public String getOwnerUsername() {
-        return getPacket().ownerUsername;
+        return getPacket().getOwner();
     }
 
     public @Nullable String getOwner() {
         return (String) getField("owner");
-    }
-
-    public @Nullable String getInvited() {
-        return (String) getField("invited");
     }
 }

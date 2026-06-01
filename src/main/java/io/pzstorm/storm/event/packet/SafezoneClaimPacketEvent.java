@@ -29,19 +29,23 @@ public class SafezoneClaimPacketEvent extends PacketEvent {
     }
 
     public int getX() {
-        return getPacket().x;
+        Integer v = (Integer) getField("x");
+        return v != null ? v : 0;
     }
 
     public int getY() {
-        return getPacket().y;
+        Integer v = (Integer) getField("y");
+        return v != null ? v : 0;
     }
 
     public int getW() {
-        return getPacket().w;
+        Integer v = (Integer) getField("w");
+        return v != null ? v : 0;
     }
 
     public int getH() {
-        return getPacket().h;
+        Integer v = (Integer) getField("h");
+        return v != null ? v : 0;
     }
 
     public @Nullable String getTitle() {

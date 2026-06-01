@@ -39,6 +39,6 @@ public class SafehouseChangeTitlePacketEvent extends PacketEvent {
     }
 
     public String getTitle() {
-        return getPacket().title;
+        return (String) getField("title");
     }
 }

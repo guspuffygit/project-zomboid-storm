@@ -39,6 +39,6 @@ public class SafehouseChangeMemberPacketEvent extends PacketEvent {
     }
 
     public String getPlayer() {
-        return getPacket().player;
+        return getPacket().getUsername();
     }
 }
