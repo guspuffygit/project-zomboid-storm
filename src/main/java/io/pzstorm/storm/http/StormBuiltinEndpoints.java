@@ -9,6 +9,7 @@ import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
+import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,10 @@ public class StormBuiltinEndpoints {
     public record ServerLosThreadsDto(int threads) {}
 
     public record ServerLosThreadsUpdateDto(int requested, int applied) {}
+
+    public record ZombieCullDisabledDto(boolean disabled) {}
+
+    public record ZombieCullDisabledUpdateDto(boolean requested, boolean applied) {}
 
     public record ConnectedPlayerDto(String username, String steamId, String ip) {}
 
@@ -253,6 +258,37 @@ public class StormBuiltinEndpoints {
         int applied = StormServerLosConfig.setThreads(requested);
         event.sendJson(
                 200, MAPPER.writeValueAsString(new ServerLosThreadsUpdateDto(requested, applied)));
+    }
+
+    @HttpEndpoint(path = "/storm/server/zombieCull/disabled")
+    public static void getZombieCullDisabled(HttpRequestEvent event) throws IOException {
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(
+                        new ZombieCullDisabledDto(StormZombieCullConfig.isDisabled())));
+    }
+
+    @HttpEndpoint(path = "/storm/server/zombieCull/disabled", method = "POST")
+    public static void setZombieCullDisabled(HttpRequestEvent event) throws IOException {
+        String param = event.getQueryParams().get("disabled");
+        if (param == null || param.isEmpty()) {
+            event.send(400, "missing required query parameter: disabled");
+            return;
+        }
+        String normalised = param.trim().toLowerCase();
+        boolean requested;
+        if ("true".equals(normalised)) {
+            requested = true;
+        } else if ("false".equals(normalised)) {
+            requested = false;
+        } else {
+            event.send(400, "disabled must be true or false, got: " + param);
+            return;
+        }
+        boolean applied = StormZombieCullConfig.setDisabled(requested);
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(new ZombieCullDisabledUpdateDto(requested, applied)));
     }
 
     @HttpEndpoint(path = "/storm/server/players")

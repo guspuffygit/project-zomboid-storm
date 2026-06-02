@@ -193,7 +193,7 @@ public class StormClassTransformers {
             registerTransformer(new ServerTickPatch());
         }
 
-        if (StormEnv.isStormServer() && Boolean.getBoolean("storm.disableZombieCull")) {
+        if (StormEnv.isStormServer()) {
             registerTransformer(new ZombieCullDisablePatch());
         }
 
