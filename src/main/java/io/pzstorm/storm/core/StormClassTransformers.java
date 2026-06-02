@@ -76,6 +76,7 @@ import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.ZombieCullDisablePatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -182,22 +183,18 @@ public class StormClassTransformers {
         registerTransformer(new WorldMapAllKnownFixPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
 
-        // Parallel ServerLOS engine (Plan A). The IsoGridSquare / IsoRoom structural patches run on
-        // the client too, so these MUST be registration-gated server-only (HARD RULE) rather than
-        // runtime-gated. Inert until -Dstorm.serverLos.threads >= 2.
         if (StormEnv.isStormServer()) {
             registerTransformer(new ServerLOSRunInnerPatch());
             registerTransformer(new IsoGridSquareLosParallelPatch());
             registerTransformer(new IsoRoomOnSeePatch());
         }
 
-        // Server tick-rate (TPS) + per-tick duration. StatisticManager.update(long) also runs on
-        // the
-        // client (via GameClient), so this MUST be registration-gated server-only rather than
-        // merely
-        // runtime-gated (HARD RULE: no Storm patch may run on the client JVM).
         if (StormEnv.isStormServer()) {
             registerTransformer(new ServerTickPatch());
+        }
+
+        if (StormEnv.isStormServer() && Boolean.getBoolean("storm.disableZombieCull")) {
+            registerTransformer(new ZombieCullDisablePatch());
         }
 
         // Register generic packet event dispatching for all supported packet types
