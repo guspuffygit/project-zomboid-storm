@@ -20,13 +20,12 @@ import org.jetbrains.annotations.Unmodifiable;
 public class LuaEventFactory {
 
     /**
-     * This map contains {@link LuaEvent} constructors mapped to implementation classes.
-     * Constructors are mapped in this way to increase performance when instantiating {@code
-     * LuaEvent}s.
+     * This map contains {@link LuaEvent} constructors mapped to implementation classes. Each
+     * constructor is stored with its parameter types pre-resolved so per-trigger reflection no
+     * longer calls {@link Constructor#getParameterTypes()} (which clones the internal array).
      */
     @Unmodifiable
-    private static final Map<Class<? extends LuaEvent>, Constructor<? extends LuaEvent>[]>
-            EVENT_CONSTRUCTORS;
+    private static final Map<Class<? extends LuaEvent>, CachedConstructor[]> EVENT_CONSTRUCTORS;
 
     /**
      * This map contains {@link LuaEvent} classes mapped to their respected names. Classes are
@@ -35,7 +34,7 @@ public class LuaEventFactory {
     @Unmodifiable private static final Map<String, Class<? extends LuaEvent>> EVENT_CLASSES;
 
     static {
-        Map<Class<? extends LuaEvent>, Constructor<LuaEvent>[]> eventConstructors = new HashMap<>();
+        Map<Class<? extends LuaEvent>, CachedConstructor[]> eventConstructors = new HashMap<>();
         Map<String, Class<? extends LuaEvent>> eventClassesMap = new HashMap<>();
         /*
          * this is a complete list of all event classes,
@@ -238,13 +237,16 @@ public class LuaEventFactory {
                         };
         for (Class<? extends LuaEvent> eventClass : eventClasses) {
             Constructor<?>[] constructors = eventClass.getConstructors();
-            for (Constructor<?> constructor : constructors) {
+            CachedConstructor[] cached = new CachedConstructor[constructors.length];
+            for (int i = 0; i < constructors.length; i++) {
+                Constructor<?> constructor = constructors[i];
                 if (!Modifier.isPublic(constructor.getModifiers())) {
                     throw new IllegalStateException(
                             "Found inaccessible constructor for class '" + eventClass + '\'');
                 }
+                cached[i] = new CachedConstructor(constructor);
             }
-            eventConstructors.put(eventClass, (Constructor<LuaEvent>[]) constructors);
+            eventConstructors.put(eventClass, cached);
 
             String className = getEventName(eventClass);
             eventClassesMap.put(className, eventClass);
@@ -264,21 +266,12 @@ public class LuaEventFactory {
      *     instantiating {@code LuaEvent} or no registered constructors found for given event class.
      */
     public static LuaEvent constructLuaEvent(Class<? extends LuaEvent> eventClass, Object... args) {
-        Constructor<?>[] constructors = EVENT_CONSTRUCTORS.get(eventClass);
+        CachedConstructor[] constructors = EVENT_CONSTRUCTORS.get(eventClass);
         if (constructors != null) {
-            Class<?>[] argTypes = new Class<?>[args.length];
-            for (int i = 0; i < args.length; i++) {
-                argTypes[i] = args[i] != null ? args[i].getClass() : null;
-            }
-            for (Constructor<?> constructor : constructors) {
-                if (constructor.getParameterCount() == args.length) {
-                    // on parameter type mismatch skip to next constructor
-                    if (!doesConstructorMatchArgTypes(constructor, argTypes)) {
-                        continue;
-                    }
+            for (CachedConstructor cached : constructors) {
+                if (cached.paramCount == args.length && cached.matches(args)) {
                     try {
-                        // if all parameter types match return this constructor
-                        return (LuaEvent) constructor.newInstance(args);
+                        return (LuaEvent) cached.constructor.newInstance(args);
                     } catch (ReflectiveOperationException | IllegalArgumentException e) {
                         throw new IllegalStateException(e);
                     }
@@ -293,23 +286,30 @@ public class LuaEventFactory {
     }
 
     /**
-     * Returns {@code true} if given constructor parameter types match specified array of classes
-     * exactly, or {@code false} otherwise.
-     *
-     * @param constructor {@code Constructor} to match types for.
-     * @param argTypes array of classes to match against constructor parameters.
+     * Holds a {@link Constructor} alongside its pre-resolved parameter types so per-trigger
+     * matching no longer calls {@link Constructor#getParameterTypes()} (which clones the internal
+     * array) or {@link Constructor#getParameterCount()}.
      */
-    private static boolean doesConstructorMatchArgTypes(
-            Constructor<?> constructor, Class<?>[] argTypes) {
-        Class<?>[] paramTypes = constructor.getParameterTypes();
-        for (int i = 0; i < paramTypes.length; i++) {
-            Class<?> argType = argTypes[i];
-            // on parameter type mismatch skip to next constructor
-            if (argType != null && !paramTypes[i].isAssignableFrom(argType)) {
-                return false;
-            }
+    private static final class CachedConstructor {
+        final Constructor<?> constructor;
+        final Class<?>[] paramTypes;
+        final int paramCount;
+
+        CachedConstructor(Constructor<?> constructor) {
+            this.constructor = constructor;
+            this.paramTypes = constructor.getParameterTypes();
+            this.paramCount = this.paramTypes.length;
         }
-        return true;
+
+        boolean matches(Object[] args) {
+            for (int i = 0; i < paramCount; i++) {
+                Object arg = args[i];
+                if (arg != null && !paramTypes[i].isAssignableFrom(arg.getClass())) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     /**

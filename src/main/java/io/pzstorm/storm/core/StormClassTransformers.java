@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
 import io.pzstorm.storm.patch.core.ZomboidFileSystemPatch;
 import io.pzstorm.storm.patch.core.ZomboidGlobalsPatch;
@@ -189,6 +190,14 @@ public class StormClassTransformers {
             registerTransformer(new ServerLOSRunInnerPatch());
             registerTransformer(new IsoGridSquareLosParallelPatch());
             registerTransformer(new IsoRoomOnSeePatch());
+        }
+
+        // Experimental client-only performance patches. Each one targets a hotspot
+        // identified by JFR profiling on the client. Gated off the dedicated server
+        // because the same class may behave differently there or simply not need the
+        // intervention.
+        if (!StormEnv.isStormServer()) {
+            registerTransformer(new KahluaMetatableCachePatch());
         }
 
         if (StormEnv.isStormServer()) {
