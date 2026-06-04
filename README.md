@@ -142,6 +142,95 @@ Add these flags to the java arguments:
   -servername yourserver
 ```
 
+## Server Configuration
+
+### Available system properties
+
+Storm reads these at startup. Pass as `-D<key>=<value>` on the JVM command line (or via
+`JAVA_TOOL_OPTIONS` in a launcher script). All flags are opt-in unless noted.
+
+| Flag | Purpose |
+|------|---------|
+| `-Dstorm.server=true` | **Required on the dedicated server.** Tells the bootstrap agent to target `GameServer` instead of `MainScreenState`. |
+| `-DstormType=local` | Load Storm from `~/Zomboid/Workshop/storm` instead of the Steam workshop path. Local development only. |
+| `-DLOG_LEVEL=DEBUG` | Storm log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). Default `INFO`. |
+| `-Dstorm.http.port=<port>` | Start Storm's HTTP server on `<port>`. Required for every HTTP endpoint (hot-reload + runtime tuning). Conventionally `41798` on the dedicated server and `8089` on the client. |
+| `-Dstorm.hotreload=true` | Register the `/reload` and `/eval` developer endpoints. See [Developer Hot-Reload Endpoints](#developer-hot-reload-endpoints). **Local development only.** |
+| `-Dstorm.hotreload.eval.classes=<dir>` | Directory holding the compiled `EvalScript.class` (required by `/eval`). |
+| `-Dstorm.hotreload.eval.source=<dir>` | Optional. Directory holding `EvalScript.java`; enables a staleness guard. |
+| `-Dstorm.serverLos.threads=<n>` | Parallel server-LOS worker count. Range `1..16`. Default `1` (single-threaded, byte-identical visibility to vanilla). Increase on busy servers — typical production value `4..12`. Live-tunable via `POST /storm/serverLos/threads`. |
+| `-Dstorm.animalLOS.tickInterval=<n>` | Run each animal's LOS scan once every `n` server ticks. Range `0..64`. Default `1` (vanilla — every tick). `0` disables animal LOS entirely. Live-tunable via `POST /storm/animalLOS/tickInterval`. |
+| `-Dstorm.disableZombieCull=true` | Disable the vanilla zombie cull/despawn pass. Default off. Live-tunable via the Storm HTTP endpoint. |
+| `-Dstorm.server.fps=<fps>` | Unified server-FPS knob — sets `tickIntervalMs`, `lockFps`, and `isoPhysics.serverFps` together. Range `1..240`. Per-knob overrides below win when both are set. |
+| `-Dstorm.server.tickIntervalMs=<ms>` | Server tick interval. Vanilla `100` (= 10 TPS). Range `0..1000`; `0` removes throttling. Live-tunable via `POST /storm/server/tickIntervalMs`. |
+| `-Dstorm.server.lockFps=<fps>` | Value reported by `PerformanceSettings.getLockFPS()` on the server. Default `10`, range `1..240`. Live-tunable. |
+| `-Dstorm.isoPhysics.serverFps=<fps>` | FPS divisor used inside `IsoPhysicsObject.update()` on the server. Default `10`. Live-tunable. |
+| `-DprometheusPort=<port>` | Start PZ's built-in Prometheus HTTP server on `<port>`. Required to scrape Storm + `pz_*` + `jvm_*` metrics at `/metrics`. (PZ flag — Storm registers into PZ's default registry.) |
+| `-DprometheusHost=<host>` | Hostname/IP the server reports for itself in metrics endpoints. Defaults to `GameServer.ip`. (PZ flag.) |
+
+### Production launcher example (Linux)
+
+A real-world dedicated-server launcher. Uses `JAVA_TOOL_OPTIONS` so the Storm agent
+and flags apply to every `java` invocation — whether the server starts via the
+`ProjectZomboid64` wrapper or by calling `java` directly.
+
+```bash
+#!/bin/bash
+ulimit -c unlimited
+ulimit -n 65535
+
+INSTDIR="`dirname $0`" ; cd "${INSTDIR}" ; INSTDIR="`pwd`"
+TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+
+# Storm + your other Storm-based mod workshop ids (3670772371 = Storm itself)
+WORKSHOP_IDS=(
+    3670772371
+    # ...your other Storm mod workshop ids here...
+)
+
+WORKSHOP_ARGS=""
+for id in "${WORKSHOP_IDS[@]}"; do
+    WORKSHOP_ARGS+=" +workshop_download_item 108600 $id validate"
+done
+
+# Refresh workshop mods before launching so Storm + mods are up to date
+steamcmd +force_install_dir "$PWD" +login anonymous $WORKSHOP_ARGS +quit
+
+export PATH="${INSTDIR}/jre64/bin:$PATH"
+export LD_LIBRARY_PATH="${INSTDIR}/linux64:${INSTDIR}/natives:${INSTDIR}:${INSTDIR}/jre64/lib/amd64:${LD_LIBRARY_PATH}"
+JSIG="${INSTDIR}/jre64/lib/libjsig.so"
+
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} \
+    -javaagent:${INSTDIR}/steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar \
+    -Dstorm.server=true \
+    -DLOG_LEVEL=debug \
+    -Dstorm.http.port=41798 \
+    -Dstorm.serverLos.threads=12 \
+    -Dstorm.animalLOS.tickInterval=8 \
+    -Dstorm.disableZombieCull=true \
+    -Dstorm.hotreload=true \
+    -Dstorm.hotreload.eval.classes=/home/pzuser/lua-scripts/eval-scripts \
+    -DprometheusPort=9092 \
+    -DprometheusHost=<your-host>"
+
+LD_PRELOAD="${LD_PRELOAD}:${JSIG}" ./ProjectZomboid64 "$@" \
+    > >(tee "${INSTDIR}/crash-logs/stdout_${TIMESTAMP}.log") \
+    2> >(tee "${INSTDIR}/crash-logs/stderr_${TIMESTAMP}.log" >&2)
+```
+
+Production notes:
+- `ulimit -c unlimited` plus `LD_PRELOAD=libjsig.so` is required for the JVM to
+  produce usable core dumps on crash — `libjsig` cooperates with the JVM's signal
+  chaining so the kernel's core-dump handler actually fires.
+- `JAVA_TOOL_OPTIONS` is read by every Java invocation, so the Storm agent and
+  flags apply whether the server is launched via the `ProjectZomboid64` wrapper
+  or by calling `java` directly.
+- The `steamcmd ... +workshop_download_item` preinstall step ensures Storm and
+  every Storm-based mod is current before launch — Storm's class transformers run
+  at load time and need the deployed jars in place.
+- The `crash-logs/` directory captures timestamped stdout/stderr so a crash
+  postmortem has both the JVM core dump and the surrounding console output.
+
 ## Developer Hot-Reload Endpoints
 
 Storm ships two optional HTTP endpoints for iterating on a running game without restarting it:
