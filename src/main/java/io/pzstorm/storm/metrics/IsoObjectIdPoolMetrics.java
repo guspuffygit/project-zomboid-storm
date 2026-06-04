@@ -1,5 +1,6 @@
 package io.pzstorm.storm.metrics;
 
+import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.GaugeWithCallback;
 import zombie.network.ServerMap;
 import zombie.popman.animal.AnimalInstanceManager;
@@ -45,10 +46,39 @@ public final class IsoObjectIdPoolMetrics {
                     .callback(cb -> cb.call(animalPoolSize()))
                     .register(StormPrometheus.registry());
 
+    private static final Counter ZOMBIE_MAP_ORPHAN_FIXES =
+            Counter.builder()
+                    .name("storm_zombie_map_orphan_fixes_total")
+                    .help(
+                            "Times the IsoZombie.update() exit advice put a zombie back into ServerMap.zombieMap"
+                                    + " because it held an onlineId but the map slot was empty"
+                                    + " (the IsoZombie.updateInternal re-allocate-without-put path,"
+                                    + " plus any pre-fix orphans inherited from a session without the patch).")
+                    .register(StormPrometheus.registry());
+
+    private static final Counter ZOMBIE_MAP_COLLISIONS =
+            Counter.builder()
+                    .name("storm_zombie_map_collision_total")
+                    .help(
+                            "Times the IsoZombie.update() exit advice cleared onlineId because another zombie"
+                                    + " already occupied the slot. Expected to stay near zero once the probe-for-free"
+                                    + " allocate is also in effect — non-zero indicates recovery from prior bad state.")
+                    .register(StormPrometheus.registry());
+
     private IsoObjectIdPoolMetrics() {}
 
     /** No-op; calling forces class load so the static initializer fires. */
     public static void ensureStarted() {}
+
+    /** Increments the orphan-fix counter (zombie had id, map slot was empty, we put it back). */
+    public static void recordZombieOrphanFix() {
+        ZOMBIE_MAP_ORPHAN_FIXES.inc();
+    }
+
+    /** Increments the collision counter (zombie's id was held by a different zombie). */
+    public static void recordZombieMapCollision() {
+        ZOMBIE_MAP_COLLISIONS.inc();
+    }
 
     private static int zombiePoolSize() {
         ServerMap sm = ServerMap.instance;

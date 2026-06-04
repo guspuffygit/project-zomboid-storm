@@ -22,6 +22,7 @@ import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalUpdateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
+import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
@@ -200,6 +201,10 @@ public class StormClassTransformers {
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new IsoObjectIDAllocateFixPatch());
+        }
+
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new IsoZombieUpdateFixPatch());
         }
 
         // Register generic packet event dispatching for all supported packet types
