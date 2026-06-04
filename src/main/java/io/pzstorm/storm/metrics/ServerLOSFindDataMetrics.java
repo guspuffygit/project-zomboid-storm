@@ -2,7 +2,6 @@ package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.GaugeWithCallback;
-import io.prometheus.metrics.core.metrics.Histogram;
 import io.pzstorm.storm.cache.ServerLOSPlayerDataCache;
 
 public final class ServerLOSFindDataMetrics {
@@ -21,22 +20,9 @@ public final class ServerLOSFindDataMetrics {
                     .callback(cb -> cb.call(ServerLOSPlayerDataCache.size()))
                     .register(StormPrometheus.registry());
 
-    private static final Histogram CALL_DURATION =
-            Histogram.builder()
-                    .name("pz_server_los_find_data_call_duration_seconds")
-                    .help(
-                            "Duration of ServerLOS.findData advice invocations (covers cache hit and"
-                                    + " miss paths).")
-                    .nativeOnly()
-                    .register(StormPrometheus.registry());
-
     private ServerLOSFindDataMetrics() {}
 
     public static void recordMiss() {
         MISSES.inc();
-    }
-
-    public static void recordNanos(long nanos) {
-        CALL_DURATION.observe(nanos / 1e9);
     }
 }
