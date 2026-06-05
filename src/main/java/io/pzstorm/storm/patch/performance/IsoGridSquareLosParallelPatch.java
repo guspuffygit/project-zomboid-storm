@@ -80,7 +80,7 @@ public class IsoGridSquareLosParallelPatch extends StormClassTransformer {
         builder =
                 builder.visit(
                         new AsmVisitorWrapper.ForDeclaredMethods()
-                                .method(
+                                .invokable(
                                         ElementMatchers.isConstructor(),
                                         new LightingArraySizeWrapper()));
         return builder;
