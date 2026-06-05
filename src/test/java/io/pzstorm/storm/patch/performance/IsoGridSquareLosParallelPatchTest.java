@@ -25,17 +25,18 @@ import org.junit.jupiter.api.Test;
  *       io.pzstorm.storm.los.StormServerLos.calcLOS(StormServerLos.java:351)
  * </pre>
  *
- * <p>Root cause: {@link IsoGridSquareLosParallelPatch} registers its {@code LightingArraySizeWrapper}
- * via {@code AsmVisitorWrapper.ForDeclaredMethods.method(isConstructor(), wrapper)}. ByteBuddy
- * expands {@code .method(matcher, ...)} to {@code .invokable(isMethod().and(matcher), ...)} and
- * {@code isMethod()} excludes constructors — so the wrapper is matched against the empty set and
- * never runs. The vanilla {@code lighting} array stays length 4 and any worker slot &ge; 4 hits
- * AIOOBE on {@code this.lighting[playerIndex]} (the first line of {@code CalcVisibility}).
+ * <p>Root cause: {@link IsoGridSquareLosParallelPatch} registers its {@code
+ * LightingArraySizeWrapper} via {@code AsmVisitorWrapper.ForDeclaredMethods.method(isConstructor(),
+ * wrapper)}. ByteBuddy expands {@code .method(matcher, ...)} to {@code
+ * .invokable(isMethod().and(matcher), ...)} and {@code isMethod()} excludes constructors — so the
+ * wrapper is matched against the empty set and never runs. The vanilla {@code lighting} array stays
+ * length 4 and any worker slot &ge; 4 hits AIOOBE on {@code this.lighting[playerIndex]} (the first
+ * line of {@code CalcVisibility}).
  *
- * <p>This test directly inspects the bytecode produced by the patch and asserts the {@code ILighting}
- * array allocation in every constructor uses size {@link StormServerLosConfig#MAX}, not 4. With the
- * buggy matcher it fails (size pushed is still {@code ICONST_4}). With {@code .invokable(...)} or
- * {@code .constructor(any(), ...)} it passes.
+ * <p>This test directly inspects the bytecode produced by the patch and asserts the {@code
+ * ILighting} array allocation in every constructor uses size {@link StormServerLosConfig#MAX}, not
+ * 4. With the buggy matcher it fails (size pushed is still {@code ICONST_4}). With {@code
+ * .invokable(...)} or {@code .constructor(any(), ...)} it passes.
  */
 class IsoGridSquareLosParallelPatchTest implements UnitTest {
 
@@ -139,8 +140,7 @@ class IsoGridSquareLosParallelPatchTest implements UnitTest {
 
                                     @Override
                                     public void visitIntInsn(int opcode, int operand) {
-                                        if (opcode == Opcodes.BIPUSH
-                                                || opcode == Opcodes.SIPUSH) {
+                                        if (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) {
                                             lastPushedInt = operand;
                                             lastPushedIntValid = true;
                                         } else {
@@ -160,8 +160,7 @@ class IsoGridSquareLosParallelPatchTest implements UnitTest {
 
                                     @Override
                                     public void visitTypeInsn(int opcode, String type) {
-                                        if (opcode == Opcodes.ANEWARRAY
-                                                && ILIGHTING.equals(type)) {
+                                        if (opcode == Opcodes.ANEWARRAY && ILIGHTING.equals(type)) {
                                             assertTrue(
                                                     lastPushedIntValid,
                                                     "Could not statically determine the size"
