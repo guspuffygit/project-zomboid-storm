@@ -24,9 +24,9 @@ def getWorkshopId = {
 
 def getWorkshopTitle = {
 	switch (env) {
-		case 'prod':  return 'Storm Mod Framework b42'
-		case 'stage': return '[STAGE] Storm Mod Framework b42'
-		default: return '[DEV] Storm Mod Framework b42'
+		case 'prod':  return 'Storm Mod Framework b42 by Gus Puffy'
+		case 'stage': return '[STAGE] Storm Mod Framework b42 by Gus Puffy'
+		default: return '[DEV] Storm Mod Framework b42 by Gus Puffy'
 	}
 }
 
@@ -53,7 +53,20 @@ def getWorkshopVisibility = {
 	}
 }
 
-String workshopDescription = 'Storm modding framework b42 only'
+String workshopDescription = '''[b]Storm[/b] is a [b]Java mod loader and modding framework[/b] for [i]Project Zomboid[/i] (Build 42+) that uses [b]Byte Buddy[/b] bytecode instrumentation to extend the game without touching its source.
+
+Vanilla client compatibility is maintained so that players don't have to hook up any modding frameworks. The extensibility of Java modding on the server side allows you to create feature rich mods without having to modify Java on the client side.
+
+Portable and completely deployed through Steam Workshop.
+
+[url=https://github.com/guspuffygit/project-zomboid-storm]Installation and Configuration Documentation[/url]
+
+[hr][/hr]
+[url=https://ko-fi.com/guspuffy][img]https://i.imgur.com/YHRWmax.png[/img][/url]
+
+[h2]Sponsors[/h2]
+[b][url=https://discord.gg/after-the-fall]After The Fall[/url][/b] — The #1 multiplayer server in the world
+[hr][/hr]'''
 
 def os = OperatingSystem.current()
 
