@@ -80,6 +80,7 @@ import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdatePatch;
 import io.pzstorm.storm.patch.performance.ZombieCullDisablePatch;
+import io.pzstorm.storm.patch.performance.ZombieCullThresholdPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -206,9 +207,7 @@ public class StormClassTransformers {
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new ZombieCullDisablePatch());
-        }
-
-        if (StormEnv.isStormServer()) {
+            registerTransformer(new ZombieCullThresholdPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
         }
 

@@ -64,6 +64,10 @@ public class StormBuiltinEndpoints {
 
     public record ZombieCullDisabledUpdateDto(boolean requested, boolean applied) {}
 
+    public record ZombieCullThresholdDto(int threshold) {}
+
+    public record ZombieCullThresholdUpdateDto(int requested, int applied) {}
+
     public record ConnectedPlayerDto(String username, String steamId, String ip) {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -289,6 +293,34 @@ public class StormBuiltinEndpoints {
         event.sendJson(
                 200,
                 MAPPER.writeValueAsString(new ZombieCullDisabledUpdateDto(requested, applied)));
+    }
+
+    @HttpEndpoint(path = "/storm/server/zombieCull/threshold")
+    public static void getZombieCullThreshold(HttpRequestEvent event) throws IOException {
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(
+                        new ZombieCullThresholdDto(StormZombieCullConfig.getThreshold())));
+    }
+
+    @HttpEndpoint(path = "/storm/server/zombieCull/threshold", method = "POST")
+    public static void setZombieCullThreshold(HttpRequestEvent event) throws IOException {
+        String nParam = event.getQueryParams().get("n");
+        if (nParam == null || nParam.isEmpty()) {
+            event.send(400, "missing required query parameter: n");
+            return;
+        }
+        int requested;
+        try {
+            requested = Integer.parseInt(nParam.trim());
+        } catch (NumberFormatException e) {
+            event.send(400, "n must be an integer, got: " + nParam);
+            return;
+        }
+        int applied = StormZombieCullConfig.setThreshold(requested);
+        event.sendJson(
+                200,
+                MAPPER.writeValueAsString(new ZombieCullThresholdUpdateDto(requested, applied)));
     }
 
     @HttpEndpoint(path = "/storm/server/players")
