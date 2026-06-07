@@ -29,7 +29,6 @@ import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
-import io.pzstorm.storm.patch.fixes.WorldMapAllKnownFixPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
@@ -184,7 +183,6 @@ public class StormClassTransformers {
         registerTransformer(new AnimalSyncManagerUpdatePatch());
         registerTransformer(new LuaMainloopPatch());
         registerTransformer(new PacketsCacheLimitBypassPatch());
-        registerTransformer(new WorldMapAllKnownFixPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
 
         if (StormEnv.isStormServer()) {
