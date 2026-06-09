@@ -21,8 +21,7 @@ import zombie.network.GameServer;
  * GameServer.main()}; this patch substitutes that constructor call with a factory that installs an
  * {@link UpdateLimit} the sandbox applier can retune via {@link
  * UpdateLimitFactory#setTickIntervalMs(long)}. The {@code Storm.ServerFps} sandbox option drives
- * this via {@link ServerFpsConfig#applyUnifiedFps(int)} alongside the other two fps controllers;
- * there is no direct tick-interval HTTP endpoint.
+ * this via {@link ServerFpsConfig#applyUnifiedFps(int)} alongside the other two fps controllers.
  *
  * <p>The patch also wraps the in-loop {@code UpdateLimit.Check()} calls in {@code main} with a
  * counting helper that logs the observed average server TPS once per minute. The helper is invoked

@@ -20,8 +20,7 @@ import zombie.network.GameServer;
  * the vanilla {@code lockFps} on the client, preserving client-side behavior.
  *
  * <p>The live value is mutable via {@link #setPhysicsFps(int)}, called only from {@link
- * io.pzstorm.storm.patch.networking.ServerFpsConfig#applyUnifiedFps(int)} — there is no direct
- * physics-fps HTTP endpoint.
+ * io.pzstorm.storm.patch.networking.ServerFpsConfig#applyUnifiedFps(int)}.
  */
 public final class IsoPhysicsObjectFpsConfig {
 

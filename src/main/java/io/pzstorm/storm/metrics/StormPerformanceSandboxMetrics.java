@@ -12,9 +12,9 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
  * Live gauges reflecting Storm's performance knobs.
  *
  * <p>Each gauge tracks the current effective value of its corresponding controller — sandbox-option
- * load, HTTP setter, or test override all flow through the controller's live setter, which in turn
- * pushes the new value here. The static block initializes every gauge to its vanilla default so
- * scrapes return a sane value before the sandbox applier (or any other setter) has run.
+ * load or test override flows through the controller's live setter, which in turn pushes the new
+ * value here. The static block initializes every gauge to its vanilla default so scrapes return a
+ * sane value before the sandbox applier (or any other setter) has run.
  *
  * <ul>
  *   <li>{@code storm_server_tick_interval_seconds} — current server main-loop tick interval.
@@ -39,9 +39,8 @@ public final class StormPerformanceSandboxMetrics {
                     .help(
                             "Configured server main-loop tick interval in seconds (gate that"
                                     + " controls server TPS). Sourced from the unified Storm.ServerFps"
-                                    + " sandbox option (intervalMs = round(1000 / fps)); updatable at"
-                                    + " runtime via POST /storm/server/fps. Vanilla 0.1 (100ms / 10"
-                                    + " TPS).")
+                                    + " sandbox option (intervalMs = round(1000 / fps)). Vanilla 0.1"
+                                    + " (100ms / 10 TPS).")
                     .register(StormPrometheus.registry());
 
     private static final Gauge SERVER_LOCK_FPS =
@@ -49,8 +48,8 @@ public final class StormPerformanceSandboxMetrics {
                     .name("storm_server_lock_fps")
                     .help(
                             "Configured PerformanceSettings.getLockFPS() value on the server."
-                                    + " Sourced from the unified Storm.ServerFps sandbox option;"
-                                    + " updatable at runtime via POST /storm/server/fps. Vanilla 10.")
+                                    + " Sourced from the unified Storm.ServerFps sandbox option."
+                                    + " Vanilla 10.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge ISO_PHYSICS_SERVER_FPS =
@@ -59,8 +58,7 @@ public final class StormPerformanceSandboxMetrics {
                     .help(
                             "Configured FPS scalar used inside IsoPhysicsObject.update() on the"
                                     + " server. Sourced from the unified Storm.ServerFps sandbox"
-                                    + " option; updatable at runtime via POST /storm/server/fps."
-                                    + " Vanilla 10.")
+                                    + " option. Vanilla 10.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge ANIMAL_LOS_TICK_INTERVAL =
@@ -68,8 +66,7 @@ public final class StormPerformanceSandboxMetrics {
                     .name("storm_animal_los_tick_interval")
                     .help(
                             "Configured per-animal stride for IsoAnimal.updateLOS() on the server."
-                                    + " Sourced from the Storm.AnimalLOSTickInterval sandbox option;"
-                                    + " updatable at runtime via POST /storm/animalLOS/tickInterval."
+                                    + " Sourced from the Storm.AnimalLOSTickInterval sandbox option."
                                     + " Vanilla 1 (every tick); 0 = LOS disabled.")
                     .register(StormPrometheus.registry());
 
@@ -78,9 +75,8 @@ public final class StormPerformanceSandboxMetrics {
                     .name("storm_zombie_cull_threshold")
                     .help(
                             "Storm-controlled zombie cull threshold. Sourced from the"
-                                    + " Storm.ZombieCullThreshold sandbox option; updatable at runtime"
-                                    + " via POST /storm/server/zombieCull/threshold. Default 500"
-                                    + " (matches vanilla cap); 0 disables culling entirely.")
+                                    + " Storm.ZombieCullThreshold sandbox option. Default 500 (matches"
+                                    + " vanilla cap); 0 disables culling entirely.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge SERVER_LOS_THREADS =
@@ -89,9 +85,9 @@ public final class StormPerformanceSandboxMetrics {
                     .help(
                             "Concurrent ServerLOS worker count (slots receiving per-player scans"
                                     + " each tick). Sourced from the Storm.ServerLosThreads sandbox"
-                                    + " option; updatable at runtime via POST /storm/serverLos/threads."
-                                    + " Default 1 (single-threaded baseline); max 16. The pool always"
-                                    + " pre-allocates 15 helper threads regardless of this value.")
+                                    + " option. Default 1 (single-threaded baseline); max 16. The pool"
+                                    + " always pre-allocates 15 helper threads regardless of this"
+                                    + " value.")
                     .register(StormPrometheus.registry());
 
     static {

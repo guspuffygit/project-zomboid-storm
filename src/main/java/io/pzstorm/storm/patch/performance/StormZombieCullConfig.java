@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Both transformers are always registered on the server JVM; the threshold is read on every
  * advice entry (volatile), so live updates take effect on the next call. Sourced from the {@code
- * Storm.ZombieCullThreshold} sandbox option; adjustable at runtime via {@link #setThreshold(int)}
- * (which the Storm HTTP endpoint forwards through).
+ * Storm.ZombieCullThreshold} sandbox option, which feeds through {@link #setThreshold(int)} at
+ * {@code OnServerStarted}.
  */
 public final class StormZombieCullConfig {
 

@@ -14,10 +14,10 @@ import zombie.network.GameServer;
 
 /**
  * Reads Storm's performance sandbox options at {@code OnServerStarted} and pushes them through the
- * existing live setters. The unified {@code Storm.ServerFps} option drives the three subordinate
- * fps controllers (tick interval, lockFps, IsoPhysicsObject fps) via {@link
- * ServerFpsConfig#applyUnifiedFps(int)}; the remaining options ({@link AnimalLOSTickInterval},
- * {@link StormZombieCullConfig}, {@link StormServerLosConfig}) are each 1:1 with a sandbox option.
+ * existing live setters. {@code Storm.ServerFps} feeds {@link ServerFpsConfig#applyUnifiedFps(int)}
+ * (which sets tick interval, lockFps, and IsoPhysicsObject fps); the remaining options ({@link
+ * AnimalLOSTickInterval}, {@link StormZombieCullConfig}, {@link StormServerLosConfig}) are each 1:1
+ * with a sandbox option.
  *
  * <p>This runs only on the dedicated server — the event also fires on the client when a hosted coop
  * server starts, but the sandbox knobs here only make sense for the authoritative server JVM.

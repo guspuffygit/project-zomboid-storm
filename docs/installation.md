@@ -1,35 +1,15 @@
 # Installation
 
-Three install paths are covered below:
+Storm is a **server-side** framework. The install paths covered below all target the dedicated-server JVM — players connecting to a Storm-enabled server do **not** install Storm themselves and do not edit their game's launch options; required mods reach them through the vanilla workshop / mod-download flow the server advertises in `server.ini`.
 
-- **Steam Workshop (Client)** — the standard player install
-- **Local Install (Development)** — build Storm from source and deploy locally
-- **Dedicated Server** — server install on Windows or Linux, with Workshop or local Storm
+Two paths are covered below:
 
-## Steam Workshop (Client)
-
-1. Subscribe to [Storm Mod Loader](https://steamcommunity.com/sharedfiles/filedetails/?id=3670772371) in the Steam Workshop.
-2. Right click Project Zomboid in Steam Library, click Properties.
-3. In General, under Launch Options, paste the line for your platform below.
-
-### Windows
-```text
--agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
-```
-
-### Linux
-```text
--javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
-```
-
-### Mac
-```text
--javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
-```
-
-When you start the game, the main screen menu should show the Storm version in the right bottom of the screen.
+- **Dedicated Server** — production server install on Windows or Linux, with Workshop or locally-built Storm
+- **Local Install (Development)** — build Storm from source and deploy it into a local dedicated server for iteration
 
 ## Local Install (Development)
+
+For iterating on Storm itself or a Storm-based mod against a local dedicated server.
 
 ### Setup local.properties
 
@@ -56,20 +36,7 @@ Linux / Mac:
 ./gradlew clean spotlessApply installBootstrap installStorm publishToMavenLocal
 ```
 
-### Configure game launch options
-
-1. Right click Project Zomboid in Steam Library, click Properties.
-2. In General, under Launch Options, paste the line below.
-
-#### Windows
-```text
--DstormType=local "-agentpath:C:\Users\<user>\Zomboid\Workshop\storm\Contents\mods\storm\bootstrap\agentlib.dll=storm-bootstrap.jar" --
-```
-
-#### Linux / Mac
-```text
--javaagent:~/Zomboid/Workshop/storm/Contents/mods/storm/bootstrap/storm-bootstrap.jar -DstormType=local --
-```
+This deploys Storm into `<zomboidDir>/Workshop/storm/...`, which the "Local Install" subsections in **Dedicated Server** below point at via `-DstormType=local`.
 
 ## Dedicated Server
 

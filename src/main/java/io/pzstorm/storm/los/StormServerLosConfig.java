@@ -20,10 +20,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * giving a baseline directly comparable to {@code threads >= 2}.
  *
  * <p>Initialised from {@code -Dstorm.serverLos.threads}; sandbox-loaded from {@code
- * Storm.ServerLosThreads} at {@code OnServerStarted}; adjustable at runtime via the Storm HTTP
- * endpoint. Changing the value takes effect on the next LOS tick — no pool rebuild is needed
- * because the worker pool is always sized for {@link #MAX} pre-started helpers (see {@link
- * StormServerLos}) and only dispatches the currently-configured number of slices.
+ * Storm.ServerLosThreads} at {@code OnServerStarted}. Changing the value takes effect on the next
+ * LOS tick — no pool rebuild is needed because the worker pool is always sized for {@link #MAX}
+ * pre-started helpers (see {@link StormServerLos}) and only dispatches the currently-configured
+ * number of slices.
  */
 public final class StormServerLosConfig {
 

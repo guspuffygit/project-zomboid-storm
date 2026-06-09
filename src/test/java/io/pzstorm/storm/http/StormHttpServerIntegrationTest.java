@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.pzstorm.storm.IntegrationTest;
 import io.pzstorm.storm.core.StormVersion;
 import io.pzstorm.storm.event.core.StormEventDispatcher;
-import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,7 +21,6 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private HttpClient client;
-    private int savedAnimalLOSInterval;
 
     @BeforeEach
     void setUp() {
@@ -31,14 +29,12 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
         StormEventDispatcher.registerEventHandler(TypedBodyEchoEndpoints.class);
         StormHttpServer.start(0);
         client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
-        savedAnimalLOSInterval = AnimalLOSTickInterval.getCurrentTickInterval();
     }
 
     @AfterEach
     void tearDown() {
         StormHttpServer.stop();
         HttpEndpointDispatcher.reset();
-        AnimalLOSTickInterval.setTickInterval(savedAnimalLOSInterval);
     }
 
     @Test
@@ -57,92 +53,12 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
         Assertions.assertEquals(StormVersion.getVersion(), response.body());
     }
 
-    @Test
-    void animalLOSTickIntervalGetReturnsCurrentInterval() throws Exception {
-        AnimalLOSTickInterval.setTickInterval(7);
-
-        HttpResponse<String> response = get("/storm/animalLOS/tickInterval");
-
-        Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals("{\"tickInterval\":7}", response.body());
-    }
-
-    @Test
-    void animalLOSTickIntervalPostUpdatesInterval() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval?ticks=12");
-
-        Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals("{\"requested\":12,\"applied\":12}", response.body());
-        Assertions.assertEquals(12, AnimalLOSTickInterval.getCurrentTickInterval());
-    }
-
-    @Test
-    void animalLOSTickIntervalPostZeroDisablesLOS() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval?ticks=0");
-
-        Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals("{\"requested\":0,\"applied\":0}", response.body());
-        Assertions.assertEquals(0, AnimalLOSTickInterval.getCurrentTickInterval());
-    }
-
-    @Test
-    void animalLOSTickIntervalPostClampsAboveMaximum() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval?ticks=99999");
-
-        Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals(
-                "{\"requested\":99999,\"applied\":" + AnimalLOSTickInterval.MAX_TICK_INTERVAL + "}",
-                response.body());
-        Assertions.assertEquals(
-                AnimalLOSTickInterval.MAX_TICK_INTERVAL,
-                AnimalLOSTickInterval.getCurrentTickInterval());
-    }
-
-    @Test
-    void animalLOSTickIntervalPostClampsBelowMinimum() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval?ticks=-2");
-
-        Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals(
-                "{\"requested\":-2,\"applied\":" + AnimalLOSTickInterval.MIN_TICK_INTERVAL + "}",
-                response.body());
-        Assertions.assertEquals(
-                AnimalLOSTickInterval.MIN_TICK_INTERVAL,
-                AnimalLOSTickInterval.getCurrentTickInterval());
-    }
-
-    @Test
-    void animalLOSTickIntervalPostRejectsMissingTicksParam() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval");
-
-        Assertions.assertEquals(400, response.statusCode());
-        Assertions.assertTrue(response.body().contains("missing required query parameter: ticks"));
-    }
-
-    @Test
-    void animalLOSTickIntervalPostRejectsNonInteger() throws Exception {
-        HttpResponse<String> response = post("/storm/animalLOS/tickInterval?ticks=fast");
-
-        Assertions.assertEquals(400, response.statusCode());
-        Assertions.assertTrue(response.body().contains("ticks must be an integer"));
-    }
-
     private HttpResponse<String> get(String path) throws Exception {
         HttpRequest request =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + StormHttpServer.getPort() + path))
                         .timeout(TIMEOUT)
                         .GET()
-                        .build();
-        return client.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> post(String path) throws Exception {
-        HttpRequest request =
-                HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:" + StormHttpServer.getPort() + path))
-                        .timeout(TIMEOUT)
-                        .POST(HttpRequest.BodyPublishers.noBody())
                         .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }

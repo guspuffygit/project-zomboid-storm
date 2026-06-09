@@ -14,7 +14,7 @@ import zombie.core.PerformanceSettings;
  * Substitutes the {@code PerformanceSettings.setLockFPS(int)} call inside {@code GameServer.main()}
  * with {@link ServerLockFpsConfig#applyServerLockFps(int)} so {@link ServerLockFpsConfig} can cache
  * the live value. The {@code Storm.ServerFps} sandbox option drives this via {@link
- * ServerFpsConfig#applyUnifiedFps(int)}; there is no direct lockFps HTTP endpoint.
+ * ServerFpsConfig#applyUnifiedFps(int)}.
  *
  * <p>Substitution is scoped to {@code main(String[])} so the client-side {@code setLockFPS} call
  * sites in {@code zombie.core.Core} (monitor refresh selection) are untouched.

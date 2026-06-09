@@ -4,38 +4,17 @@
 [![License](https://img.shields.io/github/license/guspuffygit/project-zomboid-storm?logo=gnu)](https://www.gnu.org/licenses/)
 [![Discord](https://img.shields.io/discord/823907021178798150?color=7289DA&label=discord&logo=discord&logoColor=white)](https://discord.gg/ZCmg9VsvSW)
 
-Storm Mod Loader is a Java modding framework for Project Zomboid.
+Storm Mod Loader pairs server-side Java mods with Lua client mods to enable functionality beyond what Lua-only mods can do. Vanilla clients connect to a Java-modded server without the need to setup Java modding locally. Mods are distributed through the normal Steam Workshop.
 
 Successor to the original abandoned [Storm](https://github.com/pzstorm/storm).
 
-## Quickstart (Client)
+## Quickstart
 
-1. Subscribe to [Storm Mod Loader](https://steamcommunity.com/sharedfiles/filedetails/?id=3670772371) in the Steam Workshop.
-2. Right click Project Zomboid in Steam Library, click Properties.
-3. In General, under Launch Options, paste the line for your platform below.
-
-#### Windows
-```text
--agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
-```
-
-#### Linux
-```text
--javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
-```
-
-#### Mac
-```text
--javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
-```
-
-When you start the game, the main screen menu should show the Storm version in the bottom right of the screen.
-
-For local development install or dedicated server setup, see [Installation](docs/installation.md).
+See [Installation](docs/installation.md) for dedicated-server setup (Workshop or local-build) on Windows and Linux, and for the local-development workflow when iterating on Storm or a Storm-based mod.
 
 ## What Storm Does
 
-Storm rewrites a chunk of the game's bytecode at load time to:
+Storm rewrites a chunk of the dedicated server's bytecode at load time to:
 
 - **Patch vanilla bugs** that affect multiplayer (cross-player action cancels, zombie ID collisions, whisper case-sensitivity, …)
 - **Lift hardcoded server limits** (configurable tick rate, parallel LOS pipeline, packet rate limit removed, raised zombie cull cap)
@@ -46,7 +25,7 @@ See [What Storm Changes](docs/what-storm-changes.md) for the full list.
 
 ## Documentation
 
-- [Installation](docs/installation.md) — Steam Workshop, local development install, dedicated server (Windows + Linux)
+- [Installation](docs/installation.md) — dedicated server install (Workshop or local build, Windows + Linux) and local development workflow
 - [What Storm Changes](docs/what-storm-changes.md) — performance, behavioral overrides, bug fixes, mod-loader extensions
 - [Server Configuration](docs/server-configuration.md) — system properties and a production launcher example
 - [HTTP API](docs/http-api.md) — runtime tuning endpoints and developer hot-reload (Lua / Java)

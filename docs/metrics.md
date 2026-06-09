@@ -173,7 +173,7 @@ rate(pz_chunk_load_call_duration_seconds_count[1m])
 
 ### Comparative timing (CellObjectAdd / CellObjectRemove)
 
-Both classes patch `IsoCell` add/remove paths and time a "fast" path (every call) alongside a "vanilla simulated" path (sampled 1-in-1024 via `VANILLA_SAMPLE_MASK = 1023`). The pre-Prometheus implementation computed a "speedup ratio" in Java; that calculation now lives in PromQL.
+Both classes patch `IsoCell` add/remove paths and time a "fast" path (every call) alongside a "vanilla simulated" path (sampled 1-in-1024 via `VANILLA_SAMPLE_MASK = 1023`). The "speedup ratio" comparison lives in PromQL (see below).
 
 | Name | Type | What |
 |------|------|------|

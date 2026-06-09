@@ -6,7 +6,7 @@ import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFact
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
 
 /**
- * Unified server fps knob. A single fps value drives all three subordinate controllers:
+ * Server fps knob. {@link #applyUnifiedFps(int)} sets three values from one fps:
  *
  * <ul>
  *   <li>{@link UpdateLimitFactory} — server tick interval ({@code intervalMs = round(1000 / fps)})
@@ -15,11 +15,8 @@ import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
  *   <li>{@link IsoPhysicsObjectFpsConfig} — fps divisor inside {@code IsoPhysicsObject.update()}
  * </ul>
  *
- * <p>The {@code Storm.ServerFps} sandbox option drives this at {@code OnServerStarted}; {@code POST
- * /storm/server/fps} retunes it at runtime. There are no subordinate HTTP endpoints — the three
- * controllers always move together.
- *
- * <p>Range: {@link #MIN_FPS}..{@link #MAX_FPS}.
+ * <p>The {@code Storm.ServerFps} sandbox option drives this at {@code OnServerStarted}. Range:
+ * {@link #MIN_FPS}..{@link #MAX_FPS}.
  */
 public final class ServerFpsConfig {
 
@@ -48,9 +45,9 @@ public final class ServerFpsConfig {
     }
 
     /**
-     * Live-updates all three subordinate knobs from a single fps value, clamping to {@link
-     * #MIN_FPS}..{@link #MAX_FPS}. Throws {@link IllegalStateException} if the server tick limiter
-     * has not been installed yet (i.e. before {@code GameServer.main} has run).
+     * Applies one fps value, clamping to {@link #MIN_FPS}..{@link #MAX_FPS}. Throws {@link
+     * IllegalStateException} if the server tick limiter has not been installed yet (i.e. before
+     * {@code GameServer.main} has run).
      */
     public static AppliedFps applyUnifiedFps(int requestedFps) {
         int clampedFps = clamp(requestedFps);

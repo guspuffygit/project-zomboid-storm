@@ -26,8 +26,7 @@ import net.bytebuddy.pool.TypePool;
  * <p>Always registered on the server JVM (see {@code StormClassTransformers}); both advices are
  * no-ops when {@link StormZombieCullConfig#getThreshold()} is {@code 0} (culling disabled outright
  * via {@code ZombieCullDisablePatch}). Sourced from the {@code Storm.ZombieCullThreshold} sandbox
- * option; live updates via the {@code /storm/server/zombieCull/threshold} HTTP endpoint take effect
- * on the next frame.
+ * option.
  */
 public class ZombieCullThresholdPatch extends StormClassTransformer {
 

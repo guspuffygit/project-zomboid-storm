@@ -15,7 +15,7 @@ import zombie.network.GameServer;
  * OnServerStarted} via {@link ServerFpsConfig#applyUnifiedFps(int)} → {@link #setLockFps(int)}.
  *
  * <p>The live value is mutable via {@link #setLockFps(int)}, called only from {@link
- * ServerFpsConfig#applyUnifiedFps(int)} — there is no direct HTTP endpoint for lockFps.
+ * ServerFpsConfig#applyUnifiedFps(int)}.
  *
  * <p>Note: this knob only changes what {@code PerformanceSettings.getLockFPS()} reports — the
  * actual server tick rate is governed by {@link GameServerTickRatePatch}. The unified {@link
@@ -45,8 +45,8 @@ public final class ServerLockFpsConfig {
      * UpdateLimit(100L)} at {@code GameServer.main()} line 822 installs the tick limiter and BEFORE
      * the patched {@code PerformanceSettings.setLockFPS(10)} at line 823 records the vanilla
      * baseline. By the time this method runs, both vanilla setups are complete, so the sandbox
-     * applier can safely push {@code Storm.ServerFps} through all three subordinate controllers
-     * without the vanilla {@code setLockFPS(10)} call overwriting it afterwards.
+     * applier can safely apply {@code Storm.ServerFps} without the vanilla {@code setLockFPS(10)}
+     * call overwriting it afterwards.
      */
     public static void applyServerLockFps(int vanillaValue) {
         int applied = clamp(vanillaValue);

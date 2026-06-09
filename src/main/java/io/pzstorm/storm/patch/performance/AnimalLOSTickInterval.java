@@ -14,8 +14,7 @@ import zombie.MovingObjectUpdateScheduler;
  * 1, which preserves vanilla every-tick behavior.
  *
  * <p>The live value is mutable via {@link #setTickInterval(int)}; the {@code
- * Storm.AnimalLOSTickInterval} sandbox option and the {@code POST /storm/animalLOS/tickInterval}
- * HTTP endpoint both feed through that setter.
+ * Storm.AnimalLOSTickInterval} sandbox option feeds through that setter at {@code OnServerStarted}.
  */
 public final class AnimalLOSTickInterval {
 

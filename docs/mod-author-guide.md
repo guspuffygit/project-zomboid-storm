@@ -76,21 +76,25 @@ public static void onTransfer(ItemTransactionPacketEvent event) {
 
 ## Lua API
 
-Storm exposes a small `Storm` table plus a handful of utility libraries to the
-game's Lua environment on both client and server. Everything is safe to call
-from any Lua script after `OnZomboidGlobalsLoad`.
+Storm exposes a small `Storm` table plus a handful of utility libraries to
+the dedicated server's Lua environment, and ships the same Lua files inside
+its jar so connected players' game clients pick them up through the vanilla
+mod-distribution flow. Symbols are safe to call from any Lua script after
+`OnZomboidGlobalsLoad`.
 
 | Symbol | Purpose |
 |--------|---------|
-| `Storm.isEnabled()` | `true` when Storm is loaded — handy as a feature-detect guard for vanilla-compatible mods. |
+| `Storm.isEnabled()` | `true` when Storm-shipped Lua loaded — handy as a feature-detect guard for vanilla-compatible mods. |
 | `Storm.getVersion()` | Storm version string (matches `GET /storm/version`). |
 | `Storm.debug(...)` | Forwards its arguments to Storm's debug logger. |
-| `PersistedTable:save(file, tbl)` / `PersistedTable:read(file)` | Persist a flat `key=value` Lua table to a Zomboid-managed text file and read it back. Skips function / table values. Useful for client-side preference toggles. |
+| `PersistedTable:save(file, tbl)` / `PersistedTable:read(file)` | Persist a flat `key=value` Lua table to a Zomboid-managed text file and read it back. Skips function / table values. Useful for per-player UI preference toggles read by Storm-shipped client Lua. |
 | `StormBase64.encode(bytes [, start, end])` / `StormBase64.decode(str)` | Pure-Lua base64 codec used by Storm's screenshot pipeline; mods can reuse it for binary `sendClientCommand` payloads since vanilla Lua can't carry raw bytes through the network table. |
 
-Any Lua files placed under `lua/` inside a mod jar are automatically loaded into
-the Lua environment on `OnZomboidGlobalsLoad`, so a Storm mod can ship its
-client / server / shared scripts inside the same jar as its Java code.
+Any Lua files placed under `lua/` inside a mod jar are automatically loaded
+into the server's Lua environment on `OnZomboidGlobalsLoad` and reach
+connected players' game clients via PZ's standard mod-download flow, so a
+Storm mod can ship its client / server / shared scripts inside the same jar
+as its Java code.
 
 ## Built-in Server Commands
 

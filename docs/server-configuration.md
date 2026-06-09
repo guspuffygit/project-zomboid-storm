@@ -2,13 +2,12 @@
 
 Storm's server-tunable knobs split into two groups:
 
-- **Bootstrap / dev flags** are still set as `-D<key>=<value>` on the JVM command line — they have
-  to take effect before the server reaches `OnServerStarted` (bootstrap target, log level, HTTP
-  port, hot-reload, Prometheus).
-- **Performance knobs** moved off `-D` flags and onto vanilla **sandbox options** — admins set them
-  in the world's `<SaveName>.ini` (or the in-game world setup UI on the "Storm | Performance" tab),
-  and Storm reads them once at `OnServerStarted` and pushes the values through the live setters.
-  Runtime tuning still happens over the HTTP endpoints in [HTTP API](http-api.md).
+- **Bootstrap / dev flags** are set as `-D<key>=<value>` on the JVM command line — they have to
+  take effect before the server reaches `OnServerStarted` (bootstrap target, log level, HTTP port,
+  hot-reload, Prometheus).
+- **Performance knobs** are vanilla **sandbox options** — admins set them in the world's
+  `<SaveName>.ini` (or the in-game world setup UI on the "Storm | Performance" tab), and Storm
+  reads them at `OnServerStarted` and pushes the values through the live setters.
 
 ## Bootstrap / dev system properties
 
@@ -17,10 +16,10 @@ script). All flags are opt-in unless noted.
 
 | Flag | Purpose |
 |------|---------|
-| `-Dstorm.server=true` | **Required on the dedicated server.** Tells the bootstrap agent to target `GameServer` instead of `MainScreenState`. |
+| `-Dstorm.server=true` | **Required.** Tells the bootstrap agent it is running on the dedicated-server JVM so it targets `GameServer`. Storm is a server-only framework — this is always set. |
 | `-DstormType=local` | Load Storm from `~/Zomboid/Workshop/storm` instead of the Steam workshop path. Local development only. |
 | `-DLOG_LEVEL=DEBUG` | Storm log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). Default `INFO`. |
-| `-Dstorm.http.port=<port>` | Start Storm's HTTP server on `<port>`. Required for every HTTP endpoint (hot-reload + runtime tuning). Conventionally `41798` on the dedicated server and `8089` on the client. |
+| `-Dstorm.http.port=<port>` | Start Storm's HTTP server on `<port>`. Required for inspection endpoints and developer hot-reload. Conventionally `41798` on the dedicated server. |
 | `-Dstorm.hotreload=true` | Register the `/reload` and `/eval` developer endpoints. See [Developer Hot-Reload Endpoints](http-api.md#developer-hot-reload-endpoints). **Local development only.** |
 | `-Dstorm.hotreload.eval.classes=<dir>` | Directory holding the compiled `EvalScript.class` (required by `/eval`). |
 | `-Dstorm.hotreload.eval.source=<dir>` | Optional. Directory holding `EvalScript.java`; enables a staleness guard. |
@@ -32,36 +31,18 @@ script). All flags are opt-in unless noted.
 All Storm performance knobs are exposed as sandbox options on the "Storm | Performance" tab in
 the world setup UI. Edit them through the admin UI before world creation, or hand-edit
 `<SaveName>.ini` between runs. The Storm sandbox applier reads every option on
-`OnServerStarted` and pushes it through the same live setter the HTTP endpoints use — so the
-sandbox value always overrides any leftover `-D` system property at server start.
+`OnServerStarted` and pushes it through the corresponding live setter.
 
-| Sandbox option | Default | Range | Effect | Live-tunable via |
-|---|---|---|---|---|
-| `Storm.ServerFps` | `10` | `1..240` | Unified server FPS. Drives the main-loop tick gate (`intervalMs = round(1000 / fps)`), `PerformanceSettings.getLockFPS()` on the server, and the `IsoPhysicsObject.update()` FPS scalar — all three together. `10` = vanilla 10 TPS. Keep the three aligned to avoid physics drift; this is exactly what the sandbox option guarantees. | `POST /storm/server/fps` |
-| `Storm.AnimalLOSTickInterval` | `1` | `0..64` | Per-animal stride for `IsoAnimal.updateLOS()`. `1` = vanilla every tick. Larger = each animal scans LOS every Nth tick (cheaper). `0` disables animal LOS entirely. | `POST /storm/animalLOS/tickInterval` |
-| `Storm.ZombieCullThreshold` | `500` | `0..99999` | Storm-controlled cull target. `500` = vanilla cap (default); the threshold patch also fixes vanilla's over-cull bug so the count converges instead of being mass-deleted ~10%/frame on overshoot. Larger = allow more live zombies before culling. `0` disables culling entirely (no zombies ever queued for deletion). | `POST /storm/server/zombieCull/threshold` |
-| `Storm.ServerLosThreads` | `1` | `1..16` | Concurrent ServerLOS worker count. `1` = vanilla single-threaded baseline. The helper pool always pre-allocates 15 threads regardless; this only controls how many receive work each tick. Typical busy-server value `4..12`. | `POST /storm/serverLos/threads` |
-
-The three subordinate fps controllers (tick interval, `lockFps`, physics fps) are not individually
-tunable — `Storm.ServerFps` and `POST /storm/server/fps` are the only knobs, and both move all
-three together.
+| Sandbox option | Default | Range | Effect |
+|---|---|---|---|
+| `Storm.ServerFps` | `10` | `1..240` | Server FPS. Sets the main-loop tick gate (`intervalMs = round(1000 / fps)`), `PerformanceSettings.getLockFPS()` on the server, and the `IsoPhysicsObject.update()` FPS scalar. `10` = vanilla 10 TPS. |
+| `Storm.AnimalLOSTickInterval` | `1` | `0..64` | Per-animal stride for `IsoAnimal.updateLOS()`. `1` = vanilla every tick. Larger = each animal scans LOS every Nth tick (cheaper). `0` disables animal LOS entirely. |
+| `Storm.ZombieCullThreshold` | `500` | `0..99999` | Storm-controlled cull target. `500` = vanilla cap (default); the threshold patch also fixes vanilla's over-cull bug so the count converges instead of being mass-deleted ~10%/frame on overshoot. Larger = allow more live zombies before culling. `0` disables culling entirely (no zombies ever queued for deletion). |
+| `Storm.ServerLosThreads` | `1` | `1..16` | Concurrent ServerLOS worker count. `1` = vanilla single-threaded baseline. The helper pool always pre-allocates 15 threads regardless; this only controls how many receive work each tick. Typical busy-server value `4..12`. |
 
 The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_server_lock_fps`, `storm_iso_physics_server_fps`, `storm_animal_los_tick_interval`,
-`storm_zombie_cull_threshold`, `storm_server_los_threads`) reflect the currently-applied value
-regardless of whether sandbox or HTTP wrote it last.
-
-### Migrating from `-D` flags
-
-The previous `-Dstorm.server.tickIntervalMs`, `-Dstorm.server.lockFps`,
-`-Dstorm.isoPhysics.serverFps`, `-Dstorm.animalLOS.tickInterval`, `-Dstorm.zombieCullThreshold`,
-`-Dstorm.disableZombieCull`, and `-Dstorm.server.fps` flags are no longer read by Storm — set
-the corresponding sandbox option in the world INI instead. The three subordinate fps flags fold
-into the single `Storm.ServerFps` knob (default `10`); `-Dstorm.disableZombieCull` folds into
-`Storm.ZombieCullThreshold = 0`. `-Dstorm.serverLos.threads` is the one exception: it still
-initializes the value at JVM startup (useful for tests), but the sandbox applier overwrites it
-with `Storm.ServerLosThreads` at server start, so production servers should only set the
-sandbox option.
+`storm_zombie_cull_threshold`, `storm_server_los_threads`) reflect the currently-applied value.
 
 ## Production launcher example (Linux)
 
@@ -105,10 +86,9 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} \
     -DprometheusPort=9092 \
     -DprometheusHost=<your-host>"
 
-# Performance knobs (LOS threads, animal-LOS stride, zombie cull, tick/lockFps/physicsFps)
-# live in the world INI as sandbox options now — set them once in the world setup UI on the
-# "Storm | Performance" tab, or hand-edit <SaveName>.ini between runs. See the sandbox table
-# above for names, defaults, and ranges.
+# Performance knobs (LOS threads, animal-LOS stride, zombie cull, server fps) are set in the
+# "Storm | Performance" tab of the world setup UI, or by hand-editing <SaveName>.ini between
+# runs. See the sandbox table above for names, defaults, and ranges.
 
 LD_PRELOAD="${LD_PRELOAD}:${JSIG}" ./ProjectZomboid64 "$@" \
     > >(tee "${INSTDIR}/crash-logs/stdout_${TIMESTAMP}.log") \
