@@ -187,6 +187,15 @@ jacocoTestReport {
 	}
 }
 
+processResources {
+	inputs.property 'stormVersion', project.version
+	doLast {
+		def f = new File(destinationDir, 'storm-version.properties')
+		f.parentFile.mkdirs()
+		f.text = "version=${project.version}\n"
+	}
+}
+
 jar {
 	from sourceSets.main.output
 	manifest {
@@ -271,7 +280,7 @@ tasks.register('writeModInfo') {
 	inputs.property("id", getModId())
 	inputs.property("description", 'Storm core mod loader for b42')
 	inputs.property("url", 'url')
-	inputs.property("modversion", 'modversion')
+	inputs.property("modversion", project.version.toString())
 
 	outputs.file(outputFile)
 
