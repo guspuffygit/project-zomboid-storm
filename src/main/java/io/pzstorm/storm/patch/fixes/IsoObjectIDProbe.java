@@ -8,14 +8,14 @@ import java.util.Map;
  * advancing through the entire 16-bit short space (skipping the sentinel {@code -1}).
  *
  * <p>Vanilla {@code zombie.network.IsoObjectID.allocateID()} is a free-running 16-bit counter with
- * no uniqueness check. With the live zombie population uncapped (e.g. {@code
- * -Dstorm.disableZombieCull=true}), the count of live entries can grow into the same order of
- * magnitude as the address space and collisions on the {@code put(short, T)} silently overwrite an
- * existing live entry, leaving its holder reachable in {@code cell.zombieList} but unreachable by
- * ID. The downstream symptom is client-side zombie duplication ("mitosis") when the server starts
- * broadcasting that overwritten holder under a freshly allocated ID and the client's {@code
- * IDToZombieMap.get(id)} miss path spawns a brand-new client zombie via {@code
- * createRealZombieAlways}.
+ * no uniqueness check. With the live zombie population uncapped (e.g. the {@code
+ * Storm.ZombieCullThreshold} sandbox option set to {@code 0}), the count of live entries can grow
+ * into the same order of magnitude as the address space and collisions on the {@code put(short, T)}
+ * silently overwrite an existing live entry, leaving its holder reachable in {@code
+ * cell.zombieList} but unreachable by ID. The downstream symptom is client-side zombie duplication
+ * ("mitosis") when the server starts broadcasting that overwritten holder under a freshly allocated
+ * ID and the client's {@code IDToZombieMap.get(id)} miss path spawns a brand-new client zombie via
+ * {@code createRealZombieAlways}.
  *
  * <p>The probe walks the short range exactly once. Each iteration advances by 1, with one extra
  * step over {@code -1} (the {@code ID_INVALID} sentinel). When a free slot is found the new cursor

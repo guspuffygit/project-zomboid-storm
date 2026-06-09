@@ -1,0 +1,11 @@
+{
+  "Sandbox_Storm": "Storm | Performance",
+  "Sandbox_Storm_ServerFps": "Server FPS (tick rate + lockFps + physics FPS)",
+  "Sandbox_Storm_ServerFps_tooltip": "Unified server FPS. Drives the main-loop tick gate (1000/fps ms), PerformanceSettings.getLockFPS() on the server, and the IsoPhysicsObject.update() FPS scalar — all three together. 10 = vanilla 10 TPS. Higher = faster simulation but more CPU.",
+  "Sandbox_Storm_AnimalLOSTickInterval": "Animal LOS tick interval",
+  "Sandbox_Storm_AnimalLOSTickInterval_tooltip": "Per-animal stride for IsoAnimal.updateLOS(). 1 = vanilla every-tick. Larger = each animal scans LOS every Nth tick (cheaper). 0 disables LOS entirely.",
+  "Sandbox_Storm_ZombieCullThreshold": "Zombie cull threshold (0 = disabled)",
+  "Sandbox_Storm_ZombieCullThreshold_tooltip": "Storm-controlled cull threshold. 500 = vanilla cap (default). Larger = allow more live zombies before culling. 0 disables culling entirely (no zombies ever queued for deletion).",
+  "Sandbox_Storm_ServerLosThreads": "ServerLOS worker threads",
+  "Sandbox_Storm_ServerLosThreads_tooltip": "Number of concurrent player LOS scans per tick. 1 = vanilla single-threaded baseline. Up to 16. The helper pool always pre-allocates 15 threads regardless; this knob only controls how many receive work each tick."
+}

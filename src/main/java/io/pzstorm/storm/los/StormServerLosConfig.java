@@ -1,5 +1,6 @@
 package io.pzstorm.storm.los;
 
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -18,18 +19,21 @@ import java.util.concurrent.atomic.AtomicInteger;
  * is byte-identical to vanilla). This single-threaded run still records {@code storm_serverlos_*},
  * giving a baseline directly comparable to {@code threads >= 2}.
  *
- * <p>Initialised from {@code -Dstorm.serverLos.threads}; adjustable at runtime via the Storm HTTP
+ * <p>Initialised from {@code -Dstorm.serverLos.threads}; sandbox-loaded from {@code
+ * Storm.ServerLosThreads} at {@code OnServerStarted}; adjustable at runtime via the Storm HTTP
  * endpoint. Changing the value takes effect on the next LOS tick — no pool rebuild is needed
- * because the worker pool is always sized for {@link #MAX} and only dispatches the
- * currently-configured number of slices.
+ * because the worker pool is always sized for {@link #MAX} pre-started helpers (see {@link
+ * StormServerLos}) and only dispatches the currently-configured number of slices.
  */
 public final class StormServerLosConfig {
 
     public static final int MIN = 1;
     public static final int MAX = 16;
+    public static final int DEFAULT_THREADS = MIN;
 
     private static final AtomicInteger THREADS =
-            new AtomicInteger(clamp(Integer.getInteger("storm.serverLos.threads", MIN)));
+            new AtomicInteger(
+                    clamp(Integer.getInteger("storm.serverLos.threads", DEFAULT_THREADS)));
 
     private StormServerLosConfig() {}
 
@@ -43,6 +47,7 @@ public final class StormServerLosConfig {
     public static int setThreads(int n) {
         int clamped = clamp(n);
         THREADS.set(clamped);
+        StormPerformanceSandboxMetrics.setServerLosThreads(clamped);
         return clamped;
     }
 

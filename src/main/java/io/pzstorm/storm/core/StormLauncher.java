@@ -76,6 +76,13 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, ramAllocTracker);
 
+            Class<?> perfSandboxApplier =
+                    classLoader.loadClass(
+                            "io.pzstorm.storm.sandbox.StormPerformanceSandboxApplier");
+            eventDispatcher
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, perfSandboxApplier);
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());

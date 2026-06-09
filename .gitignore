@@ -91,5 +91,13 @@ CLAUDE.md
 .luarc.json
 
 *.class
-docs/
 *.jfr
+
+!docs/
+docs/*
+!docs/installation.md
+!docs/what-storm-changes.md
+!docs/server-configuration.md
+!docs/http-api.md
+!docs/mod-author-guide.md
+!docs/metrics.md

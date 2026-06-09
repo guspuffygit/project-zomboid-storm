@@ -10,18 +10,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies the per-animal LOS tick stride controller's property resolution, live setter, and
- * round-robin distribution predicate.
+ * Verifies the per-animal LOS tick stride controller's live setter and round-robin distribution
+ * predicate.
  */
 class AnimalLOSTickIntervalTest implements UnitTest {
 
-    private String savedProperty;
     private int savedInterval;
 
     @BeforeEach
     void captureState() {
-        savedProperty = System.getProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY);
-        System.clearProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY);
         savedInterval = AnimalLOSTickInterval.getCurrentTickInterval();
         AnimalLOSTickInterval.setCurrentTickIntervalForTest(
                 AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL);
@@ -29,82 +26,7 @@ class AnimalLOSTickIntervalTest implements UnitTest {
 
     @AfterEach
     void restoreState() {
-        if (savedProperty == null) {
-            System.clearProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY);
-        } else {
-            System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, savedProperty);
-        }
         AnimalLOSTickInterval.setCurrentTickIntervalForTest(savedInterval);
-    }
-
-    // -------- resolveTickInterval() --------
-
-    @Test
-    void resolveReturnsDefaultWhenPropertyUnset() {
-        assertEquals(
-                AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveReturnsConfiguredValueWhenInRange() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "8");
-        assertEquals(8, AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveTrimsWhitespace() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "  16  ");
-        assertEquals(16, AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveClampsBelowMinimum() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "-5");
-        assertEquals(
-                AnimalLOSTickInterval.MIN_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveClampsAboveMaximum() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "9999");
-        assertEquals(
-                AnimalLOSTickInterval.MAX_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveFallsBackOnNonNumeric() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "fast");
-        assertEquals(
-                AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveFallsBackOnEmptyString() {
-        System.setProperty(AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY, "");
-        assertEquals(
-                AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-    }
-
-    @Test
-    void resolveAcceptsBoundaryValues() {
-        System.setProperty(
-                AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY,
-                Integer.toString(AnimalLOSTickInterval.MIN_TICK_INTERVAL));
-        assertEquals(
-                AnimalLOSTickInterval.MIN_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
-
-        System.setProperty(
-                AnimalLOSTickInterval.TICK_INTERVAL_PROPERTY,
-                Integer.toString(AnimalLOSTickInterval.MAX_TICK_INTERVAL));
-        assertEquals(
-                AnimalLOSTickInterval.MAX_TICK_INTERVAL,
-                AnimalLOSTickInterval.resolveTickInterval());
     }
 
     // -------- setTickInterval() --------

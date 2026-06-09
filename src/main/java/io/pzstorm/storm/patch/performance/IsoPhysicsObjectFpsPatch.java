@@ -28,8 +28,10 @@ import zombie.network.GameServer;
  *       GameServer.server} is true, else delegates to the vanilla {@code lockFps}).
  * </ul>
  *
- * <p>Net effect: on the server, {@code fps} becomes the value configured via {@link
- * IsoPhysicsObjectFpsConfig#PHYSICS_FPS_PROPERTY}; on the client, behavior is unchanged.
+ * <p>Net effect: on the server, {@code fps} becomes the value configured via the unified {@code
+ * Storm.ServerFps} sandbox option (which drives {@link IsoPhysicsObjectFpsConfig} through {@link
+ * io.pzstorm.storm.patch.networking.ServerFpsConfig#applyUnifiedFps(int)}); on the client, behavior
+ * is unchanged.
  */
 public class IsoPhysicsObjectFpsPatch extends StormClassTransformer {
 

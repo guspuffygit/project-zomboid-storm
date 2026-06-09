@@ -2,6 +2,7 @@ package io.pzstorm.storm.patch.performance;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import zombie.MovingObjectUpdateScheduler;
 
 /**
@@ -12,14 +13,11 @@ import zombie.MovingObjectUpdateScheduler;
  * {@code ~1/tickInterval} of all animals scan their LOS. Default {@link #DEFAULT_TICK_INTERVAL} =
  * 1, which preserves vanilla every-tick behavior.
  *
- * <p>The default value is read once from the {@link #TICK_INTERVAL_PROPERTY} system property at
- * class load and clamped to {@link #MIN_TICK_INTERVAL}..{@link #MAX_TICK_INTERVAL}. The live value
- * is mutable via {@link #setTickInterval(int)}; the {@code POST /storm/animalLOS/tickInterval} HTTP
- * endpoint exposes that setter at runtime.
+ * <p>The live value is mutable via {@link #setTickInterval(int)}; the {@code
+ * Storm.AnimalLOSTickInterval} sandbox option and the {@code POST /storm/animalLOS/tickInterval}
+ * HTTP endpoint both feed through that setter.
  */
 public final class AnimalLOSTickInterval {
-
-    public static final String TICK_INTERVAL_PROPERTY = "storm.animalLOS.tickInterval";
 
     /** Vanilla — every animal runs LOS every tick. */
     public static final int DEFAULT_TICK_INTERVAL = 1;
@@ -30,22 +28,9 @@ public final class AnimalLOSTickInterval {
     /** Hard ceiling — at 64, an animal updates LOS roughly every 6 seconds at 10 TPS. */
     public static final int MAX_TICK_INTERVAL = 64;
 
-    private static volatile int currentTickInterval = initialize();
+    private static volatile int currentTickInterval = DEFAULT_TICK_INTERVAL;
 
     private AnimalLOSTickInterval() {}
-
-    private static int initialize() {
-        int resolved = resolveTickInterval();
-        if (resolved == DEFAULT_TICK_INTERVAL) {
-            LOGGER.info("Storm: animal-LOS tick interval = {} [vanilla every-tick]", resolved);
-        } else {
-            LOGGER.info(
-                    "Storm: animal-LOS tick interval = {} [override via -D{}]",
-                    resolved,
-                    TICK_INTERVAL_PROPERTY);
-        }
-        return resolved;
-    }
 
     /** Current effective tick interval. */
     public static int getCurrentTickInterval() {
@@ -59,32 +44,9 @@ public final class AnimalLOSTickInterval {
     public static int setTickInterval(int requested) {
         int applied = clamp(requested);
         currentTickInterval = applied;
+        StormPerformanceSandboxMetrics.setAnimalLOSTickInterval(applied);
         LOGGER.info("Storm: animal-LOS tick interval updated to {}", applied);
         return applied;
-    }
-
-    /**
-     * Reads {@link #TICK_INTERVAL_PROPERTY}, clamping to {@link #MIN_TICK_INTERVAL}..{@link
-     * #MAX_TICK_INTERVAL}. Returns {@link #DEFAULT_TICK_INTERVAL} when the property is unset or
-     * unparseable.
-     */
-    public static int resolveTickInterval() {
-        String prop = System.getProperty(TICK_INTERVAL_PROPERTY);
-        if (prop == null || prop.isEmpty()) {
-            return DEFAULT_TICK_INTERVAL;
-        }
-        int parsed;
-        try {
-            parsed = Integer.parseInt(prop.trim());
-        } catch (NumberFormatException e) {
-            LOGGER.warn(
-                    "Storm: invalid -D{}=\"{}\", falling back to default {}",
-                    TICK_INTERVAL_PROPERTY,
-                    prop,
-                    DEFAULT_TICK_INTERVAL);
-            return DEFAULT_TICK_INTERVAL;
-        }
-        return clamp(parsed);
     }
 
     /**

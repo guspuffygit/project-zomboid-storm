@@ -24,9 +24,10 @@ import net.bytebuddy.pool.TypePool;
  * </ul>
  *
  * <p>Always registered on the server JVM (see {@code StormClassTransformers}); both advices are
- * no-ops when {@link StormZombieCullConfig#getThreshold()} returns a non-positive value, so the
- * patch is invisible unless {@code -Dstorm.zombieCullThreshold=<n>} or the HTTP endpoint engages
- * it.
+ * no-ops when {@link StormZombieCullConfig#getThreshold()} is {@code 0} (culling disabled outright
+ * via {@code ZombieCullDisablePatch}). Sourced from the {@code Storm.ZombieCullThreshold} sandbox
+ * option; live updates via the {@code /storm/server/zombieCull/threshold} HTTP endpoint take effect
+ * on the next frame.
  */
 public class ZombieCullThresholdPatch extends StormClassTransformer {
 

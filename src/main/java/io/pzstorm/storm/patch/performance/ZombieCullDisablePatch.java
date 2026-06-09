@@ -12,8 +12,10 @@ import net.bytebuddy.pool.TypePool;
  * {@code incrementZombie(IsoZombie)} — nothing is ever added to {@code zombiesForDelete}, so {@code
  * deleteZombies()} is always a no-op and the {@code zombies-culled} stat never increments.
  *
- * <p>Opt-in and default-off: registered only when {@code -Dstorm.disableZombieCull=true}, and gated
- * server-only at registration time (see {@code StormClassTransformers}). Virtualization in {@code
+ * <p>Always registered on the dedicated server (see {@code StormClassTransformers}); the advice
+ * itself only short-circuits when {@link StormZombieCullConfig#getThreshold()} is {@code 0}, so by
+ * default (threshold = 500, matching vanilla) it is a runtime no-op. Setting the {@code
+ * Storm.ZombieCullThreshold} sandbox option to {@code 0} flips this on. Virtualization in {@code
  * ZombiePopulationManager} is a separate mechanism and is intentionally left untouched.
  */
 public class ZombieCullDisablePatch extends StormClassTransformer {

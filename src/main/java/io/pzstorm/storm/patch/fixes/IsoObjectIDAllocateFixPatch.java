@@ -18,10 +18,10 @@ import net.bytebuddy.pool.TypePool;
  *
  * <p>Vanilla {@code allocateID()} is a free-running 16-bit counter with no uniqueness check, and
  * {@code put(short, T)} blindly overwrites whatever's already in the slot. With the population
- * uncapped (e.g. {@code -Dstorm.disableZombieCull=true}) the simultaneously-alive count can grow
- * into the same order of magnitude as the address space — at ~10k zombies in a 65 535-slot space
- * the expected number of probes to hit a collision drops by ~10× compared to the historical ~1k
- * baseline.
+ * uncapped (e.g. the {@code Storm.ZombieCullThreshold} sandbox option set to {@code 0}) the
+ * simultaneously-alive count can grow into the same order of magnitude as the address space — at
+ * ~10k zombies in a 65 535-slot space the expected number of probes to hit a collision drops by
+ * ~10× compared to the historical ~1k baseline.
  *
  * <p>Each collision silently overwrites a live zombie's {@code zombieMap} entry. The displaced
  * holder remains in {@code cell.zombieList} ("phantom") but is unreachable by ID. The next time it

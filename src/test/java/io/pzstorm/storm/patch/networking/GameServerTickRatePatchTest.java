@@ -26,98 +26,22 @@ import zombie.core.utils.UpdateLimit;
  */
 class GameServerTickRatePatchTest implements UnitTest {
 
-    private String savedProperty;
     private long savedLogWindow;
 
     @BeforeEach
     void captureState() {
-        savedProperty = System.getProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
-        System.clearProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
         savedLogWindow = UpdateLimitFactory.logWindowNanos;
         // Disable per-window logging in unit tests by default.
         UpdateLimitFactory.logWindowNanos = Long.MAX_VALUE;
         UpdateLimitFactory.resetTickCounterForTest();
+        UpdateLimitFactory.clearServerTickLimiterForTest();
     }
 
     @AfterEach
     void restoreState() {
-        if (savedProperty == null) {
-            System.clearProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
-        } else {
-            System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, savedProperty);
-        }
         UpdateLimitFactory.logWindowNanos = savedLogWindow;
         UpdateLimitFactory.resetTickCounterForTest();
-    }
-
-    // -------- resolveTickIntervalMs() --------
-
-    @Test
-    void resolveReturnsDefaultWhenPropertyUnset() {
-        assertEquals(
-                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveReturnsConfiguredValueWhenInRange() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "50");
-        assertEquals(50L, UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveTrimsWhitespace() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "  33  ");
-        assertEquals(33L, UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveClampsBelowMinimum() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "-1");
-        assertEquals(
-                GameServerTickRatePatch.MIN_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveClampsAboveMaximum() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "999999");
-        assertEquals(
-                GameServerTickRatePatch.MAX_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveFallsBackOnNonNumeric() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "fast");
-        assertEquals(
-                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveFallsBackOnEmptyString() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "");
-        assertEquals(
-                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void resolveAcceptsBoundaryValues() {
-        System.setProperty(
-                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
-                Long.toString(GameServerTickRatePatch.MIN_TICK_INTERVAL_MS));
-        assertEquals(
-                GameServerTickRatePatch.MIN_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-
-        System.setProperty(
-                GameServerTickRatePatch.TICK_INTERVAL_PROPERTY,
-                Long.toString(GameServerTickRatePatch.MAX_TICK_INTERVAL_MS));
-        assertEquals(
-                GameServerTickRatePatch.MAX_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
+        UpdateLimitFactory.clearServerTickLimiterForTest();
     }
 
     // -------- create() --------
@@ -133,31 +57,26 @@ class GameServerTickRatePatchTest implements UnitTest {
     }
 
     @Test
-    void createUsesVanillaDelayWhenPropertyUnset() {
+    void createUsesVanillaDelay() {
         UpdateLimit limit = UpdateLimitFactory.create(100L);
-        assertEquals(100L, limit.getDelay());
-    }
-
-    @Test
-    void createAppliesPropertyOverride() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "50");
-        UpdateLimit limit = UpdateLimitFactory.create(100L);
-        assertEquals(50L, limit.getDelay());
-    }
-
-    @Test
-    void createDoesNotApplyOverrideForNonDefaultDelay() {
-        // Even with the property set, a 500L delay (hypothetical other call site) is not the
-        // server tick limiter and must be left untouched.
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "33");
-        UpdateLimit limit = UpdateLimitFactory.create(500L);
-        assertEquals(500L, limit.getDelay());
+        assertEquals(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS, limit.getDelay());
+        assertEquals(
+                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
+                UpdateLimitFactory.getCurrentTickIntervalMs());
     }
 
     @Test
     void createCapturesServerTickLimiterReference() {
         UpdateLimit limit = UpdateLimitFactory.create(100L);
         assertSame(limit, UpdateLimitFactory.serverTickLimiterForTest());
+    }
+
+    @Test
+    void isLimiterReadyTracksInstall() {
+        UpdateLimitFactory.clearServerTickLimiterForTest();
+        assertFalse(UpdateLimitFactory.isLimiterReady());
+        UpdateLimitFactory.create(100L);
+        assertTrue(UpdateLimitFactory.isLimiterReady());
     }
 
     // -------- checkAndCount() --------
@@ -172,8 +91,8 @@ class GameServerTickRatePatchTest implements UnitTest {
 
     @Test
     void checkAndCountIncrementsForServerLimiter() throws InterruptedException {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "5");
         UpdateLimit serverLimiter = UpdateLimitFactory.create(100L);
+        UpdateLimitFactory.setTickIntervalMs(5L);
         Thread.sleep(20);
         assertTrue(UpdateLimitFactory.checkAndCount(serverLimiter));
         assertEquals(1, UpdateLimitFactory.observedTicksForTest());
@@ -190,9 +109,9 @@ class GameServerTickRatePatchTest implements UnitTest {
 
     @Test
     void checkAndCountResetsCounterWhenWindowElapses() throws InterruptedException {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "5");
         UpdateLimitFactory.logWindowNanos = 1L; // any positive elapsed nanos triggers a flush
         UpdateLimit serverLimiter = UpdateLimitFactory.create(100L);
+        UpdateLimitFactory.setTickIntervalMs(5L);
         Thread.sleep(20);
         UpdateLimitFactory.checkAndCount(serverLimiter);
         // After firing, the counter should reset.
@@ -244,8 +163,8 @@ class GameServerTickRatePatchTest implements UnitTest {
 
     @Test
     void setTickIntervalMsResetsTickCounter() throws InterruptedException {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "5");
         UpdateLimit limit = UpdateLimitFactory.create(100L);
+        UpdateLimitFactory.setTickIntervalMs(5L);
         Thread.sleep(20);
         UpdateLimitFactory.checkAndCount(limit);
         assertEquals(1, UpdateLimitFactory.observedTicksForTest());
@@ -255,9 +174,9 @@ class GameServerTickRatePatchTest implements UnitTest {
     }
 
     @Test
-    void getCurrentTickIntervalMsReflectsCreateValue() {
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "40");
+    void getCurrentTickIntervalMsReflectsLiveSetter() {
         UpdateLimitFactory.create(100L);
+        UpdateLimitFactory.setTickIntervalMs(40L);
         assertEquals(40L, UpdateLimitFactory.getCurrentTickIntervalMs());
     }
 

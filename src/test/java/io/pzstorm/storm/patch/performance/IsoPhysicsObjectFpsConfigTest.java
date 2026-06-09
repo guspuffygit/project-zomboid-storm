@@ -11,23 +11,20 @@ import zombie.core.PerformanceSettings;
 import zombie.network.GameServer;
 
 /**
- * Verifies the IsoPhysicsObject server-fps controller's property resolution, clamping, live setter,
- * and substitution helpers. {@link IsoPhysicsObjectFpsConfig#alwaysFalse()} must always return
- * {@code false} so the patched ternary in {@code IsoPhysicsObject.update()} collapses to its second
- * branch; {@link IsoPhysicsObjectFpsConfig#resolveFps()} must return the configured value on the
- * server and the vanilla {@code lockFps} on the client.
+ * Verifies the IsoPhysicsObject server-fps controller's clamping, live setter, and substitution
+ * helpers. {@link IsoPhysicsObjectFpsConfig#alwaysFalse()} must always return {@code false} so the
+ * patched ternary in {@code IsoPhysicsObject.update()} collapses to its second branch; {@link
+ * IsoPhysicsObjectFpsConfig#resolveFps()} must return the configured value on the server and the
+ * vanilla {@code lockFps} on the client.
  */
 class IsoPhysicsObjectFpsConfigTest implements UnitTest {
 
-    private String savedProperty;
     private int savedConfigValue;
     private int savedPerfSettings;
     private boolean savedServerFlag;
 
     @BeforeEach
     void captureState() {
-        savedProperty = System.getProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY);
-        System.clearProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY);
         savedConfigValue = IsoPhysicsObjectFpsConfig.getCurrentPhysicsFps();
         savedPerfSettings = PerformanceSettings.getLockFPS();
         savedServerFlag = GameServer.server;
@@ -37,84 +34,9 @@ class IsoPhysicsObjectFpsConfigTest implements UnitTest {
 
     @AfterEach
     void restoreState() {
-        if (savedProperty == null) {
-            System.clearProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY);
-        } else {
-            System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, savedProperty);
-        }
         IsoPhysicsObjectFpsConfig.setCurrentPhysicsFpsForTest(savedConfigValue);
         PerformanceSettings.setLockFPS(savedPerfSettings);
         GameServer.server = savedServerFlag;
-    }
-
-    // -------- resolvePhysicsFps() --------
-
-    @Test
-    void resolveReturnsDefaultWhenPropertyUnset() {
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.DEFAULT_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveReturnsConfiguredValueWhenInRange() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "30");
-        assertEquals(30, IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveTrimsWhitespace() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "  20  ");
-        assertEquals(20, IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveClampsBelowMinimum() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "-5");
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.MIN_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveClampsAboveMaximum() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "9999");
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.MAX_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveFallsBackOnNonNumeric() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "fast");
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.DEFAULT_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveFallsBackOnEmptyString() {
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "");
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.DEFAULT_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolveAcceptsBoundaryValues() {
-        System.setProperty(
-                IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY,
-                Integer.toString(IsoPhysicsObjectFpsConfig.MIN_PHYSICS_FPS));
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.MIN_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-
-        System.setProperty(
-                IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY,
-                Integer.toString(IsoPhysicsObjectFpsConfig.MAX_PHYSICS_FPS));
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.MAX_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
     }
 
     // -------- setPhysicsFps() --------

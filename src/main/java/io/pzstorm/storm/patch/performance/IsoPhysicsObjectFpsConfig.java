@@ -2,7 +2,7 @@ package io.pzstorm.storm.patch.performance;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
-import io.pzstorm.storm.patch.networking.ServerFpsConfig;
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import zombie.core.PerformanceSettings;
 import zombie.network.GameServer;
 
@@ -19,14 +19,11 @@ import zombie.network.GameServer;
  * {@link #resolveFps()}. The resolver returns the configured value on the server and delegates to
  * the vanilla {@code lockFps} on the client, preserving client-side behavior.
  *
- * <p>The default value is read once from the {@link #PHYSICS_FPS_PROPERTY} system property at class
- * load and clamped to {@link #MIN_PHYSICS_FPS}..{@link #MAX_PHYSICS_FPS}. The live value is mutable
- * via {@link #setPhysicsFps(int)}; the {@code POST /storm/isoPhysics/serverFps} HTTP endpoint
- * exposes that setter at runtime.
+ * <p>The live value is mutable via {@link #setPhysicsFps(int)}, called only from {@link
+ * io.pzstorm.storm.patch.networking.ServerFpsConfig#applyUnifiedFps(int)} — there is no direct
+ * physics-fps HTTP endpoint.
  */
 public final class IsoPhysicsObjectFpsConfig {
-
-    public static final String PHYSICS_FPS_PROPERTY = "storm.isoPhysics.serverFps";
 
     /** Vanilla — {@code IsoPhysicsObject.update} hard-codes 10 on server. */
     public static final int DEFAULT_PHYSICS_FPS = 10;
@@ -35,22 +32,9 @@ public final class IsoPhysicsObjectFpsConfig {
 
     public static final int MAX_PHYSICS_FPS = 240;
 
-    private static volatile int currentPhysicsFps = initialize();
+    private static volatile int currentPhysicsFps = DEFAULT_PHYSICS_FPS;
 
     private IsoPhysicsObjectFpsConfig() {}
-
-    private static int initialize() {
-        int resolved = resolvePhysicsFps();
-        if (resolved == DEFAULT_PHYSICS_FPS) {
-            LOGGER.info("Storm: IsoPhysicsObject server fps = {} [vanilla]", resolved);
-        } else {
-            LOGGER.info(
-                    "Storm: IsoPhysicsObject server fps = {} [override via -D{}]",
-                    resolved,
-                    PHYSICS_FPS_PROPERTY);
-        }
-        return resolved;
-    }
 
     /** Current effective server-side physics fps. */
     public static int getCurrentPhysicsFps() {
@@ -64,6 +48,7 @@ public final class IsoPhysicsObjectFpsConfig {
     public static int setPhysicsFps(int requested) {
         int applied = clamp(requested);
         currentPhysicsFps = applied;
+        StormPerformanceSandboxMetrics.setIsoPhysicsServerFps(applied);
         LOGGER.info("Storm: IsoPhysicsObject server fps updated to {}", applied);
         return applied;
     }
@@ -87,39 +72,6 @@ public final class IsoPhysicsObjectFpsConfig {
             return currentPhysicsFps;
         }
         return PerformanceSettings.getLockFPS();
-    }
-
-    /**
-     * Reads {@link #PHYSICS_FPS_PROPERTY}, clamping to {@link #MIN_PHYSICS_FPS}..{@link
-     * #MAX_PHYSICS_FPS}. When the specific property is unset or unparseable, falls back to {@link
-     * ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
-     * #DEFAULT_PHYSICS_FPS}.
-     */
-    public static int resolvePhysicsFps() {
-        String prop = System.getProperty(PHYSICS_FPS_PROPERTY);
-        if (prop == null || prop.isEmpty()) {
-            return resolveFromUnifiedOrDefault();
-        }
-        int parsed;
-        try {
-            parsed = Integer.parseInt(prop.trim());
-        } catch (NumberFormatException e) {
-            LOGGER.warn(
-                    "Storm: invalid -D{}=\"{}\", falling back to default {}",
-                    PHYSICS_FPS_PROPERTY,
-                    prop,
-                    DEFAULT_PHYSICS_FPS);
-            return resolveFromUnifiedOrDefault();
-        }
-        return clamp(parsed);
-    }
-
-    private static int resolveFromUnifiedOrDefault() {
-        int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
-        if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
-            return clamp(unifiedFps);
-        }
-        return DEFAULT_PHYSICS_FPS;
     }
 
     private static int clamp(int requested) {

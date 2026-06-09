@@ -5,9 +5,10 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.metrics.StormServerLosMetrics;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import zombie.characters.IsoPlayer;
@@ -85,9 +86,14 @@ public final class StormServerLos {
     private static Object stReady; // UpdateStatus.ReadyInLOS
 
     /**
-     * Persistent helper pool, sized for the worst case (MAX-1 helpers). Slot 0 = the LOS thread.
+     * Persistent helper pool. Always holds {@code MAX-1} pre-started threads regardless of the
+     * configured {@code threads} value; slot 0 runs inline on the LOS thread. The pool is built
+     * eagerly inside {@link #ensureInit()} (well before the first parallel tick) and every core
+     * thread is started up-front via {@link ThreadPoolExecutor#prestartAllCoreThreads()}, so all
+     * {@code LOS-Worker-*} threads exist for the full server lifetime — runtime adjustment of
+     * {@code threads} only changes how many slots receive work, never the pool size.
      */
-    private static volatile ExecutorService losPool;
+    private static volatile ThreadPoolExecutor losPool;
 
     /** Serializes {@code IsoRoom.onSee} across workers (only taken when {@code threads >= 2}). */
     private static final ReentrantLock ON_SEE_LOCK = new ReentrantLock();
@@ -184,7 +190,7 @@ public final class StormServerLos {
             bounds[s + 1] = bounds[s] + base + (s < rem ? 1 : 0);
         }
 
-        ExecutorService pool = pool();
+        ThreadPoolExecutor pool = pool();
         Future<?>[] futures = new Future<?>[workers - 1];
         for (int s = 1; s < workers; s++) {
             final int slot = s;
@@ -241,16 +247,21 @@ public final class StormServerLos {
         }
     }
 
-    private static ExecutorService pool() {
-        ExecutorService p = losPool;
+    private static ThreadPoolExecutor pool() {
+        ThreadPoolExecutor p = losPool;
         if (p == null) {
             synchronized (StormServerLos.class) {
                 p = losPool;
                 if (p == null) {
+                    int workers = StormServerLosConfig.MAX - 1;
                     AtomicInteger seq = new AtomicInteger(1);
                     p =
-                            Executors.newFixedThreadPool(
-                                    StormServerLosConfig.MAX - 1,
+                            new ThreadPoolExecutor(
+                                    workers,
+                                    workers,
+                                    0L,
+                                    TimeUnit.MILLISECONDS,
+                                    new LinkedBlockingQueue<>(),
                                     r -> {
                                         Thread t =
                                                 new Thread(
@@ -258,10 +269,12 @@ public final class StormServerLos {
                                         t.setDaemon(true);
                                         return t;
                                     });
+                    int started = p.prestartAllCoreThreads();
                     losPool = p;
                     LOGGER.info(
-                            "StormServerLos: started {} LOS helper threads",
-                            StormServerLosConfig.MAX - 1);
+                            "StormServerLos: pre-started {} LOS helper threads (pool capacity {})",
+                            started,
+                            workers);
                 }
             }
         }
@@ -437,6 +450,14 @@ public final class StormServerLos {
                 }
 
                 growLosUtilSlots();
+
+                // Pre-build the helper pool now so every LOS-Worker thread is alive from the
+                // first tick. Lazy creation inside runBatch only fires the pool path when
+                // workers >= 2, and FixedThreadPool grows core threads on demand even after
+                // construction — between them, runtime adjustment of `threads` would only see
+                // the threads it has actually used before. Forcing prestart here guarantees all
+                // MAX-1 helpers are ready regardless of the configured worker count.
+                pool();
 
                 initialized = true;
                 LOGGER.info("StormServerLos: ServerLOS reflection bridge initialized");

@@ -15,75 +15,36 @@ import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
  *   <li>{@link IsoPhysicsObjectFpsConfig} — fps divisor inside {@code IsoPhysicsObject.update()}
  * </ul>
  *
- * <p>At startup, {@link #SERVER_FPS_PROPERTY} acts as a fallback default for each subordinate
- * controller — the controller's specific property still wins when both are set, so per-knob
- * overrides remain available. At runtime, the {@code POST /storm/server/fps} HTTP endpoint applies
- * a fresh fps to all three controllers via {@link #applyUnifiedFps(int)}.
+ * <p>The {@code Storm.ServerFps} sandbox option drives this at {@code OnServerStarted}; {@code POST
+ * /storm/server/fps} retunes it at runtime. There are no subordinate HTTP endpoints — the three
+ * controllers always move together.
  *
- * <p>Range: {@link #MIN_FPS}..{@link #MAX_FPS}. fps below 1 isn't supported by the subordinate
- * controllers (their floors are 1); for unbounded ticking, set {@code
- * -Dstorm.server.tickIntervalMs=0} directly.
+ * <p>Range: {@link #MIN_FPS}..{@link #MAX_FPS}.
  */
 public final class ServerFpsConfig {
-
-    public static final String SERVER_FPS_PROPERTY = "storm.server.fps";
 
     public static final int MIN_FPS = 1;
 
     public static final int MAX_FPS = 240;
 
-    /**
-     * Sentinel returned by {@link #resolveUnifiedFps()} when the property is unset or unparseable.
-     */
-    public static final int UNRESOLVED = -1;
-
     private ServerFpsConfig() {}
 
     /**
-     * Maps a target fps to the corresponding tick interval in ms. fps ≤ 0 returns {@code 0L}
-     * (unbounded — UpdateLimit gating disabled). For fps ≥ 1, returns {@code max(1, round(1000 /
-     * fps))}.
+     * Maps a target fps to the corresponding tick interval in ms: {@code max(1, round(1000 /
+     * fps))}. Caller must pass {@code fps >= 1}; callers reach this only after {@link #clamp(int)}.
      */
     public static long fpsToTickIntervalMs(int fps) {
-        if (fps <= 0) {
-            return 0L;
-        }
         return Math.max(1L, Math.round(1000.0 / fps));
     }
 
     /**
-     * Inverse of {@link #fpsToTickIntervalMs(int)}. {@code 0ms} returns {@code 0} (sentinel for
-     * unbounded). For intervalMs ≥ 1, returns {@code round(1000 / intervalMs)}. Note: not strictly
-     * round-trippable for values where {@code 1000 / fps} isn't an integer (e.g. fps=30 → 33ms →
-     * 30, but fps=60 → 17ms → 59), because both directions round.
+     * Inverse of {@link #fpsToTickIntervalMs(int)}: {@code round(1000 / intervalMs)}. Caller must
+     * pass {@code intervalMs >= 1}. Note: not strictly round-trippable for values where {@code 1000
+     * / fps} isn't an integer (e.g. fps=30 → 33ms → 30, but fps=60 → 17ms → 59), because both
+     * directions round.
      */
     public static int tickIntervalMsToFps(long intervalMs) {
-        if (intervalMs <= 0) {
-            return 0;
-        }
         return (int) Math.round(1000.0 / intervalMs);
-    }
-
-    /**
-     * Reads {@link #SERVER_FPS_PROPERTY}, clamping to {@link #MIN_FPS}..{@link #MAX_FPS}. Returns
-     * {@link #UNRESOLVED} when the property is unset, empty, or unparseable.
-     */
-    public static int resolveUnifiedFps() {
-        String prop = System.getProperty(SERVER_FPS_PROPERTY);
-        if (prop == null || prop.isEmpty()) {
-            return UNRESOLVED;
-        }
-        int parsed;
-        try {
-            parsed = Integer.parseInt(prop.trim());
-        } catch (NumberFormatException e) {
-            LOGGER.warn(
-                    "Storm: invalid -D{}=\"{}\", ignoring unified fps fallback",
-                    SERVER_FPS_PROPERTY,
-                    prop);
-            return UNRESOLVED;
-        }
-        return clamp(parsed);
     }
 
     /**

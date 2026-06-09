@@ -21,26 +21,9 @@ import zombie.network.GameServer;
 /** Endpoints always registered by Storm when the HTTP server is enabled. */
 public class StormBuiltinEndpoints {
 
-    public record TickIntervalDto(
-            long tickIntervalMs,
-            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps) {}
-
-    public record TickIntervalUpdateDto(
-            long requestedMs,
-            long appliedMs,
-            @JsonSerialize(using = TwoDecimalDoubleSerializer.class) Double tps) {}
-
     public record AnimalLOSTickIntervalDto(int tickInterval) {}
 
     public record AnimalLOSTickIntervalUpdateDto(int requested, int applied) {}
-
-    public record ServerLockFpsDto(int lockFps) {}
-
-    public record ServerLockFpsUpdateDto(int requested, int applied) {}
-
-    public record IsoPhysicsServerFpsDto(int fps) {}
-
-    public record IsoPhysicsServerFpsUpdateDto(int requested, int applied) {}
 
     public record ServerFpsDto(
             long tickIntervalMs,
@@ -60,10 +43,6 @@ public class StormBuiltinEndpoints {
 
     public record ServerLosThreadsUpdateDto(int requested, int applied) {}
 
-    public record ZombieCullDisabledDto(boolean disabled) {}
-
-    public record ZombieCullDisabledUpdateDto(boolean requested, boolean applied) {}
-
     public record ZombieCullThresholdDto(int threshold) {}
 
     public record ZombieCullThresholdUpdateDto(int requested, int applied) {}
@@ -80,39 +59,6 @@ public class StormBuiltinEndpoints {
     @HttpEndpoint(path = "/storm/version")
     public static void version(HttpRequestEvent event) throws IOException {
         event.send(200, StormVersion.getVersion());
-    }
-
-    @HttpEndpoint(path = "/storm/server/tickInterval")
-    public static void getTickInterval(HttpRequestEvent event) throws IOException {
-        long ms = UpdateLimitFactory.getCurrentTickIntervalMs();
-        event.sendJson(200, MAPPER.writeValueAsString(new TickIntervalDto(ms, tps(ms))));
-    }
-
-    @HttpEndpoint(path = "/storm/server/tickInterval", method = "POST")
-    public static void setTickInterval(HttpRequestEvent event) throws IOException {
-        String msParam = event.getQueryParams().get("ms");
-        if (msParam == null || msParam.isEmpty()) {
-            event.send(400, "missing required query parameter: ms");
-            return;
-        }
-        long requested;
-        try {
-            requested = Long.parseLong(msParam.trim());
-        } catch (NumberFormatException e) {
-            event.send(400, "ms must be an integer, got: " + msParam);
-            return;
-        }
-        long applied;
-        try {
-            applied = UpdateLimitFactory.setTickIntervalMs(requested);
-        } catch (IllegalStateException e) {
-            event.send(503, e.getMessage());
-            return;
-        }
-        event.sendJson(
-                200,
-                MAPPER.writeValueAsString(
-                        new TickIntervalUpdateDto(requested, applied, tps(applied))));
     }
 
     @HttpEndpoint(path = "/storm/animalLOS/tickInterval")
@@ -139,57 +85,6 @@ public class StormBuiltinEndpoints {
         event.sendJson(
                 200,
                 MAPPER.writeValueAsString(new AnimalLOSTickIntervalUpdateDto(requested, applied)));
-    }
-
-    @HttpEndpoint(path = "/storm/server/lockFps")
-    public static void getServerLockFps(HttpRequestEvent event) throws IOException {
-        int fps = ServerLockFpsConfig.getCurrentLockFps();
-        event.sendJson(200, MAPPER.writeValueAsString(new ServerLockFpsDto(fps)));
-    }
-
-    @HttpEndpoint(path = "/storm/server/lockFps", method = "POST")
-    public static void setServerLockFps(HttpRequestEvent event) throws IOException {
-        String fpsParam = event.getQueryParams().get("fps");
-        if (fpsParam == null || fpsParam.isEmpty()) {
-            event.send(400, "missing required query parameter: fps");
-            return;
-        }
-        int requested;
-        try {
-            requested = Integer.parseInt(fpsParam.trim());
-        } catch (NumberFormatException e) {
-            event.send(400, "fps must be an integer, got: " + fpsParam);
-            return;
-        }
-        int applied = ServerLockFpsConfig.setLockFps(requested);
-        event.sendJson(
-                200, MAPPER.writeValueAsString(new ServerLockFpsUpdateDto(requested, applied)));
-    }
-
-    @HttpEndpoint(path = "/storm/isoPhysics/serverFps")
-    public static void getIsoPhysicsServerFps(HttpRequestEvent event) throws IOException {
-        int fps = IsoPhysicsObjectFpsConfig.getCurrentPhysicsFps();
-        event.sendJson(200, MAPPER.writeValueAsString(new IsoPhysicsServerFpsDto(fps)));
-    }
-
-    @HttpEndpoint(path = "/storm/isoPhysics/serverFps", method = "POST")
-    public static void setIsoPhysicsServerFps(HttpRequestEvent event) throws IOException {
-        String fpsParam = event.getQueryParams().get("fps");
-        if (fpsParam == null || fpsParam.isEmpty()) {
-            event.send(400, "missing required query parameter: fps");
-            return;
-        }
-        int requested;
-        try {
-            requested = Integer.parseInt(fpsParam.trim());
-        } catch (NumberFormatException e) {
-            event.send(400, "fps must be an integer, got: " + fpsParam);
-            return;
-        }
-        int applied = IsoPhysicsObjectFpsConfig.setPhysicsFps(requested);
-        event.sendJson(
-                200,
-                MAPPER.writeValueAsString(new IsoPhysicsServerFpsUpdateDto(requested, applied)));
     }
 
     @HttpEndpoint(path = "/storm/server/fps")
@@ -264,37 +159,6 @@ public class StormBuiltinEndpoints {
                 200, MAPPER.writeValueAsString(new ServerLosThreadsUpdateDto(requested, applied)));
     }
 
-    @HttpEndpoint(path = "/storm/server/zombieCull/disabled")
-    public static void getZombieCullDisabled(HttpRequestEvent event) throws IOException {
-        event.sendJson(
-                200,
-                MAPPER.writeValueAsString(
-                        new ZombieCullDisabledDto(StormZombieCullConfig.isDisabled())));
-    }
-
-    @HttpEndpoint(path = "/storm/server/zombieCull/disabled", method = "POST")
-    public static void setZombieCullDisabled(HttpRequestEvent event) throws IOException {
-        String param = event.getQueryParams().get("disabled");
-        if (param == null || param.isEmpty()) {
-            event.send(400, "missing required query parameter: disabled");
-            return;
-        }
-        String normalised = param.trim().toLowerCase();
-        boolean requested;
-        if ("true".equals(normalised)) {
-            requested = true;
-        } else if ("false".equals(normalised)) {
-            requested = false;
-        } else {
-            event.send(400, "disabled must be true or false, got: " + param);
-            return;
-        }
-        boolean applied = StormZombieCullConfig.setDisabled(requested);
-        event.sendJson(
-                200,
-                MAPPER.writeValueAsString(new ZombieCullDisabledUpdateDto(requested, applied)));
-    }
-
     @HttpEndpoint(path = "/storm/server/zombieCull/threshold")
     public static void getZombieCullThreshold(HttpRequestEvent event) throws IOException {
         event.sendJson(
@@ -354,6 +218,6 @@ public class StormBuiltinEndpoints {
     }
 
     private static Double tps(long intervalMs) {
-        return intervalMs <= 0 ? null : 1000.0 / intervalMs;
+        return 1000.0 / intervalMs;
     }
 }

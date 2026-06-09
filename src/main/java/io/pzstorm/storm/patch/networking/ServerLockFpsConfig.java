@@ -2,24 +2,26 @@ package io.pzstorm.storm.patch.networking;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
+import io.pzstorm.storm.sandbox.StormPerformanceSandboxApplier;
 import zombie.core.PerformanceSettings;
+import zombie.network.GameServer;
 
 /**
  * Server-side override for the {@code PerformanceSettings.setLockFPS(int)} call hard-coded to
  * {@code 10} inside {@code GameServer.main()}. {@link GameServerLockFpsPatch} substitutes that call
- * site with {@link #applyServerLockFps(int)}, which reads the {@link #LOCK_FPS_PROPERTY} system
- * property and applies the resolved value through the same vanilla setter.
+ * site with {@link #applyServerLockFps(int)}, which records the value and forwards it through the
+ * same vanilla setter. The {@code Storm.ServerFps} sandbox option then overrides this at {@code
+ * OnServerStarted} via {@link ServerFpsConfig#applyUnifiedFps(int)} → {@link #setLockFps(int)}.
  *
- * <p>The default value is read from the system property at substitution time and clamped to {@link
- * #MIN_LOCK_FPS}..{@link #MAX_LOCK_FPS}. The live value is mutable via {@link #setLockFps(int)};
- * the {@code POST /storm/server/lockFps} HTTP endpoint exposes that setter at runtime.
+ * <p>The live value is mutable via {@link #setLockFps(int)}, called only from {@link
+ * ServerFpsConfig#applyUnifiedFps(int)} — there is no direct HTTP endpoint for lockFps.
  *
  * <p>Note: this knob only changes what {@code PerformanceSettings.getLockFPS()} reports — the
- * actual server tick rate is governed by {@link GameServerTickRatePatch}. Keep both aligned.
+ * actual server tick rate is governed by {@link GameServerTickRatePatch}. The unified {@link
+ * ServerFpsConfig} keeps both aligned.
  */
 public final class ServerLockFpsConfig {
-
-    public static final String LOCK_FPS_PROPERTY = "storm.server.lockFps";
 
     /** Vanilla server lockFps — {@code GameServer.main} hard-codes this. */
     public static final int DEFAULT_LOCK_FPS = 10;
@@ -34,27 +36,26 @@ public final class ServerLockFpsConfig {
 
     /**
      * Substitution target for the {@code PerformanceSettings.setLockFPS(int)} call inside {@code
-     * GameServer.main}. Resolves the configured value, applies it through the vanilla setter, and
-     * caches it for the live getter.
+     * GameServer.main}. Records the vanilla value, forwards it through the same vanilla setter, and
+     * then re-applies the {@code Storm.ServerFps} sandbox option so the sandbox value overrides the
+     * vanilla baseline.
      *
-     * <p>If the substituted call passes a value other than {@link #DEFAULT_LOCK_FPS}, it is treated
-     * as a non-targeted call (e.g. a future game update adds another {@code setLockFPS} site inside
-     * {@code main}) and forwarded unchanged to preserve vanilla semantics.
+     * <p>This is the boot-time apply seam for fps controllers. {@code OnServerStartedEvent} fires
+     * inside {@code GameServer.startServer()} at line 1513, BEFORE the patched {@code new
+     * UpdateLimit(100L)} at {@code GameServer.main()} line 822 installs the tick limiter and BEFORE
+     * the patched {@code PerformanceSettings.setLockFPS(10)} at line 823 records the vanilla
+     * baseline. By the time this method runs, both vanilla setups are complete, so the sandbox
+     * applier can safely push {@code Storm.ServerFps} through all three subordinate controllers
+     * without the vanilla {@code setLockFPS(10)} call overwriting it afterwards.
      */
     public static void applyServerLockFps(int vanillaValue) {
-        if (vanillaValue != DEFAULT_LOCK_FPS) {
-            PerformanceSettings.setLockFPS(vanillaValue);
-            return;
+        int applied = clamp(vanillaValue);
+        currentLockFps = applied;
+        PerformanceSettings.setLockFPS(applied);
+        StormPerformanceSandboxMetrics.setServerLockFps(applied);
+        if (GameServer.server) {
+            StormPerformanceSandboxApplier.applyServerFps();
         }
-        int resolved = resolveLockFps();
-        if (resolved == DEFAULT_LOCK_FPS) {
-            LOGGER.info("Storm: server lockFps = {} [vanilla]", resolved);
-        } else {
-            LOGGER.info(
-                    "Storm: server lockFps = {} [override via -D{}]", resolved, LOCK_FPS_PROPERTY);
-        }
-        currentLockFps = resolved;
-        PerformanceSettings.setLockFPS(resolved);
     }
 
     /** Current effective server lockFps. */
@@ -71,41 +72,9 @@ public final class ServerLockFpsConfig {
         int applied = clamp(requested);
         currentLockFps = applied;
         PerformanceSettings.setLockFPS(applied);
+        StormPerformanceSandboxMetrics.setServerLockFps(applied);
         LOGGER.info("Storm: server lockFps updated to {}", applied);
         return applied;
-    }
-
-    /**
-     * Reads {@link #LOCK_FPS_PROPERTY}, clamping to {@link #MIN_LOCK_FPS}..{@link #MAX_LOCK_FPS}.
-     * When the specific property is unset or unparseable, falls back to {@link
-     * ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
-     * #DEFAULT_LOCK_FPS}.
-     */
-    public static int resolveLockFps() {
-        String prop = System.getProperty(LOCK_FPS_PROPERTY);
-        if (prop == null || prop.isEmpty()) {
-            return resolveFromUnifiedOrDefault();
-        }
-        int parsed;
-        try {
-            parsed = Integer.parseInt(prop.trim());
-        } catch (NumberFormatException e) {
-            LOGGER.warn(
-                    "Storm: invalid -D{}=\"{}\", falling back to default {}",
-                    LOCK_FPS_PROPERTY,
-                    prop,
-                    DEFAULT_LOCK_FPS);
-            return resolveFromUnifiedOrDefault();
-        }
-        return clamp(parsed);
-    }
-
-    private static int resolveFromUnifiedOrDefault() {
-        int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
-        if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
-            return clamp(unifiedFps);
-        }
-        return DEFAULT_LOCK_FPS;
     }
 
     private static int clamp(int requested) {

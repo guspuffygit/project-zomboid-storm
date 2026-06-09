@@ -4,18 +4,19 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import net.bytebuddy.asm.Advice;
 
 /**
- * Skips the body of {@code ZombieCountOptimiser.incrementZombie(IsoZombie)} when the runtime flag
- * {@link StormZombieCullConfig#isDisabled()} is {@code true}, so no live zombie is queued for
- * culling. When the flag is {@code false}, the method runs as vanilla.
+ * Skips the body of {@code ZombieCountOptimiser.incrementZombie(IsoZombie)} when {@link
+ * StormZombieCullConfig#getThreshold()} is {@code 0}, so no live zombie is queued for culling. When
+ * the threshold is {@code > 0}, the method runs as vanilla (with the threshold-decrement fix from
+ * {@code ZombieCullThresholdIncrementAdvice} layered on top).
  *
  * <p>The owning transformer is registration-gated server-only, so this advice is only ever woven
- * into the dedicated server JVM. The flag is checked on every entry to {@code incrementZombie},
- * making runtime toggling effective on the next call.
+ * into the dedicated server JVM. The threshold is checked on every entry to {@code incrementZombie}
+ * (volatile read), making sandbox / HTTP toggling effective on the next call.
  */
 public class ZombieCullDisableAdvice {
 
     @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
     public static boolean onEnter() {
-        return StormZombieCullConfig.isDisabled();
+        return StormZombieCullConfig.getThreshold() == 0;
     }
 }

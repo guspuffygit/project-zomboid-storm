@@ -13,18 +13,12 @@ import zombie.core.PerformanceSettings;
 import zombie.core.utils.UpdateLimit;
 
 /**
- * Verifies the unified server-fps controller's math (fps↔tickIntervalMs), system-property
- * resolution, and that {@link ServerFpsConfig#applyUnifiedFps(int)} propagates to all three
- * subordinate controllers ({@link UpdateLimitFactory}, {@link ServerLockFpsConfig}, {@link
- * IsoPhysicsObjectFpsConfig}). Also covers each subordinate resolver's fallback to {@link
- * ServerFpsConfig#SERVER_FPS_PROPERTY} when its specific property is unset.
+ * Verifies the unified server-fps controller's math (fps↔tickIntervalMs) and that {@link
+ * ServerFpsConfig#applyUnifiedFps(int)} propagates to all three subordinate controllers ({@link
+ * UpdateLimitFactory}, {@link ServerLockFpsConfig}, {@link IsoPhysicsObjectFpsConfig}).
  */
 class ServerFpsConfigTest implements UnitTest {
 
-    private String savedUnifiedProperty;
-    private String savedTickProperty;
-    private String savedLockProperty;
-    private String savedPhysicsProperty;
     private int savedLockConfigValue;
     private int savedPhysicsConfigValue;
     private int savedPerfSettings;
@@ -32,15 +26,6 @@ class ServerFpsConfigTest implements UnitTest {
 
     @BeforeEach
     void captureState() {
-        savedUnifiedProperty = System.getProperty(ServerFpsConfig.SERVER_FPS_PROPERTY);
-        savedTickProperty = System.getProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
-        savedLockProperty = System.getProperty(ServerLockFpsConfig.LOCK_FPS_PROPERTY);
-        savedPhysicsProperty = System.getProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY);
-        System.clearProperty(ServerFpsConfig.SERVER_FPS_PROPERTY);
-        System.clearProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY);
-        System.clearProperty(ServerLockFpsConfig.LOCK_FPS_PROPERTY);
-        System.clearProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY);
-
         savedLockConfigValue = ServerLockFpsConfig.getCurrentLockFps();
         savedPhysicsConfigValue = IsoPhysicsObjectFpsConfig.getCurrentPhysicsFps();
         savedPerfSettings = PerformanceSettings.getLockFPS();
@@ -56,25 +41,12 @@ class ServerFpsConfigTest implements UnitTest {
 
     @AfterEach
     void restoreState() {
-        restore(ServerFpsConfig.SERVER_FPS_PROPERTY, savedUnifiedProperty);
-        restore(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, savedTickProperty);
-        restore(ServerLockFpsConfig.LOCK_FPS_PROPERTY, savedLockProperty);
-        restore(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, savedPhysicsProperty);
-
         ServerLockFpsConfig.setCurrentLockFpsForTest(savedLockConfigValue);
         IsoPhysicsObjectFpsConfig.setCurrentPhysicsFpsForTest(savedPhysicsConfigValue);
         PerformanceSettings.setLockFPS(savedPerfSettings);
         UpdateLimitFactory.logWindowNanos = savedLogWindow;
         UpdateLimitFactory.resetTickCounterForTest();
         UpdateLimitFactory.clearServerTickLimiterForTest();
-    }
-
-    private static void restore(String key, String saved) {
-        if (saved == null) {
-            System.clearProperty(key);
-        } else {
-            System.setProperty(key, saved);
-        }
     }
 
     // -------- fpsToTickIntervalMs() math --------
@@ -119,16 +91,6 @@ class ServerFpsConfigTest implements UnitTest {
     }
 
     @Test
-    void fpsToTickIntervalMs_zeroIsUnbounded() {
-        assertEquals(0L, ServerFpsConfig.fpsToTickIntervalMs(0));
-    }
-
-    @Test
-    void fpsToTickIntervalMs_negativeIsUnbounded() {
-        assertEquals(0L, ServerFpsConfig.fpsToTickIntervalMs(-5));
-    }
-
-    @Test
     void fpsToTickIntervalMs_veryHighFpsClampsToMin1Ms() {
         // 1000 / 2000 = 0.5 → round = 1 (Math.max(1, ...) floor).
         assertEquals(1L, ServerFpsConfig.fpsToTickIntervalMs(2000));
@@ -159,61 +121,8 @@ class ServerFpsConfigTest implements UnitTest {
     }
 
     @Test
-    void tickIntervalMsToFps_zeroIsUnboundedSentinel() {
-        assertEquals(0, ServerFpsConfig.tickIntervalMsToFps(0L));
-    }
-
-    @Test
-    void tickIntervalMsToFps_negativeIsUnboundedSentinel() {
-        assertEquals(0, ServerFpsConfig.tickIntervalMsToFps(-1L));
-    }
-
-    @Test
     void tickIntervalMsToFps_1000Returns1() {
         assertEquals(1, ServerFpsConfig.tickIntervalMsToFps(1000L));
-    }
-
-    // -------- resolveUnifiedFps() --------
-
-    @Test
-    void resolveUnifiedFpsReturnsUnresolvedWhenUnset() {
-        assertEquals(ServerFpsConfig.UNRESOLVED, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsReturnsConfiguredValue() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "30");
-        assertEquals(30, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsTrimsWhitespace() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "  60  ");
-        assertEquals(60, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsClampsBelowMin() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "0");
-        assertEquals(ServerFpsConfig.MIN_FPS, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsClampsAboveMax() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "9999");
-        assertEquals(ServerFpsConfig.MAX_FPS, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsReturnsUnresolvedOnNonNumeric() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "fast");
-        assertEquals(ServerFpsConfig.UNRESOLVED, ServerFpsConfig.resolveUnifiedFps());
-    }
-
-    @Test
-    void resolveUnifiedFpsReturnsUnresolvedOnEmpty() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "");
-        assertEquals(ServerFpsConfig.UNRESOLVED, ServerFpsConfig.resolveUnifiedFps());
     }
 
     // -------- applyUnifiedFps() --------
@@ -267,57 +176,5 @@ class ServerFpsConfigTest implements UnitTest {
         assertEquals(4L, applied.appliedTickIntervalMs());
         assertEquals(ServerFpsConfig.MAX_FPS, applied.appliedLockFps());
         assertEquals(ServerFpsConfig.MAX_FPS, applied.appliedPhysicsFps());
-    }
-
-    // -------- subordinate resolver fallback to unified property --------
-
-    @Test
-    void tickRateResolverFallsBackToUnifiedFps() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "30");
-        assertEquals(33L, UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void tickRateResolverPrefersSpecificPropertyOverUnified() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "30");
-        System.setProperty(GameServerTickRatePatch.TICK_INTERVAL_PROPERTY, "50");
-        assertEquals(50L, UpdateLimitFactory.resolveTickIntervalMs());
-    }
-
-    @Test
-    void lockFpsResolverFallsBackToUnifiedFps() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "60");
-        assertEquals(60, ServerLockFpsConfig.resolveLockFps());
-    }
-
-    @Test
-    void lockFpsResolverPrefersSpecificPropertyOverUnified() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "60");
-        System.setProperty(ServerLockFpsConfig.LOCK_FPS_PROPERTY, "20");
-        assertEquals(20, ServerLockFpsConfig.resolveLockFps());
-    }
-
-    @Test
-    void physicsFpsResolverFallsBackToUnifiedFps() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "45");
-        assertEquals(45, IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void physicsFpsResolverPrefersSpecificPropertyOverUnified() {
-        System.setProperty(ServerFpsConfig.SERVER_FPS_PROPERTY, "45");
-        System.setProperty(IsoPhysicsObjectFpsConfig.PHYSICS_FPS_PROPERTY, "15");
-        assertEquals(15, IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
-    }
-
-    @Test
-    void resolversFallBackToOwnDefaultWhenNothingSet() {
-        assertEquals(
-                GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS,
-                UpdateLimitFactory.resolveTickIntervalMs());
-        assertEquals(ServerLockFpsConfig.DEFAULT_LOCK_FPS, ServerLockFpsConfig.resolveLockFps());
-        assertEquals(
-                IsoPhysicsObjectFpsConfig.DEFAULT_PHYSICS_FPS,
-                IsoPhysicsObjectFpsConfig.resolvePhysicsFps());
     }
 }

@@ -3,6 +3,7 @@ package io.pzstorm.storm.patch.networking;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.core.StormClassTransformer;
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import java.util.concurrent.TimeUnit;
 import net.bytebuddy.asm.MemberSubstitution;
 import net.bytebuddy.description.method.MethodDescription;
@@ -15,11 +16,13 @@ import zombie.core.utils.UpdateLimit;
 import zombie.network.GameServer;
 
 /**
- * Allows the dedicated server's main-loop tick rate to be configured via the {@code
- * storm.server.tickIntervalMs} system property. The vanilla server hard-codes the tick gate to a
- * 100&nbsp;ms {@link UpdateLimit} (10&nbsp;TPS) inside {@code GameServer.main()}; this patch
- * substitutes that constructor call with a factory that reads the property and clamps to a safe
- * range.
+ * Allows the dedicated server's main-loop tick rate to be configured. The vanilla server hard-codes
+ * the tick gate to a 100&nbsp;ms {@link UpdateLimit} (10&nbsp;TPS) inside {@code
+ * GameServer.main()}; this patch substitutes that constructor call with a factory that installs an
+ * {@link UpdateLimit} the sandbox applier can retune via {@link
+ * UpdateLimitFactory#setTickIntervalMs(long)}. The {@code Storm.ServerFps} sandbox option drives
+ * this via {@link ServerFpsConfig#applyUnifiedFps(int)} alongside the other two fps controllers;
+ * there is no direct tick-interval HTTP endpoint.
  *
  * <p>The patch also wraps the in-loop {@code UpdateLimit.Check()} calls in {@code main} with a
  * counting helper that logs the observed average server TPS once per minute. The helper is invoked
@@ -33,13 +36,11 @@ import zombie.network.GameServer;
  */
 public class GameServerTickRatePatch extends StormClassTransformer {
 
-    public static final String TICK_INTERVAL_PROPERTY = "storm.server.tickIntervalMs";
-
     /** Vanilla server tick interval — 10 TPS. */
     public static final long DEFAULT_TICK_INTERVAL_MS = 100L;
 
-    /** 0ms floor — no gating, server ticks as fast as the loop can run. */
-    public static final long MIN_TICK_INTERVAL_MS = 0L;
+    /** 4 ms floor — matches {@link ServerFpsConfig#MAX_FPS} = 240 (round(1000/240) = 4). */
+    public static final long MIN_TICK_INTERVAL_MS = 4L;
 
     /** 1 TPS lower bound (slower than vanilla, useful for low-power servers). */
     public static final long MAX_TICK_INTERVAL_MS = 1000L;
@@ -111,25 +112,23 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             if (defaultDelayMs != DEFAULT_TICK_INTERVAL_MS) {
                 return new UpdateLimit(defaultDelayMs);
             }
-            long resolved = resolveTickIntervalMs();
-            if (resolved == DEFAULT_TICK_INTERVAL_MS) {
-                LOGGER.info(
-                        "Storm: server tick interval = {}ms (~{} TPS) [vanilla]",
-                        resolved,
-                        formatTps(resolved));
-            } else {
-                LOGGER.info(
-                        "Storm: server tick interval = {}ms (~{} TPS) [override via -D{}]",
-                        resolved,
-                        formatTps(resolved),
-                        TICK_INTERVAL_PROPERTY);
-            }
-            UpdateLimit limit = new UpdateLimit(resolved);
+            UpdateLimit limit = new UpdateLimit(DEFAULT_TICK_INTERVAL_MS);
             serverTickLimiter = limit;
-            currentTickIntervalMs = resolved;
+            currentTickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
             observedTicks = 0;
             windowStartNanos = System.nanoTime();
+            StormPerformanceSandboxMetrics.setServerTickIntervalMs(DEFAULT_TICK_INTERVAL_MS);
             return limit;
+        }
+
+        /**
+         * @return {@code true} once {@link #create(long)} has installed the server tick limiter.
+         *     The sandbox applier checks this before calling {@link
+         *     ServerFpsConfig#applyUnifiedFps(int)} to avoid an {@link IllegalStateException} on
+         *     the boot path where {@code OnServerStartedEvent} fires before the limiter exists.
+         */
+        public static boolean isLimiterReady() {
+            return serverTickLimiter != null;
         }
 
         /** Current effective tick interval in ms. */
@@ -167,6 +166,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             currentTickIntervalMs = applied;
             observedTicks = 0;
             windowStartNanos = System.nanoTime();
+            StormPerformanceSandboxMetrics.setServerTickIntervalMs(applied);
             LOGGER.info(
                     "Storm: server tick interval updated to {}ms (~{} TPS)",
                     applied,
@@ -202,55 +202,6 @@ public class GameServerTickRatePatch extends StormClassTransformer {
             return shouldTick;
         }
 
-        /**
-         * Reads {@link #TICK_INTERVAL_PROPERTY}, clamping to {@link #MIN_TICK_INTERVAL_MS}..{@link
-         * #MAX_TICK_INTERVAL_MS}. When the specific property is unset or unparseable, falls back to
-         * {@link ServerFpsConfig#SERVER_FPS_PROPERTY} (the unified fps knob), and finally to {@link
-         * #DEFAULT_TICK_INTERVAL_MS}.
-         */
-        public static long resolveTickIntervalMs() {
-            String prop = System.getProperty(TICK_INTERVAL_PROPERTY);
-            if (prop == null || prop.isEmpty()) {
-                return resolveFromUnifiedOrDefault();
-            }
-            long parsed;
-            try {
-                parsed = Long.parseLong(prop.trim());
-            } catch (NumberFormatException e) {
-                LOGGER.warn(
-                        "Storm: invalid -D{}=\"{}\", falling back to vanilla {}ms",
-                        TICK_INTERVAL_PROPERTY,
-                        prop,
-                        DEFAULT_TICK_INTERVAL_MS);
-                return resolveFromUnifiedOrDefault();
-            }
-            if (parsed < MIN_TICK_INTERVAL_MS) {
-                LOGGER.warn(
-                        "Storm: -D{}={} below floor, clamping to {}ms",
-                        TICK_INTERVAL_PROPERTY,
-                        parsed,
-                        MIN_TICK_INTERVAL_MS);
-                return MIN_TICK_INTERVAL_MS;
-            }
-            if (parsed > MAX_TICK_INTERVAL_MS) {
-                LOGGER.warn(
-                        "Storm: -D{}={} above ceiling, clamping to {}ms",
-                        TICK_INTERVAL_PROPERTY,
-                        parsed,
-                        MAX_TICK_INTERVAL_MS);
-                return MAX_TICK_INTERVAL_MS;
-            }
-            return parsed;
-        }
-
-        private static long resolveFromUnifiedOrDefault() {
-            int unifiedFps = ServerFpsConfig.resolveUnifiedFps();
-            if (unifiedFps != ServerFpsConfig.UNRESOLVED) {
-                return ServerFpsConfig.fpsToTickIntervalMs(unifiedFps);
-            }
-            return DEFAULT_TICK_INTERVAL_MS;
-        }
-
         /** Test-only — resets the per-window tick counter and re-anchors the window. */
         static void resetTickCounterForTest() {
             observedTicks = 0;
@@ -274,7 +225,7 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         }
 
         private static String formatTps(long intervalMs) {
-            return intervalMs <= 0 ? "unbounded" : Long.toString(1000L / intervalMs);
+            return Long.toString(1000L / intervalMs);
         }
     }
 }

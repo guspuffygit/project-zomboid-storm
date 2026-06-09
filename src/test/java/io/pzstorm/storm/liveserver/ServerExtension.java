@@ -38,7 +38,16 @@ public class ServerExtension
     public static final int TEST_RAKNET_PORT = 16361;
     public static final int TEST_UDP_PORT = 16362;
     public static final int TEST_HTTP_PORT = 41899;
+    public static final int TEST_PROMETHEUS_PORT = 41900;
     public static final String TEST_SERVER_PASSWORD = "";
+
+    /**
+     * Non-default value pre-loaded into {@code Storm.ServerFps} via {@code
+     * stormtest_SandboxVars.lua} before the server boots. Picked so it differs from the vanilla
+     * default of 10, so the boot-apply integration test can distinguish "boot path actually ran"
+     * from "gauges still hold their compiled-in defaults".
+     */
+    public static final int TEST_SERVER_FPS = 20;
 
     private static final String STORM_BOOTSTRAP_JAR =
             "./steamapps/workshop/content/108600/3676481910/mods/storm/bootstrap/storm-bootstrap.jar";
@@ -95,10 +104,41 @@ public class ServerExtension
         Path cacheDir = buildDir.toPath().resolve("zomboid").toAbsolutePath();
         Files.createDirectories(cacheDir);
 
+        // -nosteam makes ZomboidFileSystem.getAllModFolders ignore steam workshop paths, so
+        // PZ never sees Storm's mod.info / sandbox-options.txt at the workshop location even
+        // though the javaagent loads its classes. Mirror Storm into <cacheDir>/mods/ so the
+        // "mods" folder path picks it up; the world INI's Mods=storm-core-b42-dev then resolves.
+        Path workshopStormDir =
+                serverDir
+                        .toPath()
+                        .resolve("steamapps/workshop/content/108600/3676481910/mods/storm")
+                        .toAbsolutePath();
+        Path localModDir = cacheDir.resolve("mods").resolve("storm-core-b42-dev");
+        Files.createDirectories(localModDir.getParent());
+        if (!Files.exists(localModDir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            Files.createSymbolicLink(localModDir, workshopStormDir);
+        }
+
         // Hot-reload endpoints are gated behind -Dstorm.hotreload=true. /eval loads a compiled
         // EvalScript from this absolute dir (the server JVM's cwd is the server dir, not here).
         evalClassesDir = buildDir.toPath().resolve("eval-classes").toAbsolutePath();
         Files.createDirectories(evalClassesDir);
+
+        // Pre-populate the world INI with storm enabled before the server boots. PZ creates it
+        // on first launch with Mods= empty, then never re-syncs from CLI; without this, Storm's
+        // sandbox-options.txt is never loaded and SandboxOptions has no Storm.* entries.
+        Path serverIniDir = cacheDir.resolve("Server");
+        Files.createDirectories(serverIniDir);
+        Path serverIni = serverIniDir.resolve(TEST_SERVER_NAME + ".ini");
+        ensureModsLine(serverIni, "storm-core-b42-dev");
+
+        // Pre-populate Storm sandbox state with a non-default ServerFps so the boot-apply path is
+        // observable in /metrics. PZ's SandboxOptions.loadServerLuaFile only writes the keys it
+        // finds in the file; unspecified options keep the compiled-in defaults from
+        // sandbox-options.txt. After loading, PZ immediately rewrites the file with the full merged
+        // state (see GameServer.java:1467), so the next boot still sees ServerFps=20.
+        Path sandboxVars = serverIniDir.resolve(TEST_SERVER_NAME + "_SandboxVars.lua");
+        writeSandboxVarsFile(sandboxVars, TEST_SERVER_FPS);
 
         ProcessBuilder pb =
                 new ProcessBuilder(
@@ -107,6 +147,7 @@ public class ServerExtension
                                 "-DSTORM_LOG_DIR=" + stormLogDir,
                                 "-Dstorm.testing=true",
                                 "-Dstorm.http.port=" + TEST_HTTP_PORT,
+                                "-DprometheusPort=" + TEST_PROMETHEUS_PORT,
                                 "-Dstorm.hotreload=true",
                                 "-Dstorm.hotreload.eval.classes=" + evalClassesDir,
                                 "-Dstorm.server=true",
@@ -267,6 +308,53 @@ public class ServerExtension
             }
         }
         return null;
+    }
+
+    private static void writeSandboxVarsFile(Path file, int serverFps) throws IOException {
+        String lineSep = System.lineSeparator();
+        String contents =
+                "SandboxVars = {"
+                        + lineSep
+                        + "    VERSION = 6,"
+                        + lineSep
+                        + "    Storm = {"
+                        + lineSep
+                        + "        ServerFps = "
+                        + serverFps
+                        + ","
+                        + lineSep
+                        + "    },"
+                        + lineSep
+                        + "}"
+                        + lineSep;
+        Files.writeString(file, contents, StandardCharsets.UTF_8);
+    }
+
+    private static void ensureModsLine(Path serverIni, String modId) throws IOException {
+        if (!Files.exists(serverIni)) {
+            Files.writeString(
+                    serverIni,
+                    "Mods="
+                            + modId
+                            + System.lineSeparator()
+                            + "WorkshopItems="
+                            + System.lineSeparator(),
+                    StandardCharsets.UTF_8);
+            return;
+        }
+        java.util.List<String> lines = Files.readAllLines(serverIni, StandardCharsets.UTF_8);
+        boolean foundMods = false;
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).startsWith("Mods=")) {
+                lines.set(i, "Mods=" + modId);
+                foundMods = true;
+                break;
+            }
+        }
+        if (!foundMods) {
+            lines.add("Mods=" + modId);
+        }
+        Files.write(serverIni, lines, StandardCharsets.UTF_8);
     }
 
     private static String safeExitValue(Process p) {

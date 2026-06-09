@@ -1,57 +1,50 @@
 package io.pzstorm.storm.patch.performance;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Runtime toggles for {@link ZombieCullDisablePatch} and {@link ZombieCullThresholdPatch}.
+ * Runtime knob for {@link ZombieCullDisablePatch} and {@link ZombieCullThresholdPatch}.
  *
- * <p>When {@code disabled} is {@code true}, {@code ZombieCountOptimiser.incrementZombie} is
- * short-circuited — nothing is ever queued for culling and the {@code zombies-culled} stat stops
- * incrementing. When {@code false}, vanilla culling runs untouched.
+ * <p>A single {@code threshold} value drives both patches:
  *
- * <p>When {@code threshold > 0}, {@code startCount}'s result is overwritten so the cull target
- * becomes {@code max(0, liveZombies - threshold)} instead of being capped by the sandbox option's
- * 500 max, AND {@code incrementZombie}'s missing decrement is patched in — so per frame we queue at
- * most {@code excess} zombies rather than ~10% of the whole population. When {@code threshold <=
- * 0}, both behaviours fall through to vanilla.
+ * <ul>
+ *   <li>{@code threshold == 0} — {@code ZombieCountOptimiser.incrementZombie} is short-circuited
+ *       and nothing is ever queued for culling. The {@code zombies-culled} stat stops incrementing.
+ *   <li>{@code threshold > 0} — {@code startCount}'s result is overwritten so the cull target
+ *       becomes {@code max(0, liveZombies - threshold)} instead of being capped by the vanilla
+ *       {@code ZombiesCountBeforeDelete} sandbox option's 500 max, AND {@code incrementZombie}'s
+ *       missing decrement is patched in so per frame we queue at most {@code excess} zombies rather
+ *       than ~10% of the whole population.
+ * </ul>
  *
- * <p>Both transformers are always registered on the server JVM, so toggling either flag takes
- * effect on the very next call (volatile read in the advice). Initialised from {@code
- * -Dstorm.disableZombieCull} and {@code -Dstorm.zombieCullThreshold}; adjustable at runtime via the
- * Storm HTTP endpoints.
+ * <p>Both transformers are always registered on the server JVM; the threshold is read on every
+ * advice entry (volatile), so live updates take effect on the next call. Sourced from the {@code
+ * Storm.ZombieCullThreshold} sandbox option; adjustable at runtime via {@link #setThreshold(int)}
+ * (which the Storm HTTP endpoint forwards through).
  */
 public final class StormZombieCullConfig {
 
-    private static final AtomicBoolean DISABLED =
-            new AtomicBoolean(Boolean.getBoolean("storm.disableZombieCull"));
+    /** Vanilla cap on the {@code ZombiesCountBeforeDelete} sandbox option. */
+    public static final int DEFAULT_THRESHOLD = 500;
 
-    private static final AtomicInteger THRESHOLD =
-            new AtomicInteger(Integer.getInteger("storm.zombieCullThreshold", -1));
+    private static final AtomicInteger THRESHOLD = new AtomicInteger(DEFAULT_THRESHOLD);
 
     private StormZombieCullConfig() {}
 
-    public static boolean isDisabled() {
-        return DISABLED.get();
-    }
-
-    /** Returns the value actually applied (same as {@code disabled}). */
-    public static boolean setDisabled(boolean disabled) {
-        DISABLED.set(disabled);
-        return disabled;
-    }
-
-    /** Returns the current Storm-controlled cull threshold; {@code <= 0} means "no override". */
+    /** Current Storm-controlled cull threshold. {@code 0} = culling disabled. */
     public static int getThreshold() {
         return THRESHOLD.get();
     }
 
     /**
-     * Sets the Storm-controlled cull threshold. Any positive value engages the patch; {@code <= 0}
-     * disables the override and lets vanilla culling run. Returns the value actually applied.
+     * Sets the Storm-controlled cull threshold. {@code 0} disables culling entirely; any positive
+     * value engages the override. Returns the value actually applied.
      */
     public static int setThreshold(int threshold) {
-        THRESHOLD.set(threshold);
-        return threshold;
+        int applied = Math.max(0, threshold);
+        THRESHOLD.set(applied);
+        StormPerformanceSandboxMetrics.setZombieCullThreshold(applied);
+        return applied;
     }
 }

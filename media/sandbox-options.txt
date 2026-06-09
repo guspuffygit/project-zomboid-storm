@@ -1,0 +1,13 @@
+VERSION = 1,
+
+option Storm.ServerFps
+{type = integer, min = 1, max = 240, default = 10, page = Storm, translation = Storm_ServerFps,}
+
+option Storm.AnimalLOSTickInterval
+{type = integer, min = 0, max = 64, default = 1, page = Storm, translation = Storm_AnimalLOSTickInterval,}
+
+option Storm.ZombieCullThreshold
+{type = integer, min = 0, max = 99999, default = 500, page = Storm, translation = Storm_ZombieCullThreshold,}
+
+option Storm.ServerLosThreads
+{type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ServerLosThreads,}

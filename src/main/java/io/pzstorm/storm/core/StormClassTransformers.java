@@ -26,6 +26,7 @@ import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
 import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
+import io.pzstorm.storm.patch.fixes.RequestSaveCellSuppressPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
@@ -35,7 +36,9 @@ import io.pzstorm.storm.patch.networking.CoopMasterPatch;
 import io.pzstorm.storm.patch.networking.GameServerLockFpsPatch;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
+import io.pzstorm.storm.patch.networking.ReceiveSandboxOptionsPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
+import io.pzstorm.storm.patch.networking.UdpConnectionRelevancePatch;
 import io.pzstorm.storm.patch.performance.AnimalSyncManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleUpdatePatch;
 import io.pzstorm.storm.patch.performance.BitHeaderByteReleasePatch;
@@ -207,10 +210,16 @@ public class StormClassTransformers {
             registerTransformer(new ZombieCullDisablePatch());
             registerTransformer(new ZombieCullThresholdPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
+            registerTransformer(new RequestSaveCellSuppressPatch());
+            registerTransformer(new ReceiveSandboxOptionsPatch());
         }
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new IsoZombieUpdateFixPatch());
+        }
+
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new UdpConnectionRelevancePatch());
         }
 
         // Register generic packet event dispatching for all supported packet types
