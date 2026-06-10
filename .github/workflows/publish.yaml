@@ -8,8 +8,6 @@ jobs:
   publish:
     name: Publish to Maven Central
     runs-on: ubuntu-latest
-    env:
-      PZ_VERSION: 42.19.0
     steps:
       - uses: actions/checkout@v6
 
@@ -17,6 +15,12 @@ jobs:
         with:
           distribution: corretto
           java-version: 25
+
+      - name: Extract PZ version from Gradle
+        run: |
+          PZ_VERSION=$(./gradlew -q printPzVersion)
+          [ -z "$PZ_VERSION" ] && { echo "::error::PZ_VERSION empty"; exit 1; }
+          echo "PZ_VERSION=$PZ_VERSION" >> "$GITHUB_ENV"
 
       - name: Download Zomboid classes from S3
         env:

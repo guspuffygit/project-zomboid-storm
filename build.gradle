@@ -92,7 +92,7 @@ String versionSuffix = System.getenv("STAGING") ? "" :
 allprojects {
 	repositories { mavenCentral() }
 	group = 'com.sentientsimulations'
-	version = projectVersion + versionSuffix
+	version = "${pzVersion}_${stormVersion}" + versionSuffix
 	java {
 		toolchain {
 			languageVersion = JavaLanguageVersion.of(25)
@@ -102,6 +102,14 @@ allprojects {
 
 tasks.register('printVersion') {
 	doLast { println project.version }
+}
+
+tasks.register('printPzVersion') {
+	doLast { println pzVersion }
+}
+
+tasks.register('printStormVersion') {
+	doLast { println stormVersion }
 }
 
 tasks.register('extractZomboidFiles', Copy) {
