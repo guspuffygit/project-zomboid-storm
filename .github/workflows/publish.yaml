@@ -30,7 +30,10 @@ jobs:
 
       - name: Create local.properties
         run: |
-          echo "gameDir=${{ github.workspace }}/lib/zomboid" > local.properties
+          {
+            echo "gameDir=${{ github.workspace }}/lib/zomboid"
+            echo "serverPath=na"
+          } > local.properties
 
       - name: Publish to Maven Central
         env:
