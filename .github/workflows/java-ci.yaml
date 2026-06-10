@@ -16,10 +16,8 @@ jobs:
           java-version: 25
       - name: Create local.properties
         run: |
-          {
-            echo "gameDir=${{ github.workspace }}/lib/zomboid"
-            echo "serverPath=na"
-          } > local.properties
+          echo "gameDir=${{ github.workspace }}/lib/zomboid" > local.properties
+          echo "serverDir=na" > local.properties
       - name: Download Zomboid classes from S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -52,12 +50,6 @@ jobs:
         with:
           distribution: corretto
           java-version: 25
-      - name: Create local.properties
-        run: |
-          {
-            echo "gameDir=${{ github.workspace }}/lib/zomboid"
-            echo "serverPath=na"
-          } > local.properties
       - name: Extract version from Gradle
         id: version
         env:

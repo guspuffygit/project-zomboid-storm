@@ -145,16 +145,7 @@ dependencies {
 
 test {
 	useJUnitPlatform()
-	def serverDir = getLocalProperty('serverPath').get()
-	systemProperty 'storm.server.path', serverDir
 	systemProperty 'storm.testing', 'true'
-	def ldLibPath = [
-		"${serverDir}/natives",
-		"${serverDir}/linux64",
-		"${serverDir}/jre64/lib/amd64",
-		System.getenv('LD_LIBRARY_PATH') ?: ''
-	].findAll { it }.join(':')
-	environment 'LD_LIBRARY_PATH', ldLibPath
 	finalizedBy jacocoTestReport
 
 	testLogging {
@@ -164,6 +155,18 @@ test {
 		showCauses = true
 		showStackTraces = true
 		exceptionFormat = "full"
+	}
+
+	doFirst {
+		def serverDir = getLocalProperty('serverPath').get()
+		systemProperty 'storm.server.path', serverDir
+		def ldLibPath = [
+			"${serverDir}/natives",
+			"${serverDir}/linux64",
+			"${serverDir}/jre64/lib/amd64",
+			System.getenv('LD_LIBRARY_PATH') ?: ''
+		].findAll { it }.join(':')
+		environment 'LD_LIBRARY_PATH', ldLibPath
 	}
 }
 
@@ -477,29 +480,34 @@ tasks.register('runStorm', JavaExec) {
 
 	dependsOn extractZomboidFiles
 
-	systemProperty 'user.dir', getLocalProperty('outputDir').getOrElse(getLocalProperty('gameDir').get())
+	doFirst {
+		def userDir = getLocalProperty('outputDir').orElse(getLocalProperty('gameDir')).get()
+		systemProperty 'user.dir', userDir
 
-	def jvmArgsList = [
-		'-Djava.awt.headless=true',
-		'-Xmx12G',
-		'-Xms12G',
-		'-Dzomboid.steam=1',
-		'-Dzomboid.znetlog=1',
-		'-Dzomboid.znetlog=1',
-		'-XX:+UseZGC',
-	]
+		def jvmArgsList = [
+			'-Djava.awt.headless=true',
+			'-Xmx12G',
+			'-Xms12G',
+			'-Dzomboid.steam=1',
+			'-Dzomboid.znetlog=1',
+			'-Dzomboid.znetlog=1',
+			'-XX:+UseZGC',
+		]
 
-	if (os.isWindows()) {
-		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}\\win64;${getLocalProperty('outputDir').get()}")
-	} else if (os.isLinux()) {
-		// TODO: This is untested
-		jvmArgsList.add("-Djava.library.path=${getLocalProperty('outputDir').get()}/linux64;${getLocalProperty('outputDir').get()}")
-		jvmArgsList.add('-Djava.security.egd=file:/dev/./urandom')
-	} else if (os.isMacOsX()) {
-		//		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
+		if (os.isWindows()) {
+			def outputDir = getLocalProperty('outputDir').get()
+			jvmArgsList.add("-Djava.library.path=${outputDir}\\win64;${outputDir}")
+		} else if (os.isLinux()) {
+			// TODO: This is untested
+			def outputDir = getLocalProperty('outputDir').get()
+			jvmArgsList.add("-Djava.library.path=${outputDir}/linux64;${outputDir}")
+			jvmArgsList.add('-Djava.security.egd=file:/dev/./urandom')
+		} else if (os.isMacOsX()) {
+			//		throw new GradleException('Not sure how to support MacOSX yet but it should be doable')
+		}
+
+		jvmArgs jvmArgsList
 	}
-
-	jvmArgs jvmArgsList
 }
 
 tasks.register('writeWorkshopVdf') {
@@ -626,43 +634,46 @@ tasks.register('downloadWorkshop', Exec) {
 		if (!username || !password) {
 			throw new GradleException('STEAM_USERNAME and STEAM_PASSWORD environment variables must be set')
 		}
+
+		def dir = getLocalProperty('serverPath').get()
+		workingDir dir
+
+		def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
+		commandLine steamcmdPath,
+				'+force_install_dir', dir,
+				'+login', username, password,
+				'+workshop_download_item',
+				'108600',
+				getWorkshopId(), 'validate',
+				'+quit'
 	}
-
-	def dir = getLocalProperty('serverPath').get()
-	workingDir dir
-
-	def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
-	commandLine steamcmdPath,
-			'+force_install_dir', dir,
-			'+login', System.getenv('STEAM_USERNAME'), System.getenv('STEAM_PASSWORD'),
-			'+workshop_download_item',
-			'108600',
-			getWorkshopId(), 'validate',
-			'+quit'
 }
 
 tasks.register('runProjectZomboidServer', Exec) {
 	dependsOn 'installStorm', 'downloadWorkshop'
 
-	def dir = getLocalProperty('serverPath').get()
-	def workshopModPath = "./steamapps/workshop/content/108600/3676481910/mods/storm"
-	workingDir dir
-
-	environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
-
-	def cmd = [
-		"${dir}/start-server.sh".toString(),
-		"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar".toString(),
-		'-DLOG_LEVEL=debug',
-		'-Dstorm.server=true'
-	]
-	def prometheusPort = getLocalProperty('prometheusPort').getOrNull()
-	if (prometheusPort) {
-		cmd.add("-DprometheusPort=${prometheusPort}".toString())
-	}
-	cmd.addAll(['--', '-servername', 'storm2'])
-	commandLine cmd
 	standardInput = System.in
 	standardOutput = System.out
 	errorOutput = System.err
+
+	doFirst {
+		def dir = getLocalProperty('serverPath').get()
+		def workshopModPath = "./steamapps/workshop/content/108600/3676481910/mods/storm"
+		workingDir dir
+
+		environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
+
+		def cmd = [
+			"${dir}/start-server.sh".toString(),
+			"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar".toString(),
+			'-DLOG_LEVEL=debug',
+			'-Dstorm.server=true'
+		]
+		def prometheusPort = getLocalProperty('prometheusPort').getOrNull()
+		if (prometheusPort) {
+			cmd.add("-DprometheusPort=${prometheusPort}".toString())
+		}
+		cmd.addAll(['--', '-servername', 'storm2'])
+		commandLine cmd
+	}
 }
