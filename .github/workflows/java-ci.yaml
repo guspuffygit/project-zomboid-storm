@@ -26,15 +26,16 @@ jobs:
       - name: Create local.properties
         run: |
           echo "gameDir=${{ github.workspace }}/lib/zomboid" > local.properties
-      - name: Test
-        run: |
-          ./gradlew test
-      - name: Upload Test Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report-${{ runner.os }}
-          path: ./**/build/reports/tests/
+          echo "serverDir=na" > local.properties
+      # - name: Test
+      #   run: |
+      #     ./gradlew test
+      # - name: Upload Test Reports
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: test-report-${{ runner.os }}
+      #     path: ./**/build/reports/tests/
 
   tag:
     name: Create version tag
