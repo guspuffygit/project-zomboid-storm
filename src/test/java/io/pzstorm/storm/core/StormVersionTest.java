@@ -1,8 +1,7 @@
-package com.sentientsimulations.storm.core;
+package io.pzstorm.storm.core;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.pzstorm.storm.core.StormVersion;
 import org.junit.jupiter.api.Test;
 
 class StormVersionTest {
@@ -16,6 +15,6 @@ class StormVersionTest {
 
     @Test
     void getVersion_returnsDevWhenRunningUnpackaged() {
-        assertEquals("dev", StormVersion.getVersion());
+        assertEquals("dev", StormVersion.loadVersionFrom(null));
     }
 }

@@ -16,13 +16,22 @@ public class StormVersion {
 
     private static String loadVersion() {
         try (InputStream in = StormVersion.class.getResourceAsStream("/storm-version.properties")) {
-            if (in != null) {
-                Properties props = new Properties();
-                props.load(in);
-                String version = props.getProperty("version");
-                if (version != null && !version.isEmpty()) {
-                    return version;
-                }
+            return loadVersionFrom(in);
+        } catch (IOException ignored) {
+            return "dev";
+        }
+    }
+
+    static String loadVersionFrom(InputStream in) {
+        if (in == null) {
+            return "dev";
+        }
+        try {
+            Properties props = new Properties();
+            props.load(in);
+            String version = props.getProperty("version");
+            if (version != null && !version.isEmpty()) {
+                return version;
             }
         } catch (IOException ignored) {
         }
