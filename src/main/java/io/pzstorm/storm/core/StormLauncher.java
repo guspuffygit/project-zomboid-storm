@@ -27,6 +27,7 @@ public class StormLauncher {
     /** Calls {@link io.pzstorm.storm.event.core.StormEventHandler} * */
     public static void main(String[] args) {
         try {
+            System.out.println("Storm version: " + StormVersion.getVersion());
             LOGGER.info("Storm version: {}", StormVersion.getVersion());
             LOGGER.info("Preparing to launch Project Zomboid...");
 
