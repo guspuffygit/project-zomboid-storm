@@ -100,6 +100,10 @@ allprojects {
 	}
 }
 
+tasks.register('printVersion') {
+	doLast { println project.version }
+}
+
 tasks.register('extractZomboidFiles', Copy) {
 	from getLocalProperty('gameDir')
 	into layout.buildDirectory.dir('zomboid-classpath')

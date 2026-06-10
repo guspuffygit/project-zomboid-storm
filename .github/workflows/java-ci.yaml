@@ -46,10 +46,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
-      - name: Extract version from build.gradle
+      - uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: 25
+      - name: Extract version from Gradle
         id: version
+        env:
+          STAGING: "true"
         run: |
-          VERSION=$(grep -oP "version = '\K[^']+" build.gradle | head -1)
+          VERSION=$(./gradlew -q printVersion)
+          [ -z "$VERSION" ] && { echo "::error::version empty"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Check if tag exists
         id: check
