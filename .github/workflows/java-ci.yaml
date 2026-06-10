@@ -7,7 +7,7 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     env:
-      PZ_VERSION: 42.14.1
+      PZ_VERSION: 42.19.0
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5

@@ -9,7 +9,7 @@ jobs:
     name: Publish to Maven Central
     runs-on: ubuntu-latest
     env:
-      PZ_VERSION: 42.14.1
+      PZ_VERSION: 42.19.0
     steps:
       - uses: actions/checkout@v6
 
