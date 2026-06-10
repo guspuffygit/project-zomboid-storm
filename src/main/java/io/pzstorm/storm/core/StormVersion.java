@@ -15,8 +15,7 @@ public class StormVersion {
     }
 
     private static String loadVersion() {
-        try (InputStream in =
-                StormVersion.class.getResourceAsStream("/storm-version.properties")) {
+        try (InputStream in = StormVersion.class.getResourceAsStream("/storm-version.properties")) {
             if (in != null) {
                 Properties props = new Properties();
                 props.load(in);
