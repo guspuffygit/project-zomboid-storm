@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.OnClientCommand;
 import io.pzstorm.storm.event.core.StormEventDispatcher;
+import io.pzstorm.storm.event.zomboid.OnContainerLootedEvent;
 import io.pzstorm.storm.event.zomboid.OnItemTransferCompletedEvent;
 import io.pzstorm.storm.metrics.TransferMetrics;
 import io.pzstorm.storm.transfer.commands.CancelTransferCommand;
@@ -243,6 +244,7 @@ public class StormTransferHandler {
             // Mark source container as explored/looted (matches vanilla Transaction.update())
             p.src.setExplored(true);
             p.src.setHasBeenLooted(true);
+            StormEventDispatcher.dispatchEvent(new OnContainerLootedEvent(p.player, p.src, item));
 
             // Item state updates (matches vanilla Transaction.update() lines 156-172)
             boolean isReplacedOnCooked = false;
