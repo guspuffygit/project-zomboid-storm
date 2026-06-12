@@ -2,12 +2,13 @@ require("TimedActions/ISInventoryTransferAction")
 
 -- Storm Transfer Fix: replaces the vanilla byte-ID Transaction system with UUID-keyed
 -- transactions sent via sendClientCommand. Covers player inventory, bags, world object
--- containers, and vehicle part containers. This fixes:
+-- containers, vehicle part containers, and the floor (drops and pickups). This fixes:
 --   Root Cause #4: Byte ID wraparound causing collisions across players
 --   Root Cause #5: Vacuous truth on ID 0 when createItemTransaction fails
 --
 -- Each item still gets its own transaction (no batching), keeping behavior as close
--- to vanilla as possible. Floor and dead body transfers use the vanilla system unchanged.
+-- to vanilla as possible. Dead body transfers and corpse items without a world object
+-- use the vanilla system unchanged.
 
 local MODULE = "StormTransfer"
 
@@ -133,14 +134,47 @@ local function getContainerRef(container, character)
             end
         end
     end
-    return nil -- unsupported (floor, dead body) -> vanilla handles it
+    return nil -- unsupported (dead body) -> vanilla handles it
 end
 
-local function shouldUseStormTransfer(src, dest, character)
+-- Floor refs are item-dependent: pickups identify the item's world object by its
+-- square plus the inventory item id; drops send a bare "floor" marker and the server
+-- picks the drop square from the player's authoritative position (vanilla behavior).
+local function getSourceRef(container, character, item)
+    if container:getType() == "floor" then
+        if not item then
+            return nil
+        end
+        local worldItem = item:getWorldItem()
+        if not worldItem or not worldItem:getSquare() then
+            -- corpse items and other floor entries without a world object -> vanilla
+            return nil
+        end
+        local sq = worldItem:getSquare()
+        return "floorItem:"
+            .. tostring(sq:getX())
+            .. ":"
+            .. tostring(sq:getY())
+            .. ":"
+            .. tostring(sq:getZ())
+            .. ":"
+            .. tostring(item:getID())
+    end
+    return getContainerRef(container, character)
+end
+
+local function getDestRef(container, character, item)
+    if container:getType() == "floor" then
+        return "floor"
+    end
+    return getContainerRef(container, character)
+end
+
+local function shouldUseStormTransfer(src, dest, character, item)
     if not isClient() then
         return false
     end
-    return getContainerRef(src, character) ~= nil and getContainerRef(dest, character) ~= nil
+    return getSourceRef(src, character, item) ~= nil and getDestRef(dest, character, item) ~= nil
 end
 
 local function createStormTransaction(character, item, srcContainer, destContainer)
@@ -154,8 +188,8 @@ local function createStormTransaction(character, item, srcContainer, destContain
     sendClientCommand(character, MODULE, "transferItem", {
         uuid = uuid,
         itemId = item:getID(),
-        srcContainerRef = getContainerRef(srcContainer, character),
-        destContainerRef = getContainerRef(destContainer, character),
+        srcContainerRef = getSourceRef(srcContainer, character, item),
+        destContainerRef = getDestRef(destContainer, character, item),
     })
 
     return uuid
@@ -210,7 +244,9 @@ end
 local _originalStart = ISInventoryTransferAction.start
 
 function ISInventoryTransferAction:start()
-    if not shouldUseStormTransfer(self.srcContainer, self.destContainer, self.character) then
+    if
+        not shouldUseStormTransfer(self.srcContainer, self.destContainer, self.character, self.item)
+    then
         _originalStart(self)
         return
     end
