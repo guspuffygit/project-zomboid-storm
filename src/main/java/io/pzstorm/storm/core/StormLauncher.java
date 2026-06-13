@@ -77,6 +77,12 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, ramAllocTracker);
 
+            Class<?> screenshotReceiver =
+                    classLoader.loadClass("io.pzstorm.storm.screenshot.StormScreenshotReceiver");
+            eventDispatcher
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, screenshotReceiver);
+
             Class<?> perfSandboxApplier =
                     classLoader.loadClass(
                             "io.pzstorm.storm.sandbox.StormPerformanceSandboxApplier");
