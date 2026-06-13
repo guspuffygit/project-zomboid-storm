@@ -2,7 +2,6 @@ require("StormBase64")
 
 StormScreenshot = StormScreenshot or {}
 
-local LUA_CACHE_PREFIX = "../Lua/"
 local CHUNK_SIZE = 30000
 local ENCODE_BATCH = 199998
 local POLL_DELAY_TICKS = 60
@@ -41,17 +40,30 @@ local function processCapture()
             return
         end
         if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
-            --             print("[Storm] Screenshot capture timed out: " .. pendingCapture.filename)
             pendingCapture = nil
             return
         end
+        if not fileExists(pendingCapture.screenshotPath) then
+            return
+        end
+
+        local texture = getTexture(pendingCapture.screenshotPath)
+        if not texture then
+            print("[Storm] Failed to load screenshot texture")
+            pendingCapture = nil
+            return
+        end
+        texture:saveToZomboidDirectory("Lua/" .. pendingCapture.filename)
+        texture:destroy()
+
         local stream = getFileInput(pendingCapture.filename)
         if not stream then
+            print("[Storm] Failed to open Lua copy of screenshot")
+            pendingCapture = nil
             return
         end
         pendingCapture.bytes = stream:readAllBytes()
         stream:close()
-        --         print("[Storm] Read " .. #pendingCapture.bytes .. " bytes from screenshot")
         pendingCapture.encodePos = 1
         pendingCapture.encodedParts = {}
         pendingCapture.state = "encoding"
@@ -84,12 +96,14 @@ function StormScreenshot.captureAndSend(screenshotId)
     end
 
     local filename = "storm_screenshot_" .. screenshotId .. ".png"
+    local screenshotPath = getMyDocumentFolder() .. "/Screenshots/" .. filename
 
-    takeScreenshot(LUA_CACHE_PREFIX .. filename)
+    takeScreenshot(filename)
 
     pendingCapture = {
         id = screenshotId,
         filename = filename,
+        screenshotPath = screenshotPath,
         ticks = 0,
         state = "polling",
     }

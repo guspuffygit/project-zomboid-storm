@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
+import io.pzstorm.storm.patch.client.experimental.VehicleModDataRequestPatch;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
 import io.pzstorm.storm.patch.core.ZomboidFileSystemPatch;
 import io.pzstorm.storm.patch.core.ZomboidGlobalsPatch;
@@ -200,6 +201,7 @@ public class StormClassTransformers {
         // intervention.
         if (!StormEnv.isStormServer()) {
             registerTransformer(new KahluaMetatableCachePatch());
+            registerTransformer(new VehicleModDataRequestPatch());
         }
 
         if (StormEnv.isStormServer()) {
