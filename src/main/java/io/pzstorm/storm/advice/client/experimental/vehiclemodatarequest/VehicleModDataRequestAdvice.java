@@ -8,13 +8,13 @@ import zombie.vehicles.VehicleManager;
 
 public class VehicleModDataRequestAdvice {
 
-    private static final byte OBJECT_TYPE_VEHICLE = 5;
+    public static final byte OBJECT_TYPE_VEHICLE = 5;
 
-    private static final short REQUEST_FLAG_FULL_VEHICLE = 16384;
+    public static final short REQUEST_FLAG_FULL_VEHICLE = 16384;
 
-    private static final long THROTTLE_NANOS = 5_000_000_000L;
+    public static final long THROTTLE_NANOS = 5_000_000_000L;
 
-    private static final ConcurrentHashMap<Short, Long> LAST_REQUESTED = new ConcurrentHashMap<>();
+    public static final ConcurrentHashMap<Short, Long> LAST_REQUESTED = new ConcurrentHashMap<>();
 
     @Advice.OnMethodExit
     public static void onExit(
