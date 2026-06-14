@@ -40,21 +40,34 @@ local function processCapture()
             return
         end
         if pendingCapture.ticks > POLL_TIMEOUT_TICKS then
+            if pendingCapture.texture then
+                pendingCapture.texture:destroy()
+            end
             pendingCapture = nil
-            return
-        end
-        if not fileExists(pendingCapture.screenshotPath) then
             return
         end
 
-        local texture = getTexture(pendingCapture.screenshotPath)
-        if not texture then
-            print("[Storm] Failed to load screenshot texture")
-            pendingCapture = nil
+        if not pendingCapture.texture then
+            if not fileExists(pendingCapture.screenshotPath) then
+                return
+            end
+            local texture = getTexture(pendingCapture.screenshotPath)
+            if not texture then
+                print("[Storm] Failed to load screenshot texture")
+                pendingCapture = nil
+                return
+            end
+            pendingCapture.texture = texture
             return
         end
-        texture:saveToZomboidDirectory("Lua/" .. pendingCapture.filename)
-        texture:destroy()
+
+        if not pendingCapture.texture:isReady() then
+            return
+        end
+
+        pendingCapture.texture:saveToZomboidDirectory("Lua/" .. pendingCapture.filename)
+        pendingCapture.texture:destroy()
+        pendingCapture.texture = nil
 
         local stream = getFileInput(pendingCapture.filename)
         if not stream then
