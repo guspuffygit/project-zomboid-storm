@@ -681,6 +681,10 @@ tasks.register('runProjectZomboidServer', Exec) {
 		if (prometheusPort) {
 			cmd.add("-DprometheusPort=${prometheusPort}".toString())
 		}
+		def mainloopTimings = getLocalProperty('mainloopTimings').getOrNull()
+		if (mainloopTimings) {
+			cmd.add("-Dstorm.mainloop.timings=${mainloopTimings}".toString())
+		}
 		cmd.addAll(['--', '-servername', 'storm2'])
 		commandLine cmd
 	}
