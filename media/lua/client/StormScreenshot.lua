@@ -2,29 +2,23 @@ require("StormBase64")
 
 StormScreenshot = StormScreenshot or {}
 
-local CHUNK_SIZE = 30000
-local ENCODE_BATCH = 199998
+-- BYTES_PER_CHUNK must be a multiple of 3 so non-final chunks never emit `=` padding.
+-- 22500 bytes -> exactly 30000 base64 chars per chunk, matching the wire payload size
+-- that was used before this was split over ticks.
+local BYTES_PER_CHUNK = 22500
+local CHUNKS_PER_TICK = 1
 local POLL_DELAY_TICKS = 60
 local POLL_TIMEOUT_TICKS = 600
 
 local pendingCapture = nil
 
-local function sendChunks(screenshotId, base64str)
-    local totalLen = string.len(base64str)
-    local totalChunks = math.ceil(totalLen / CHUNK_SIZE)
-
-    for i = 1, totalChunks do
-        local startPos = (i - 1) * CHUNK_SIZE + 1
-        local endPos = math.min(i * CHUNK_SIZE, totalLen)
-        local chunk = string.sub(base64str, startPos, endPos)
-
-        sendClientCommand("stormScreenshot", "chunk", {
-            id = screenshotId,
-            index = i,
-            total = totalChunks,
-            data = chunk,
-        })
-    end
+local function sendChunk(screenshotId, index, total, data)
+    sendClientCommand("stormScreenshot", "chunk", {
+        id = screenshotId,
+        index = index,
+        total = total,
+        data = data,
+    })
 end
 
 local function processCapture()
@@ -77,26 +71,33 @@ local function processCapture()
         end
         pendingCapture.bytes = stream:readAllBytes()
         stream:close()
+
+        pendingCapture.totalBytes = #pendingCapture.bytes
+        pendingCapture.totalChunks =
+            math.max(1, math.ceil(pendingCapture.totalBytes / BYTES_PER_CHUNK))
         pendingCapture.encodePos = 1
-        pendingCapture.encodedParts = {}
-        pendingCapture.state = "encoding"
-    elseif state == "encoding" then
+        pendingCapture.chunkIndex = 0
+        pendingCapture.state = "streaming"
+    elseif state == "streaming" then
         local bytes = pendingCapture.bytes
-        local pos = pendingCapture.encodePos
-        local endPos = math.min(pos + ENCODE_BATCH - 1, #bytes)
-
-        local part = StormBase64.encode(bytes, pos, endPos)
-        local parts = pendingCapture.encodedParts
-        parts[#parts + 1] = part
-
-        pendingCapture.encodePos = endPos + 1
-        if pendingCapture.encodePos > #bytes then
-            local base64str = table.concat(parts)
-            --             print("[Storm] Encoded to " .. string.len(base64str) .. " Base64 chars")
-            pendingCapture.bytes = nil
-            pendingCapture.encodedParts = nil
-            sendChunks(pendingCapture.id, base64str)
-            --             print("[Storm] Sent screenshot in " .. math.ceil(string.len(base64str) / CHUNK_SIZE) .. " chunks")
+        local totalBytes = pendingCapture.totalBytes
+        for _ = 1, CHUNKS_PER_TICK do
+            if pendingCapture.encodePos > totalBytes then
+                break
+            end
+            local pos = pendingCapture.encodePos
+            local endPos = math.min(pos + BYTES_PER_CHUNK - 1, totalBytes)
+            local data = StormBase64.encode(bytes, pos, endPos)
+            pendingCapture.chunkIndex = pendingCapture.chunkIndex + 1
+            sendChunk(
+                pendingCapture.id,
+                pendingCapture.chunkIndex,
+                pendingCapture.totalChunks,
+                data
+            )
+            pendingCapture.encodePos = endPos + 1
+        end
+        if pendingCapture.encodePos > totalBytes then
             pendingCapture = nil
         end
     end
