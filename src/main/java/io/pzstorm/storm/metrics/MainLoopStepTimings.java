@@ -31,7 +31,13 @@ public final class MainLoopStepTimings {
     private static final Logger TIMINGS_LOG =
             ENABLED
                     ? StormFileLoggerFactory.create(
-                            "io.pzstorm.storm.timings", "timings", "storm", "log", 25, 1, null)
+                            "io.pzstorm.storm.timings",
+                            StormFileLoggerFactory.LOG_HOME + "/storm",
+                            "timings",
+                            "log",
+                            25,
+                            1,
+                            null)
                     : null;
 
     private static final ConcurrentHashMap<String, AtomicLong> STEP_NANOS =

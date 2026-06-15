@@ -22,16 +22,21 @@ import org.slf4j.LoggerFactory;
  * AsyncAppender} so the calling thread is never blocked on I/O — important for hot-path callers
  * like the dedicated server's main loop.
  *
- * <p>Log files land at {@code <STORM_LOG_DIR>/<subDir>/<name>.<extension>}. {@code STORM_LOG_DIR}
- * follows Storm's convention: the {@code -DSTORM_LOG_DIR=…} system property if set, otherwise
- * {@code ~/Zomboid/Logs}.
+ * <p>Callers supply an absolute directory; {@link #LOG_HOME} resolves Storm's default log root
+ * ({@code -DSTORM_LOG_DIR=…} if set, otherwise {@code ~/Zomboid/Logs}) so most callers pass {@code
+ * LOG_HOME + "/<subdir>"}. Mod authors who want a different location (e.g. honoring their own
+ * {@code SOMETHING_LOG_DIR} system property) can pass any absolute path.
  *
  * <p>The returned logger is non-additive: messages written to it do <b>not</b> propagate to the
  * root appenders, so callers can spam this file without polluting Storm's main log.
  */
 public final class StormFileLoggerFactory {
 
-    private static final String LOG_HOME;
+    /**
+     * Storm's default log root: {@code -DSTORM_LOG_DIR=…} if set, otherwise {@code ~/Zomboid/Logs}.
+     * Build paths under this for files that should sit next to Storm's own logs.
+     */
+    public static final String LOG_HOME;
 
     static {
         String home = System.getProperty("STORM_LOG_DIR");
@@ -47,8 +52,8 @@ public final class StormFileLoggerFactory {
      * Create a non-additive logger that writes to a private rolling file.
      *
      * @param loggerName SLF4J logger name (the key used inside the logback context).
+     * @param dir absolute directory the file lives in (typically {@code LOG_HOME + "/<subdir>"}).
      * @param fileName base file name without extension (e.g. {@code "timings"}).
-     * @param subDir subdirectory under {@code STORM_LOG_DIR} (e.g. {@code "storm"}).
      * @param extension file extension without the dot (e.g. {@code "log"} or {@code "json"}).
      * @param maxFileSizeMb size at which the active file rolls over.
      * @param maxIndex highest archive index to keep ({@code 1} = at most one rolled file).
@@ -57,14 +62,13 @@ public final class StormFileLoggerFactory {
      */
     public static Logger create(
             String loggerName,
+            String dir,
             String fileName,
-            String subDir,
             String extension,
             int maxFileSizeMb,
             int maxIndex,
             String pattern) {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
-        String dir = LOG_HOME + "/" + subDir;
         String activeFile = dir + "/" + fileName + "." + extension;
         String archivePattern = dir + "/" + fileName + ".%i." + extension;
 
