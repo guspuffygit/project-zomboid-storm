@@ -25,6 +25,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import zombie.SandboxOptions;
+import zombie.core.Core;
 import zombie.network.GameServer;
 import zombie.network.ServerOptions;
 
@@ -125,7 +126,11 @@ public final class StormStartupAnalytics {
     private static String formatHeader(String publicIp) {
         return "**Storm server started** — `"
                 + StormVersion.getVersion()
-                + "`\nPublic IP: `"
+                + "`\nPZ version: `"
+                + Core.getInstance().getVersion()
+                + "`\nServer: `"
+                + ServerOptions.getInstance().publicName.getValue()
+                + "` @ `"
                 + publicIp
                 + "`";
     }
