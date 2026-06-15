@@ -1,11 +1,11 @@
-package io.pzstorm.storm.advice.servermappostupdate;
+package io.pzstorm.storm.advice.networkplayermanagerupdate;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
-import io.pzstorm.storm.metrics.ServerMapPostUpdateMetrics;
+import io.pzstorm.storm.metrics.NetworkPlayerManagerUpdateMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class ServerMapPostUpdateAdvice {
+public class NetworkPlayerManagerUpdateAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
@@ -24,7 +24,7 @@ public class ServerMapPostUpdateAdvice {
             return;
         }
         long elapsed = System.nanoTime() - startNanos;
-        ServerMapPostUpdateMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("ServerMap.postupdate", elapsed);
+        NetworkPlayerManagerUpdateMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("NetworkPlayerManager.update", elapsed);
     }
 }

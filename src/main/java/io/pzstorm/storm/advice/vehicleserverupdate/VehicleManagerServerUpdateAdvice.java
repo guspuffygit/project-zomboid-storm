@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.vehicleserverupdate;
 
+import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import io.pzstorm.storm.metrics.VehicleServerUpdateMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -22,6 +23,8 @@ public class VehicleManagerServerUpdateAdvice {
         if (startNanos == 0L) {
             return;
         }
-        VehicleServerUpdateMetrics.recordNanos(System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        VehicleServerUpdateMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("VehicleManager.serverUpdate", elapsed);
     }
 }

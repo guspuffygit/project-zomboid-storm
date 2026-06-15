@@ -1,17 +1,18 @@
-package io.pzstorm.storm.advice.servermappostupdate;
+package io.pzstorm.storm.advice.servermappreupdate;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
-import io.pzstorm.storm.metrics.ServerMapPostUpdateMetrics;
+import io.pzstorm.storm.metrics.ServerMapPreUpdateMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class ServerMapPostUpdateAdvice {
+public class ServerMapPreUpdateAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
         if (!GameServer.server) {
             return 0L;
         }
+        MainLoopStepTimings.beginTick();
         return System.nanoTime();
     }
 
@@ -24,7 +25,7 @@ public class ServerMapPostUpdateAdvice {
             return;
         }
         long elapsed = System.nanoTime() - startNanos;
-        ServerMapPostUpdateMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("ServerMap.postupdate", elapsed);
+        ServerMapPreUpdateMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("ServerMap.preupdate", elapsed);
     }
 }

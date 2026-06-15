@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.netdata;
 
+import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import io.pzstorm.storm.metrics.NetDataMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -22,6 +23,8 @@ public class GameServerNetDataAdvice {
         if (startNanos == 0L) {
             return;
         }
-        NetDataMetrics.recordNanos(System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        NetDataMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("GameServer.mainLoopDealWithNetData", elapsed);
     }
 }

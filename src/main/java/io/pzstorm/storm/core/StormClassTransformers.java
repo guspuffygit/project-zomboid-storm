@@ -51,8 +51,11 @@ import io.pzstorm.storm.patch.performance.CellAddToProcessObjectFastPatch;
 import io.pzstorm.storm.patch.performance.CellAddToProcessObjectRemoveFastPatch;
 import io.pzstorm.storm.patch.performance.CellAddToStaticUpdaterFastPatch;
 import io.pzstorm.storm.patch.performance.CellProcessIsoObjectFlushPatch;
+import io.pzstorm.storm.patch.performance.FileSystemUpdateAsyncTransactionsPatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.GameServerNetDataPatch;
+import io.pzstorm.storm.patch.performance.ImportantAreaManagerProcessPatch;
+import io.pzstorm.storm.patch.performance.IngameStateUpdatePatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkLoadPatch;
@@ -66,22 +69,37 @@ import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.IsoRoomOnSeePatch;
+import io.pzstorm.storm.patch.performance.LoginQueueUpdatePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
+import io.pzstorm.storm.patch.performance.MapCollisionDataUpdateGameStatePatch;
+import io.pzstorm.storm.patch.performance.NetworkPlayerManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
+import io.pzstorm.storm.patch.performance.ObjectIDManagerCheckSaveDataPatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
+import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePatch;
+import io.pzstorm.storm.patch.performance.RCONServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.SafeHouseUpdatePatch;
+import io.pzstorm.storm.patch.performance.SendWorldMapPlayerPositionPatch;
 import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
+import io.pzstorm.storm.patch.performance.ServerGUIUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerLOSFindDataPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSIsCouldSeePatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRunInnerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
+import io.pzstorm.storm.patch.performance.ServerMapPreUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerTickPatch;
 import io.pzstorm.storm.patch.performance.StatsGetPatch;
+import io.pzstorm.storm.patch.performance.SteamUtilsRunLoopPatch;
 import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
+import io.pzstorm.storm.patch.performance.TradingManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.WarManagerUpdatePatch;
+import io.pzstorm.storm.patch.performance.WorldMapVisitedServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.ZipBackupOnPeriodPatch;
 import io.pzstorm.storm.patch.performance.ZombieCullDisablePatch;
 import io.pzstorm.storm.patch.performance.ZombieCullThresholdPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
@@ -222,6 +240,32 @@ public class StormClassTransformers {
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new UdpConnectionRelevancePatch());
+        }
+
+        // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
+        // called from the server's frame-step block and records elapsed nanos into
+        // MainLoopStepTimings, which prints a per-tick line when
+        // -Dstorm.mainloop.timings=true. ServerMap.preupdate doubles as the tick
+        // boundary trigger (its advice calls MainLoopStepTimings.beginTick()).
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new ServerMapPreUpdatePatch());
+            registerTransformer(new MapCollisionDataUpdateGameStatePatch());
+            registerTransformer(new IngameStateUpdatePatch());
+            registerTransformer(new RCONServerUpdatePatch());
+            registerTransformer(new ObjectIDManagerCheckSaveDataPatch());
+            registerTransformer(new ImportantAreaManagerProcessPatch());
+            registerTransformer(new ServerGUIUpdatePatch());
+            registerTransformer(new PublicServerUtilUpdatePatch());
+            registerTransformer(new SendWorldMapPlayerPositionPatch());
+            registerTransformer(new LoginQueueUpdatePatch());
+            registerTransformer(new ZipBackupOnPeriodPatch());
+            registerTransformer(new SteamUtilsRunLoopPatch());
+            registerTransformer(new TradingManagerUpdatePatch());
+            registerTransformer(new WarManagerUpdatePatch());
+            registerTransformer(new SafeHouseUpdatePatch());
+            registerTransformer(new NetworkPlayerManagerUpdatePatch());
+            registerTransformer(new FileSystemUpdateAsyncTransactionsPatch());
+            registerTransformer(new WorldMapVisitedServerUpdatePatch());
         }
 
         // Register generic packet event dispatching for all supported packet types
