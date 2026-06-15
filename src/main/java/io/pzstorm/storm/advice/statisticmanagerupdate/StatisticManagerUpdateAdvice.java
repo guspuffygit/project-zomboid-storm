@@ -1,11 +1,11 @@
-package io.pzstorm.storm.advice.worldmapvisitedserverupdate;
+package io.pzstorm.storm.advice.statisticmanagerupdate;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
-import io.pzstorm.storm.metrics.WorldMapVisitedServerUpdateMetrics;
+import io.pzstorm.storm.metrics.StatisticManagerUpdateMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class WorldMapVisitedServerUpdateAdvice {
+public class StatisticManagerUpdateAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
@@ -24,8 +24,7 @@ public class WorldMapVisitedServerUpdateAdvice {
             return;
         }
         long elapsed = System.nanoTime() - startNanos;
-        WorldMapVisitedServerUpdateMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("WorldMapVisitedServer.update", elapsed);
-        MainLoopStepTimings.markFrameStepEnd();
+        StatisticManagerUpdateMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("StatisticManager.update", elapsed);
     }
 }

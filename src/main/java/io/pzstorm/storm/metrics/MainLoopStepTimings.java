@@ -46,6 +46,7 @@ public final class MainLoopStepTimings {
             new ConcurrentHashMap<>();
 
     private static volatile long tickStartNanos = 0L;
+    private static volatile long frameStepEndNanos = 0L;
     private static volatile long tickCounter = 0L;
 
     private MainLoopStepTimings() {}
@@ -68,7 +69,21 @@ public final class MainLoopStepTimings {
         STEP_NANOS.clear();
         STEP_CALLS.clear();
         tickStartNanos = System.nanoTime();
+        frameStepEndNanos = 0L;
         tickCounter++;
+    }
+
+    /**
+     * Called by {@code WorldMapVisitedServerUpdateAdvice.onExit} — the last instrumented call
+     * inside {@code GameServer.main}'s frame-step block. Snapshots the moment frame-step work
+     * finishes so {@link #flush()} can split the tick total into in-frame work vs idle wait
+     * (rate-limiter sleep + inter-frame net polling).
+     */
+    public static void markFrameStepEnd() {
+        if (!ENABLED) {
+            return;
+        }
+        frameStepEndNanos = System.nanoTime();
     }
 
     public static void record(String stepName, long nanos) {
@@ -80,7 +95,8 @@ public final class MainLoopStepTimings {
     }
 
     private static void flush() {
-        long totalNanos = System.nanoTime() - tickStartNanos;
+        long flushNanos = System.nanoTime();
+        long totalNanos = flushNanos - tickStartNanos;
 
         List<Map.Entry<String, AtomicLong>> entries = new ArrayList<>(STEP_NANOS.entrySet());
         entries.sort(
@@ -90,6 +106,14 @@ public final class MainLoopStepTimings {
         StringBuilder sb = new StringBuilder(256);
         sb.append("[MainLoopTiming] tick=").append(tickCounter);
         sb.append(" total=").append(fmtMs(totalNanos));
+        long frameStepBodyNanos = -1L;
+        long idleNanos = -1L;
+        if (frameStepEndNanos != 0L && frameStepEndNanos >= tickStartNanos) {
+            frameStepBodyNanos = frameStepEndNanos - tickStartNanos;
+            idleNanos = flushNanos - frameStepEndNanos;
+            sb.append(" frameStep.body=").append(fmtMs(frameStepBodyNanos));
+            sb.append(" idle=").append(fmtMs(idleNanos));
+        }
         sb.append(" steps=").append(entries.size());
         long measuredNanos = 0L;
         for (Map.Entry<String, AtomicLong> e : entries) {
@@ -101,9 +125,15 @@ public final class MainLoopStepTimings {
                 sb.append('x').append(calls);
             }
         }
-        long otherNanos = totalNanos - measuredNanos;
-        if (otherNanos > 0L) {
-            sb.append(" | other=").append(fmtMs(otherNanos));
+        long unmeasuredFrameStepNanos =
+                frameStepBodyNanos >= 0L ? frameStepBodyNanos - measuredNanos : -1L;
+        if (unmeasuredFrameStepNanos > 0L) {
+            sb.append(" | frameStep.other=").append(fmtMs(unmeasuredFrameStepNanos));
+        } else {
+            long otherNanos = totalNanos - measuredNanos;
+            if (otherNanos > 0L) {
+                sb.append(" | other=").append(fmtMs(otherNanos));
+            }
         }
         TIMINGS_LOG.info(sb.toString());
     }

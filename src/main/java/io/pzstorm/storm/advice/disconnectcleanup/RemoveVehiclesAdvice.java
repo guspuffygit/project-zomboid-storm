@@ -1,11 +1,11 @@
-package io.pzstorm.storm.advice.worldmapvisitedserverupdate;
+package io.pzstorm.storm.advice.disconnectcleanup;
 
+import io.pzstorm.storm.metrics.DisconnectCleanupMetrics;
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
-import io.pzstorm.storm.metrics.WorldMapVisitedServerUpdateMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class WorldMapVisitedServerUpdateAdvice {
+public class RemoveVehiclesAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
@@ -24,8 +24,7 @@ public class WorldMapVisitedServerUpdateAdvice {
             return;
         }
         long elapsed = System.nanoTime() - startNanos;
-        WorldMapVisitedServerUpdateMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("WorldMapVisitedServer.update", elapsed);
-        MainLoopStepTimings.markFrameStepEnd();
+        DisconnectCleanupMetrics.recordRemoveVehiclesNanos(elapsed);
+        MainLoopStepTimings.record("VehicleManager.removeVehicles", elapsed);
     }
 }
