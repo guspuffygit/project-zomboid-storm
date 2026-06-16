@@ -41,6 +41,14 @@ public class IngameStateUpdatePatch extends StormClassTransformer {
                                         locator)
                                 .on(
                                         ElementMatchers.named("onTick")
+                                                .and(ElementMatchers.takesArguments(0))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "IngameStateUpdateManagersAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("updateManagers")
                                                 .and(ElementMatchers.takesArguments(0))));
     }
 }

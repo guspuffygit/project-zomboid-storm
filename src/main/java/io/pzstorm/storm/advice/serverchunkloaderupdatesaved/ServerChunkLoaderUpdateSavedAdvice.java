@@ -1,11 +1,10 @@
-package io.pzstorm.storm.advice.vehiclesend;
+package io.pzstorm.storm.advice.serverchunkloaderupdatesaved;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
-import io.pzstorm.storm.metrics.VehicleSendMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class VehicleManagerSendVehiclesAdvice {
+public class ServerChunkLoaderUpdateSavedAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
@@ -23,8 +22,6 @@ public class VehicleManagerSendVehiclesAdvice {
         if (startNanos == 0L) {
             return;
         }
-        long elapsed = System.nanoTime() - startNanos;
-        VehicleSendMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("VehicleManager.sendVehicles", elapsed);
+        MainLoopStepTimings.record("ServerChunkLoader.updateSaved", System.nanoTime() - startNanos);
     }
 }
