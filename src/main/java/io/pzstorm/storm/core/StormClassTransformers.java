@@ -228,6 +228,7 @@ public class StormClassTransformers {
         registerTransformer(new ZomboidRadioUpdatePatch());
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
+        registerTransformer(new KahluaMetatableCachePatch());
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new ServerLOSRunInnerPatch());
@@ -235,41 +236,29 @@ public class StormClassTransformers {
             registerTransformer(new IsoRoomOnSeePatch());
         }
 
-        // Experimental client-only performance patches. Each one targets a hotspot
-        // identified by JFR profiling on the client. Gated off the dedicated server
-        // because the same class may behave differently there or simply not need the
-        // intervention.
+        // Client-only: reacts to a client-side packet-ordering race by asking the
+        // server to resend full vehicle state. The advice already gates on
+        // GameClient.client, and the remedy (sendVehicleRequest) is a client->server
+        // RPC with no server-side analogue.
         if (!StormEnv.isStormServer()) {
-            registerTransformer(new KahluaMetatableCachePatch());
             registerTransformer(new VehicleModDataRequestPatch());
         }
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new ServerTickPatch());
-        }
-
-        if (StormEnv.isStormServer()) {
             registerTransformer(new ZombieCullDisablePatch());
             registerTransformer(new ZombieCullThresholdPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
             registerTransformer(new RequestSaveCellSuppressPatch());
             registerTransformer(new ReceiveSandboxOptionsPatch());
-        }
-
-        if (StormEnv.isStormServer()) {
             registerTransformer(new IsoZombieUpdateFixPatch());
-        }
-
-        if (StormEnv.isStormServer()) {
             registerTransformer(new UdpConnectionRelevancePatch());
-        }
 
-        // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
-        // called from the server's frame-step block and records elapsed nanos into
-        // MainLoopStepTimings, which prints a per-tick line when
-        // -Dstorm.mainloop.timings=true. ServerMap.preupdate doubles as the tick
-        // boundary trigger (its advice calls MainLoopStepTimings.beginTick()).
-        if (StormEnv.isStormServer()) {
+            // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
+            // called from the server's frame-step block and records elapsed nanos into
+            // MainLoopStepTimings, which prints a per-tick line when
+            // -Dstorm.mainloop.timings=true. ServerMap.preupdate doubles as the tick
+            // boundary trigger (its advice calls MainLoopStepTimings.beginTick()).
             registerTransformer(new ServerMapPreUpdatePatch());
             registerTransformer(new ServerCellLoad2Patch());
             registerTransformer(new ServerCellRecalcAll2Patch());
