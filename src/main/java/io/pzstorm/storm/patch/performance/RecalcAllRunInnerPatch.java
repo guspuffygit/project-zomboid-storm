@@ -11,21 +11,14 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Two substitutions inside {@code ServerChunkLoader.RecalcAllThread.runInner}:
+ * Substitutes {@code this.toThread.take()} inside {@code
+ * ServerChunkLoader.RecalcAllThread.runInner} with {@link StormChunkRecalcGate#takeOrPark}, so each
+ * worker is gated on its slot index. Inactive slots park instead of draining the shared queue,
+ * which lets {@link StormChunkRecalcConfig#PRE_ALLOCATED} workers stay alive while only the
+ * configured count receives work.
  *
- * <ul>
- *   <li>{@code this.toThread.take()} → {@link StormChunkRecalcGate#takeOrPark} — gates each worker
- *       on its slot index so inactive slots park instead of pulling. With the pre-allocated pool of
- *       {@link StormChunkRecalcConfig#PRE_ALLOCATED} workers, this is what makes "only N active"
- *       possible without rebuilding the pool.
- *   <li>{@code this.fromThread.add(cell)} → {@link StormChunkPreloadHelper#preloadAndAdd} — when
- *       {@link StormChunkPreloadConfig#isEnabled()} is {@code true}, runs each chunk's {@code
- *       IsoChunk.doLoadGridsquare()} on the worker before publishing the cell; otherwise a no-op
- *       pass-through.
- * </ul>
- *
- * <p>Both substitutions are scoped to {@code runInner} only; other {@code LinkedBlockingQueue}
- * calls in the class are untouched.
+ * <p>Scoped to {@code runInner} only; other {@code LinkedBlockingQueue.take()} calls in the class
+ * are untouched.
  */
 public class RecalcAllRunInnerPatch extends StormClassTransformer {
 
@@ -39,28 +32,15 @@ public class RecalcAllRunInnerPatch extends StormClassTransformer {
         try {
             ElementMatcher.Junction<MethodDescription> runInnerMatcher =
                     ElementMatchers.named("runInner").and(ElementMatchers.takesArguments(0));
-            DynamicType.Builder<Object> result =
-                    builder.visit(
-                            MemberSubstitution.relaxed()
-                                    .method(
-                                            ElementMatchers.isDeclaredBy(LinkedBlockingQueue.class)
-                                                    .and(ElementMatchers.named("take"))
-                                                    .and(ElementMatchers.takesArguments(0)))
-                                    .replaceWith(
-                                            StormChunkRecalcGate.class.getDeclaredMethod(
-                                                    "takeOrPark", LinkedBlockingQueue.class))
-                                    .on(runInnerMatcher));
-            return result.visit(
+            return builder.visit(
                     MemberSubstitution.relaxed()
                             .method(
                                     ElementMatchers.isDeclaredBy(LinkedBlockingQueue.class)
-                                            .and(ElementMatchers.named("add"))
-                                            .and(ElementMatchers.takesArguments(1)))
+                                            .and(ElementMatchers.named("take"))
+                                            .and(ElementMatchers.takesArguments(0)))
                             .replaceWith(
-                                    StormChunkPreloadHelper.class.getDeclaredMethod(
-                                            "preloadAndAdd",
-                                            LinkedBlockingQueue.class,
-                                            Object.class))
+                                    StormChunkRecalcGate.class.getDeclaredMethod(
+                                            "takeOrPark", LinkedBlockingQueue.class))
                             .on(runInnerMatcher));
         } catch (NoSuchMethodException e) {
             throw new RuntimeException(

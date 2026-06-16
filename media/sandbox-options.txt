@@ -14,6 +14,3 @@ option Storm.ServerLosThreads
 
 option Storm.ChunkRecalcThreads
 {type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ChunkRecalcThreads,}
-
-option Storm.PreloadChunkOnRecalc
-{type = boolean, default = false, page = Storm, translation = Storm_PreloadChunkOnRecalc,}
