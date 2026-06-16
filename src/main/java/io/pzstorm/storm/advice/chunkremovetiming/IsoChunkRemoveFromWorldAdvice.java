@@ -1,6 +1,7 @@
 package io.pzstorm.storm.advice.chunkremovetiming;
 
 import io.pzstorm.storm.metrics.ChunkRemoveMetrics;
+import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
@@ -31,6 +32,8 @@ public class IsoChunkRemoveFromWorldAdvice {
         if (startNanos == 0L) {
             return;
         }
-        ChunkRemoveMetrics.recordRemoveNanos(System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        ChunkRemoveMetrics.recordRemoveNanos(elapsed);
+        MainLoopStepTimings.record("IsoChunk.removeFromWorld", elapsed);
     }
 }

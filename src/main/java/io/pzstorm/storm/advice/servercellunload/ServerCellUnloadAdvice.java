@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.servercellunload;
 
+import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import io.pzstorm.storm.metrics.ServerCellUnloadMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -22,6 +23,8 @@ public class ServerCellUnloadAdvice {
         if (startNanos == 0L) {
             return;
         }
-        ServerCellUnloadMetrics.recordNanos(System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        ServerCellUnloadMetrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("ServerCell.Unload", elapsed);
     }
 }
