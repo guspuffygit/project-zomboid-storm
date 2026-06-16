@@ -8,6 +8,8 @@ import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.StormChunkPreloadConfig;
+import io.pzstorm.storm.patch.performance.StormChunkRecalcConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import zombie.SandboxOptions;
 import zombie.network.GameServer;
@@ -28,6 +30,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ANIMAL_LOS_TICK_INTERVAL = "Storm.AnimalLOSTickInterval";
     public static final String OPT_ZOMBIE_CULL_THRESHOLD = "Storm.ZombieCullThreshold";
     public static final String OPT_SERVER_LOS_THREADS = "Storm.ServerLosThreads";
+    public static final String OPT_CHUNK_RECALC_THREADS = "Storm.ChunkRecalcThreads";
+    public static final String OPT_PRELOAD_CHUNK_ON_RECALC = "Storm.PreloadChunkOnRecalc";
 
     private StormPerformanceSandboxApplier() {}
 
@@ -50,6 +54,8 @@ public final class StormPerformanceSandboxApplier {
         applyAnimalLosTickInterval();
         applyZombieCullThreshold();
         applyServerLosThreads();
+        applyChunkRecalcThreads();
+        applyPreloadChunkOnRecalc();
     }
 
     /**
@@ -95,6 +101,41 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormServerLosConfig.setThreads(value);
+    }
+
+    private static void applyChunkRecalcThreads() {
+        Integer value = readIntOption(OPT_CHUNK_RECALC_THREADS);
+        if (value == null) {
+            return;
+        }
+        StormChunkRecalcConfig.setThreads(value);
+    }
+
+    private static void applyPreloadChunkOnRecalc() {
+        Boolean value = readBooleanOption(OPT_PRELOAD_CHUNK_ON_RECALC);
+        if (value == null) {
+            return;
+        }
+        StormChunkPreloadConfig.setEnabled(value);
+    }
+
+    private static Boolean readBooleanOption(String name) {
+        SandboxOptions.SandboxOption option;
+        try {
+            option = SandboxOptions.instance.getOptionByName(name);
+        } catch (Exception e) {
+            LOGGER.warn("Storm: sandbox option {} lookup failed", name, e);
+            return null;
+        }
+        if (option == null) {
+            LOGGER.warn("Storm: sandbox option {} not found; skipping", name);
+            return null;
+        }
+        if (!(option instanceof SandboxOptions.BooleanSandboxOption booleanOption)) {
+            LOGGER.warn("Storm: sandbox option {} is not a boolean option; skipping", name);
+            return null;
+        }
+        return booleanOption.getValue();
     }
 
     private static Integer readIntOption(String name) {

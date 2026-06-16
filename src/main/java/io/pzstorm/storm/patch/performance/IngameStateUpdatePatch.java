@@ -19,9 +19,28 @@ public class IngameStateUpdatePatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(typePool.describe(PKG + "IngameStateUpdateAdvice").resolve(), locator)
-                        .on(
-                                ElementMatchers.named("update")
-                                        .and(ElementMatchers.takesArguments(0))));
+                        Advice.to(
+                                        typePool.describe(PKG + "IngameStateUpdateAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("update")
+                                                .and(ElementMatchers.takesArguments(0))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "IngameStateUpdateStuffAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("UpdateStuff")
+                                                .and(ElementMatchers.takesArguments(0))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "IngameStateOnTickAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("onTick")
+                                                .and(ElementMatchers.takesArguments(0))));
     }
 }

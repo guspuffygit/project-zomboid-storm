@@ -1,11 +1,10 @@
-package io.pzstorm.storm.advice.entitymanagerupdate;
+package io.pzstorm.storm.advice.zomboidradioupdate;
 
-import io.pzstorm.storm.metrics.EntityManagerUpdateMetrics;
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
-public class GameEntityManagerUpdateAdvice {
+public class ZomboidRadioUpdateAdvice {
 
     @Advice.OnMethodEnter
     public static long onEnter() {
@@ -23,8 +22,6 @@ public class GameEntityManagerUpdateAdvice {
         if (startNanos == 0L) {
             return;
         }
-        long elapsed = System.nanoTime() - startNanos;
-        EntityManagerUpdateMetrics.recordNanos(elapsed);
-        MainLoopStepTimings.record("GameEntityManager.Update", elapsed);
+        MainLoopStepTimings.record("ZomboidRadio.update", System.nanoTime() - startNanos);
     }
 }

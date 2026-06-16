@@ -7,5 +7,9 @@
   "Sandbox_Storm_ZombieCullThreshold": "Zombie cull threshold (0 = disabled)",
   "Sandbox_Storm_ZombieCullThreshold_tooltip": "Storm-controlled cull threshold. 500 = vanilla cap (default). Larger = allow more live zombies before culling. 0 disables culling entirely (no zombies ever queued for deletion).",
   "Sandbox_Storm_ServerLosThreads": "ServerLOS worker threads",
-  "Sandbox_Storm_ServerLosThreads_tooltip": "Number of concurrent player LOS scans per tick. 1 = vanilla single-threaded baseline. Up to 16. The helper pool always pre-allocates 15 threads regardless; this knob only controls how many receive work each tick."
+  "Sandbox_Storm_ServerLosThreads_tooltip": "Number of concurrent player LOS scans per tick. 1 = vanilla single-threaded baseline. Up to 16. The helper pool always pre-allocates 15 threads regardless; this knob only controls how many receive work each tick.",
+  "Sandbox_Storm_ChunkRecalcThreads": "Chunk recalc worker threads",
+  "Sandbox_Storm_ChunkRecalcThreads_tooltip": "Number of background workers draining ServerChunkLoader's recalc queue (cell-edge wiring after async chunk load). 1 = vanilla single worker. Up to 16. The pool always pre-allocates all 16 workers regardless of this value (1 vanilla + 15 Storm extras); the knob only controls how many receive work (the rest park at toThread.take). Extras share the same toThread/fromThread queues; each holds its own GetSquare. Cuts main-thread freeze when several cells finish loading in the same batch. Adjacent cells processed concurrently is rare but possible — boundary squares are not locked.",
+  "Sandbox_Storm_PreloadChunkOnRecalc": "Preload chunks on recalc thread (EXPERIMENTAL)",
+  "Sandbox_Storm_PreloadChunkOnRecalc_tooltip": "EXPERIMENTAL. When on, IsoChunk.doLoadGridsquare (vehicle/zombie/corpse/blood spawn, grass regrowth) runs on the ServerChunkLoader recalc worker before the cell reaches the main thread. RecalcAll2 then skips per-chunk doLoadGridsquare on main, cutting the worst-case freeze. Touches global singletons (VirtualZombieManager, VehiclesDB2, IsoWorld.currentCell) from a non-main thread — may race with concurrent main-thread work. Default off."
 }
