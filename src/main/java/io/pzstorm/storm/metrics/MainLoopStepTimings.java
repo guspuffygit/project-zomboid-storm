@@ -2,6 +2,7 @@ package io.pzstorm.storm.metrics;
 
 import io.pzstorm.storm.logging.StormFileLoggerFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,23 @@ public final class MainLoopStepTimings {
     private static volatile long frameStepEndNanos = 0L;
     private static volatile long tickCounter = 0L;
 
+    /**
+     * Per-tick log of main-thread section intervals (parallel arrays). Populated by {@link #record}
+     * when invoked from the main loop thread; cleared in {@link #beginTick}. Used by {@link #flush}
+     * to identify top-level (non-nested) sections so the {@code frameStep.other} report is accurate
+     * — summing {@code STEP_NANOS} would double-count nested calls (e.g. {@code IsoWorld.update} is
+     * fully contained inside {@code IngameState.update}).
+     *
+     * <p>Worker-thread {@code record()} calls are deliberately excluded: the main-thread parent
+     * (typically {@code ServerCell.Load2} / {@code ServerMap.preupdate}) is already blocked waiting
+     * for the worker, so its interval covers the wall-clock cost.
+     */
+    private static volatile Thread mainThread = null;
+
+    private static long[] intervalStarts = new long[256];
+    private static long[] intervalEnds = new long[256];
+    private static int intervalCount = 0;
+
     private MainLoopStepTimings() {}
 
     public static boolean enabled() {
@@ -68,9 +86,13 @@ public final class MainLoopStepTimings {
         }
         STEP_NANOS.clear();
         STEP_CALLS.clear();
+        intervalCount = 0;
         tickStartNanos = System.nanoTime();
         frameStepEndNanos = 0L;
         tickCounter++;
+        if (mainThread == null) {
+            mainThread = Thread.currentThread();
+        }
     }
 
     /**
@@ -92,6 +114,62 @@ public final class MainLoopStepTimings {
         }
         STEP_NANOS.computeIfAbsent(stepName, k -> new AtomicLong()).addAndGet(nanos);
         STEP_CALLS.computeIfAbsent(stepName, k -> new AtomicLong()).incrementAndGet();
+        Thread mt = mainThread;
+        if (mt != null && Thread.currentThread() == mt) {
+            long endNanos = System.nanoTime();
+            appendInterval(endNanos - nanos, endNanos);
+        }
+    }
+
+    private static void appendInterval(long start, long end) {
+        if (intervalCount == intervalStarts.length) {
+            int newLen = intervalStarts.length * 2;
+            intervalStarts = Arrays.copyOf(intervalStarts, newLen);
+            intervalEnds = Arrays.copyOf(intervalEnds, newLen);
+        }
+        intervalStarts[intervalCount] = start;
+        intervalEnds[intervalCount] = end;
+        intervalCount++;
+    }
+
+    /**
+     * Walks the per-tick interval log to compute the wall-clock time spent in top-level
+     * (non-nested) instrumented sections, clipped to {@code [tickStartNanos, bodyEndNanos]} so
+     * idle-window calls (e.g. inter-frame {@code mainLoopDealWithNetData}) don't inflate it.
+     *
+     * <p>Sorts indices into the parallel start/end arrays by start ascending, then sweeps once
+     * keeping a running end cursor: any interval starting at or after the cursor is a new top-level
+     * interval (its full body-clipped duration counts); any interval starting before the cursor is
+     * fully or partially nested and the overlapping portion is skipped.
+     */
+    private static long computeTopLevelInBodyNanos(long bodyEndNanos) {
+        if (intervalCount == 0) {
+            return 0L;
+        }
+        Integer[] idx = new Integer[intervalCount];
+        for (int i = 0; i < intervalCount; i++) {
+            idx[i] = i;
+        }
+        Arrays.sort(idx, (a, b) -> Long.compare(intervalStarts[a], intervalStarts[b]));
+        long topLevel = 0L;
+        long cursor = Long.MIN_VALUE;
+        for (int k = 0; k < intervalCount; k++) {
+            int i = idx[k];
+            long s = intervalStarts[i];
+            long e = intervalEnds[i];
+            if (s < cursor) {
+                if (e <= cursor) {
+                    continue;
+                }
+                s = cursor;
+            }
+            cursor = e;
+            long clippedEnd = Math.min(e, bodyEndNanos);
+            if (clippedEnd > s) {
+                topLevel += clippedEnd - s;
+            }
+        }
+        return topLevel;
     }
 
     private static void flush() {
@@ -115,24 +193,20 @@ public final class MainLoopStepTimings {
             sb.append(" idle=").append(fmtMs(idleNanos));
         }
         sb.append(" steps=").append(entries.size());
-        long measuredNanos = 0L;
         for (Map.Entry<String, AtomicLong> e : entries) {
             long stepNanos = e.getValue().get();
-            measuredNanos += stepNanos;
             long calls = STEP_CALLS.getOrDefault(e.getKey(), new AtomicLong()).get();
             sb.append(" | ").append(e.getKey()).append('=').append(fmtMs(stepNanos));
             if (calls > 1L) {
                 sb.append('x').append(calls);
             }
         }
-        long unmeasuredFrameStepNanos =
-                frameStepBodyNanos >= 0L ? frameStepBodyNanos - measuredNanos : -1L;
-        if (unmeasuredFrameStepNanos > 0L) {
-            sb.append(" | frameStep.other=").append(fmtMs(unmeasuredFrameStepNanos));
-        } else {
-            long otherNanos = totalNanos - measuredNanos;
-            if (otherNanos > 0L) {
-                sb.append(" | other=").append(fmtMs(otherNanos));
+        if (frameStepBodyNanos >= 0L) {
+            long bodyEndNanos = frameStepEndNanos != 0L ? frameStepEndNanos : flushNanos;
+            long topLevelInBody = computeTopLevelInBodyNanos(bodyEndNanos);
+            long frameStepOther = frameStepBodyNanos - topLevelInBody;
+            if (frameStepOther > 0L) {
+                sb.append(" | frameStep.other=").append(fmtMs(frameStepOther));
             }
         }
         TIMINGS_LOG.info(sb.toString());
