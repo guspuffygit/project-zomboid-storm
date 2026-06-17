@@ -26,6 +26,7 @@ script). All flags are opt-in unless noted.
 | `-DprometheusPort=<port>` | Start PZ's built-in Prometheus HTTP server on `<port>`. Required to scrape Storm + `pz_*` + `jvm_*` metrics at `/metrics`. (PZ flag — Storm registers into PZ's default registry.) |
 | `-DprometheusHost=<host>` | Hostname/IP the server reports for itself in metrics endpoints. Defaults to `GameServer.ip`. (PZ flag.) |
 | `-Dstorm.mainloop.timings=true` | Emit a per-tick wall-clock breakdown of `GameServer.main`'s frame-step to a dedicated `<STORM_LOG_DIR>/storm/timings.log` (25 MB cap, one rolled archive). Each line lists every patched step (`ServerMap.preupdate`, `IngameState.update`, `VehicleManager.serverUpdate`, …) sorted by duration, plus `other=` for unmeasured wall-clock. Off by default — leave off in production unless investigating a slow tick. See [Per-tick step timings](server-thread-main-loop.md#7-per-tick-step-timings). |
+| `-Dstorm.cells.keepWarm=true` | Keep `IsoCell` state resident in memory past vanilla's unload point to eliminate load/unload thrash on repeated boundary crossings. Read once at class-load time by `StormCellWarmingConfig#isEnabled()`. Off by default — vanilla unload semantics. |
 
 ## Sandbox options (performance knobs)
 
