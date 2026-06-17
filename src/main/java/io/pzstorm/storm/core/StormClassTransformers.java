@@ -145,6 +145,7 @@ import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRunInnerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapCharacterInPatch;
+import io.pzstorm.storm.patch.performance.ServerMapLoadOrKeepReleventPatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPreUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapQueuedSaveAllPatch;
@@ -317,6 +318,7 @@ public class StormClassTransformers {
             registerTransformer(new NetworkZombiePackerPostUpdatePatch());
             registerTransformer(new ServerChunkLoaderUpdateSavedPatch());
             registerTransformer(new ServerMapQueuedSaveAllPatch());
+            registerTransformer(new ServerMapLoadOrKeepReleventPatch());
             registerTransformer(new GameEntityManagerSavePatch());
             registerTransformer(new PlayerDownloadServerRemoveOlderPatch());
             registerTransformer(new IsoChunkSaveLoadedChunkPatch());
