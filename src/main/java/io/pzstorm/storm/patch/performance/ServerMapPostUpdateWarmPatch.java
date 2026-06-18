@@ -7,11 +7,11 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
-public class ServerMapLoadOrKeepReleventPatch extends StormClassTransformer {
+public class ServerMapPostUpdateWarmPatch extends StormClassTransformer {
 
-    private static final String PKG = "io.pzstorm.storm.advice.servermaploadorkeeprelevent.";
+    private static final String PKG = "io.pzstorm.storm.advice.servermappostupdatewarm.";
 
-    public ServerMapLoadOrKeepReleventPatch() {
+    public ServerMapPostUpdateWarmPatch() {
         super("zombie.network.ServerMap");
     }
 
@@ -20,11 +20,10 @@ public class ServerMapLoadOrKeepReleventPatch extends StormClassTransformer {
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
                 Advice.to(
-                                typePool.describe(PKG + "ServerMapLoadOrKeepReleventAdvice")
-                                        .resolve(),
+                                typePool.describe(PKG + "ServerMapPostUpdateWarmAdvice").resolve(),
                                 locator)
                         .on(
-                                ElementMatchers.named("loadOrKeepRelevent")
-                                        .and(ElementMatchers.takesArguments(2))));
+                                ElementMatchers.named("postupdate")
+                                        .and(ElementMatchers.takesArguments(0))));
     }
 }

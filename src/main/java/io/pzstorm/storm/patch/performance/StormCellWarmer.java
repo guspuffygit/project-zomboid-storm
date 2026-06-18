@@ -4,6 +4,7 @@ import io.pzstorm.storm.event.core.StormEventDispatcher;
 import io.pzstorm.storm.event.zomboid.OnChunkRewarmedEvent;
 import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.metrics.StormCellWarmingMetrics;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Map;
 import zombie.MapCollisionData;
 import zombie.characters.animals.AnimalPopulationManager;
 import zombie.characters.animals.IsoAnimal;
+import zombie.core.raknet.UdpConnection;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
@@ -19,27 +21,66 @@ import zombie.iso.IsoObject;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.IsoDeadBody;
 import zombie.network.GameServer;
+import zombie.network.ServerChunkLoader;
+import zombie.network.ServerLOS;
 import zombie.network.ServerMap;
+import zombie.network.id.IIdentifiable;
+import zombie.network.id.ObjectIDManager;
+import zombie.network.id.ObjectIDType;
 import zombie.pathfind.PolygonalMap2;
 import zombie.pathfind.nativeCode.PathfindNative;
+import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombiePopulationManager;
 
 /**
- * Server-side cell warming helper. Owns the warm-cell map and the disconnect/reconnect dances.
+ * Server-side cell warming helper.
  *
- * <p>The warm path short-circuits {@code ServerCell.Unload} so the cell's {@code IsoChunk}
- * instances, grid squares, vehicles, room data, and zone bindings stay resident in memory while
- * vanilla {@code postupdate} nulls the {@code cellMap} slot and removes the cell from {@code
- * loadedCells}. When a player walks back across the boundary, {@link #rewarm(ServerMap, int, int)}
- * re-attaches the cell in place — skipping disk read, chunk binary parse, vehicle DB load, and the
- * entire border-{@code RecalcAllWithNeighbours} walk.
+ * <p>Design: warm cells stay in {@code ServerMap.cellMap} and {@code ServerMap.loadedCells} with
+ * {@code cell.isLoaded == true}. Only the world-system bindings (collision/pathfind/animal/zombie
+ * pop) are disconnected; the chunk grid, vehicles, room data, and zone bindings stay resident. This
+ * means {@code ServerMap.getCell(...)} and {@code ServerMap.getChunk(...)} keep returning the
+ * cell/chunks while warm, so client chunk-stream requests, AI pathfinding, line-of-sight, vehicle
+ * code, etc. all continue to see the live in-memory state instead of getting nulls (which would
+ * route them through stale-disk-read or {@code sendNotRequired} fallbacks).
  *
- * <p>Gated server-side on {@link StormCellWarmingConfig#isEnabled()}. Both warm and rewarm run on
- * the main thread from {@code @Advice.OnMethodEnter} bytecode hooks; no synchronization is needed.
+ * <p>The decision to warm vs. destructively unload, and the rewarm-on-relevance, both happen inside
+ * {@link #runPostUpdate(ServerMap)} which body-replaces vanilla {@code ServerMap.postupdate}.
+ * {@code ServerCell.Unload} stays untouched (vanilla destructive behavior) because it's used by the
+ * shutdown save flow; warming is invoked from postupdate only.
+ *
+ * <p>Gated server-side on {@link StormCellWarmingConfig#isEnabled()}. Single-threaded — all calls
+ * happen from the server main thread.
  */
 public final class StormCellWarmer {
 
     private static final Map<Long, WarmCell> WARM_CELLS = new HashMap<>();
+
+    // ServerCell.chunkLoader and ServerCell.startedLoading are private; reach them once at
+    // class-load so the body-replaced postupdate can still drive the save-job pump that vanilla
+    // does at its tail and check the same loading-cancellation predicate as vanilla.
+    private static final ServerChunkLoader CHUNK_LOADER;
+    private static final Field STARTED_LOADING;
+
+    static {
+        try {
+            Field cl = ServerMap.ServerCell.class.getDeclaredField("chunkLoader");
+            cl.setAccessible(true);
+            CHUNK_LOADER = (ServerChunkLoader) cl.get(null);
+            STARTED_LOADING = ServerMap.ServerCell.class.getDeclaredField("startedLoading");
+            STARTED_LOADING.setAccessible(true);
+        } catch (Throwable t) {
+            throw new ExceptionInInitializerError(t);
+        }
+    }
+
+    private static boolean startedLoading(ServerMap.ServerCell cell) {
+        try {
+            return STARTED_LOADING.getBoolean(cell);
+        } catch (IllegalAccessException e) {
+            // Should never happen — setAccessible succeeded at class-load.
+            throw new RuntimeException(e);
+        }
+    }
 
     private static final class WarmAnimal {
         final IsoAnimal animal;
@@ -79,15 +120,94 @@ public final class StormCellWarmer {
         return WARM_CELLS.containsKey(key(wx, wy));
     }
 
+    public static boolean isWarm(ServerMap.ServerCell cell) {
+        return WARM_CELLS.containsKey(key(cell.wx, cell.wy));
+    }
+
     public static int warmCount() {
         return WARM_CELLS.size();
     }
 
     /**
-     * Attempt to warm {@code cell} instead of running vanilla {@code Unload}. Returns {@code true}
-     * when warming succeeded — the caller's {@code @Advice.OnMethodEnter} should then skip the
-     * original method body, leaving {@code postupdate} to null the {@code cellMap} slot as normal.
-     * Returns {@code false} when the eligibility predicate rejected this call; the caller must fall
+     * Body-replacement for {@code ServerMap.postupdate}. Matches vanilla semantics for non-warm
+     * cells and adds two warm-aware branches:
+     *
+     * <ul>
+     *   <li>When a non-warm cell would be vanilla-Unloaded (isLoaded &amp;&amp; !shouldBeLoaded),
+     *       try {@link #warm(ServerMap.ServerCell)} first. On success the cell stays in {@code
+     *       cellMap} and {@code loadedCells} with {@code isLoaded = true}; only its world-system
+     *       bindings are detached.
+     *   <li>When a warm cell becomes relevant again (isLoaded &amp;&amp; shouldBeLoaded), {@link
+     *       #rewarm(ServerMap.ServerCell)} re-binds it before running {@code cell.update()}.
+     * </ul>
+     *
+     * Called from {@code ServerMapPostUpdateWarmAdvice} which short-circuits the vanilla method
+     * body when {@link StormCellWarmingConfig#isEnabled()}.
+     */
+    public static void runPostUpdate(ServerMap serverMap) {
+        boolean pathfindPaused = false;
+        ArrayList<ServerMap.ServerCell> loadedCells = serverMap.loadedCells;
+        ArrayList<ServerMap.ServerCell> releventNow = serverMap.releventNow;
+        try {
+            for (int n = 0; n < loadedCells.size(); n++) {
+                ServerMap.ServerCell cell = loadedCells.get(n);
+                boolean shouldBeLoaded =
+                        releventNow.contains(cell) || !outsidePlayerInfluence(cell);
+                boolean warm = isWarm(cell);
+
+                if (warm) {
+                    if (shouldBeLoaded) {
+                        rewarm(cell);
+                        cell.update();
+                    }
+                    // else: stay warm — skip both Unload and update.
+                    continue;
+                }
+
+                if (!cell.isLoaded) {
+                    if (!shouldBeLoaded && !cell.cancelLoading) {
+                        if (!startedLoading(cell)) {
+                            cell.loadingWasCancelled = true;
+                        }
+                        cell.cancelLoading = true;
+                    }
+                } else if (!shouldBeLoaded) {
+                    if (warm(cell)) {
+                        // Warmed in-place: stays in cellMap/loadedCells with isLoaded=true.
+                        continue;
+                    }
+                    // Warm refused (eligibility / soft-reset / throw) — vanilla destructive unload.
+                    if (!pathfindPaused) {
+                        ServerLOS.instance.suspend();
+                        pathfindPaused = true;
+                    }
+                    int x = cell.wx - serverMap.getMinX();
+                    int y = cell.wy - serverMap.getMinY();
+                    int width = serverMap.getMaxX() - serverMap.getMinX() + 1;
+                    serverMap.cellMap[y * width + x].Unload();
+                    serverMap.cellMap[y * width + x] = null;
+                    loadedCells.remove(cell);
+                    n--;
+                } else {
+                    cell.update();
+                }
+            }
+        } catch (Throwable t) {
+            StormLogger.LOGGER.error("StormCellWarmer.runPostUpdate failed", t);
+        } finally {
+            if (pathfindPaused) {
+                ServerLOS.instance.resume();
+            }
+        }
+
+        NetworkZombiePacker.getInstance().postupdate();
+        CHUNK_LOADER.updateSaved();
+    }
+
+    /**
+     * Detach a cell's chunks from world-system bindings and stash dynamic state. Keeps the cell
+     * itself addressable: {@code cellMap[idx]}, {@code loadedCells}, and {@code cell.isLoaded =
+     * true} are unchanged. Returns {@code false} if the cell isn't eligible — caller must fall
      * through to vanilla destructive unload.
      */
     public static boolean warm(ServerMap.ServerCell cell) {
@@ -99,13 +219,17 @@ public final class StormCellWarmer {
         if (!cell.isLoaded) {
             return false;
         }
+        if (isWarm(cell)) {
+            return true;
+        }
 
         long now = System.nanoTime();
         List<WarmAnimal> animals = new ArrayList<>();
         List<IsoDeadBody> deadBodies = new ArrayList<>();
+        int disconnectedX = -1, disconnectedY = -1;
 
         try {
-            drainStaticUpdaterDeadBodies(cell, deadBodies);
+            drainDeadBodies(cell, deadBodies);
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
                     IsoChunk chunk = cell.chunks[x][y];
@@ -114,18 +238,45 @@ public final class StormCellWarmer {
                     }
                     drainAnimals(chunk, animals);
                     disconnectChunk(chunk);
+                    disconnectedX = x;
+                    disconnectedY = y;
                 }
             }
         } catch (Throwable t) {
             StormLogger.LOGGER.error(
-                    "StormCellWarmer.warm failed for cell {},{} — falling through to vanilla unload",
+                    "StormCellWarmer.warm failed for cell {},{} — rolling back",
                     cell.wx,
                     cell.wy,
                     t);
+            // Best-effort rollback: reconnect what we already disconnected and restore drained
+            // state, so the cell can survive a vanilla destructive Unload from the caller.
+            try {
+                if (disconnectedX >= 0) {
+                    outer:
+                    for (int x = 0; x < 8; x++) {
+                        for (int y = 0; y < 8; y++) {
+                            if (x > disconnectedX || (x == disconnectedX && y > disconnectedY)) {
+                                break outer;
+                            }
+                            IsoChunk chunk = cell.chunks[x][y];
+                            if (chunk != null) {
+                                reconnectChunk(chunk);
+                            }
+                        }
+                    }
+                }
+                restoreAnimals(animals);
+                restoreDeadBodies(deadBodies);
+            } catch (Throwable rollbackErr) {
+                StormLogger.LOGGER.error(
+                        "StormCellWarmer.warm rollback also failed for cell {},{}",
+                        cell.wx,
+                        cell.wy,
+                        rollbackErr);
+            }
             return false;
         }
 
-        cell.isLoaded = false;
         WARM_CELLS.put(key(cell.wx, cell.wy), new WarmCell(cell, now, animals, deadBodies));
         StormCellWarmingMetrics.incCellsWarmed();
         StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
@@ -133,42 +284,27 @@ public final class StormCellWarmer {
     }
 
     /**
-     * Re-attach a warm cell at {@code (wx, wy)} into {@code serverMap} if one exists. Returns
-     * {@code true} when the cell was found and rehydrated — the caller's
-     * {@code @Advice.OnMethodEnter} should then skip the original {@code loadOrKeepRelevent} body.
+     * Re-attach a warm cell's chunks to world systems and restore the animal/dead-body stash. The
+     * cell itself never left {@code cellMap}/{@code loadedCells}, so no map mutation is needed
+     * here. Returns {@code false} only on internal error (cell is put back into {@code WARM_CELLS}
+     * so we don't leak it).
      */
-    public static boolean rewarm(ServerMap serverMap, int wx, int wy) {
-        WarmCell warm = WARM_CELLS.remove(key(wx, wy));
+    public static boolean rewarm(ServerMap.ServerCell cell) {
+        WarmCell warm = WARM_CELLS.remove(key(cell.wx, cell.wy));
         if (warm == null) {
             return false;
         }
-        ServerMap.ServerCell cell = warm.cell;
         try {
-            int x = wx - serverMap.getMinX();
-            int y = wy - serverMap.getMinY();
-            int width = serverMap.getMaxX() - serverMap.getMinX() + 1;
-            serverMap.cellMap[y * width + x] = cell;
-            if (!serverMap.loadedCells.contains(cell)) {
-                serverMap.loadedCells.add(cell);
-            }
-            if (!serverMap.releventNow.contains(cell)) {
-                serverMap.releventNow.add(cell);
-            }
-
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
                     IsoChunk chunk = cell.chunks[cx][cy];
-                    if (chunk == null) {
-                        continue;
+                    if (chunk != null) {
+                        reconnectChunk(chunk);
                     }
-                    reconnectChunk(chunk);
                 }
             }
-
             restoreAnimals(warm.animals);
             restoreDeadBodies(warm.deadBodies);
-
-            cell.isLoaded = true;
 
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
@@ -185,63 +321,34 @@ public final class StormCellWarmer {
             return true;
         } catch (Throwable t) {
             StormLogger.LOGGER.error(
-                    "StormCellWarmer.rewarm failed for cell {},{} — leaving cell evicted",
-                    wx,
-                    wy,
+                    "StormCellWarmer.rewarm failed for cell {},{} — leaving in warm state",
+                    cell.wx,
+                    cell.wy,
                     t);
+            WARM_CELLS.put(key(cell.wx, cell.wy), warm);
             StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
             return false;
         }
     }
 
-    /**
-     * Called from a {@code ServerMap.QueuedSaveAll} entry advice. For each warm cell, flush its
-     * chunks to disk by temporarily flipping {@code isLoaded} so vanilla {@code Save(false)} runs
-     * (and queues per-chunk save jobs). Warm cells stay resident afterward — the rewarm path is
-     * unaffected.
-     */
-    public static void flushSavesForAutosave() {
-        if (WARM_CELLS.isEmpty()) {
-            return;
-        }
-        for (WarmCell warm : WARM_CELLS.values()) {
-            ServerMap.ServerCell cell = warm.cell;
-            cell.isLoaded = true;
-            try {
-                cell.Save(false);
-            } catch (Throwable t) {
-                StormLogger.LOGGER.error(
-                        "StormCellWarmer: Save failed for warm cell {},{}", cell.wx, cell.wy, t);
-            } finally {
-                cell.isLoaded = false;
+    // Re-implementation of ServerMap.outsidePlayerInfluence(ServerCell) which is private. Kept
+    // byte-for-byte in sync with vanilla — used only inside runPostUpdate's body replacement.
+    private static boolean outsidePlayerInfluence(ServerMap.ServerCell cell) {
+        int x1 = cell.wx * 64;
+        int y1 = cell.wy * 64;
+        int x2 = (cell.wx + 1) * 64;
+        int y2 = (cell.wy + 1) * 64;
+        List<UdpConnection> connections = GameServer.udpEngine.connections;
+        for (int n = 0; n < connections.size(); n++) {
+            UdpConnection c = connections.get(n);
+            if (c.isRelevantTo(x1, y1)
+                    || c.isRelevantTo(x2, y1)
+                    || c.isRelevantTo(x2, y2)
+                    || c.isRelevantTo(x1, y2)) {
+                return false;
             }
         }
-    }
-
-    /**
-     * Called from a {@code ServerMap.QueuedSaveAll(quit=true)} entry advice. Destructive-unload
-     * every warm cell so chunk save files reflect their final state before the JVM exits. Vanilla
-     * {@code Unload} queues per-chunk {@code addSaveUnloadedJob} writes.
-     */
-    public static void flushAllOnShutdown() {
-        if (WARM_CELLS.isEmpty()) {
-            return;
-        }
-        for (WarmCell warm : new ArrayList<>(WARM_CELLS.values())) {
-            ServerMap.ServerCell cell = warm.cell;
-            cell.isLoaded = true;
-            try {
-                cell.Unload();
-            } catch (Throwable t) {
-                StormLogger.LOGGER.error(
-                        "StormCellWarmer: shutdown Unload failed for warm cell {},{}",
-                        cell.wx,
-                        cell.wy,
-                        t);
-            }
-        }
-        WARM_CELLS.clear();
-        StormCellWarmingMetrics.setWarmCount(0);
+        return true;
     }
 
     private static String ineligibleReason(ServerMap.ServerCell cell) {
@@ -327,28 +434,35 @@ public final class StormCellWarmer {
         }
     }
 
-    private static void drainStaticUpdaterDeadBodies(
-            ServerMap.ServerCell cell, List<IsoDeadBody> sink) {
+    // Drain every dead body whose chunk lives in this warming cell, both from the global
+    // ObjectIDType.DeadBody registry (so IsoDeadBody.updateBodies() stops ticking rot stages and
+    // can't auto-remove them while warm) and from the staticUpdaterObjectList (so per-tick render
+    // updaters skip them). The body's ObjectID is preserved on the body itself, so
+    // ObjectIDManager.addObject(body) in restoreDeadBodies re-registers under the same ID and
+    // network sync stays valid.
+    private static void drainDeadBodies(ServerMap.ServerCell cell, List<IsoDeadBody> sink) {
         IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
-        if (isoCell == null) {
-            return;
-        }
-        ArrayList<IsoObject> updaters = isoCell.getStaticUpdaterObjectList();
-        if (updaters == null || updaters.isEmpty()) {
-            return;
-        }
-        for (int i = updaters.size() - 1; i >= 0; i--) {
-            IsoObject obj = updaters.get(i);
-            if (!(obj instanceof IsoDeadBody body)) {
+        ArrayList<IsoObject> updaters =
+                isoCell == null ? null : isoCell.getStaticUpdaterObjectList();
+
+        // Snapshot the registry view before mutating it — ObjectIDType.DeadBody.getObjects()
+        // returns a live values() collection backed by the underlying HashMap.
+        ArrayList<IIdentifiable> snapshot = new ArrayList<>(ObjectIDType.DeadBody.getObjects());
+        for (IIdentifiable ii : snapshot) {
+            if (!(ii instanceof IsoDeadBody body)) {
                 continue;
             }
             IsoGridSquare sq = body.getSquare();
             if (sq == null || sq.chunk == null) {
                 continue;
             }
-            if (chunkBelongsToCell(sq.chunk, cell)) {
-                sink.add(body);
-                updaters.remove(i);
+            if (!chunkBelongsToCell(sq.chunk, cell)) {
+                continue;
+            }
+            sink.add(body);
+            ObjectIDManager.getInstance().remove(body.getObjectID());
+            if (updaters != null) {
+                updaters.remove(body);
             }
         }
     }
@@ -358,11 +472,13 @@ public final class StormCellWarmer {
             return;
         }
         IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
-        if (isoCell == null) {
-            return;
-        }
         for (IsoDeadBody body : bodies) {
-            isoCell.addToStaticUpdaterObjectList(body);
+            // addObject preserves the existing non-(-1) ID, so the body returns under the same
+            // ObjectID it had pre-warm.
+            ObjectIDManager.getInstance().addObject(body);
+            if (isoCell != null) {
+                isoCell.addToStaticUpdaterObjectList(body);
+            }
         }
     }
 
