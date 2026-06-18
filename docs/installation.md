@@ -110,3 +110,63 @@ Add these flags to the java arguments:
 ```
 
 For a production-ready launcher with workshop refresh, signal-chaining for core dumps, and Storm tuning flags pre-configured, see [Server Configuration → Production launcher example](server-configuration.md#production-launcher-example-linux).
+
+### Hosted Server (no shell access)
+
+Many managed hosts do not let you edit `start-server.sh` / `StartServer64.bat`. JVM arguments instead come from the launcher config (`ProjectZomboid64.json`), which the host's panel usually surfaces as **JVM Arguments**, **vmArgs**, or **Launch Options**.
+
+Storm's `-javaagent` / `-agentpath` argument points at a file inside the workshop content directory (`storm-bootstrap.jar` / `agentlib.dll`). That file only exists **after** Steam has downloaded workshop item `3670772371`. If you add the JVM arg before the mod is on disk, the JVM refuses to start and your host hands you a boot loop.
+
+Install in three passes — workshop entry, first boot, JVM args.
+
+#### 1. Add Storm to `server.ini`
+
+Open the server config (commonly `<server-name>.ini` or `servertest.ini` in the host's web panel) and add Storm to both lists:
+
+```
+WorkshopItems=3670772371
+Mods=storm-core-b42
+```
+
+If the lists already have entries, append to them with `;` as the separator (e.g. `WorkshopItems=2169435993;3670772371`). Use the same pattern for any other Storm-based mod: its **workshop ID** goes in `WorkshopItems`, and the **mod ID** from its `mod.info` goes in `Mods`.
+
+#### 2. Start the server once to download Storm
+
+Start the server through the host's UI. Steam downloads workshop item `3670772371`, dropping the bootstrap artifacts at:
+
+```
+<server root>/steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar
+<server root>/steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll
+```
+
+Storm is **not active yet** on this run — no agent is attached. Once that directory exists on disk, stop the server.
+
+#### 3. Add Storm's JVM args to `ProjectZomboid64.json`
+
+Open `ProjectZomboid64.json` (or whatever the host calls its JVM-args field) and add Storm's flags to the `vmArgs` array. Keep all existing entries in place and add Storm's on top.
+
+Linux host:
+```json
+{
+    "vmArgs": [
+        "-javaagent:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar",
+        "-Dstorm.server=true"
+    ]
+}
+```
+
+Windows host:
+```json
+{
+    "vmArgs": [
+        "-agentpath:./steamapps/workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar",
+        "-Dstorm.server=true"
+    ]
+}
+```
+
+If your host exposes JVM args as a single text box instead of editable JSON, paste the two flags on their own lines (or space-separated, depending on the host's format) alongside the existing args.
+
+#### 4. Restart the server
+
+On the next start the bootstrap agent attaches and Storm initializes. Verify by checking `<zomboidDir>/Logs/storm/main.log` for Storm's startup banner, or send the `ping` console command if your host exposes one — Storm replies with `pong`.
