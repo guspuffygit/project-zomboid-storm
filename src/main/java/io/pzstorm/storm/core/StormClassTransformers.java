@@ -112,6 +112,7 @@ import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataSavePatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataUpdateGameStatePatch;
+import io.pzstorm.storm.patch.performance.MovingObjectSchedulerBucketAddPatch;
 import io.pzstorm.storm.patch.performance.MovingObjectSchedulerPostupdatePatch;
 import io.pzstorm.storm.patch.performance.NetworkPlayerManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
@@ -320,6 +321,7 @@ public class StormClassTransformers {
             registerTransformer(new ServerChunkLoaderUpdateSavedPatch());
             registerTransformer(new ServerMapQueuedSaveAllPatch());
             registerTransformer(new ServerMapPostUpdateWarmPatch());
+            registerTransformer(new MovingObjectSchedulerBucketAddPatch());
             registerTransformer(new LoadedAreasAddPatch());
             registerTransformer(new GameEntityManagerSavePatch());
             registerTransformer(new PlayerDownloadServerRemoveOlderPatch());

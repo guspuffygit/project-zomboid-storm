@@ -6,9 +6,12 @@ import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.metrics.StormCellWarmingMetrics;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import zombie.MapCollisionData;
 import zombie.characters.animals.AnimalPopulationManager;
 import zombie.characters.animals.IsoAnimal;
@@ -54,6 +57,13 @@ import zombie.popman.ZombiePopulationManager;
 public final class StormCellWarmer {
 
     private static final Map<Long, WarmCell> WARM_CELLS = new HashMap<>();
+
+    // Identity-backed set of every animal currently inside a warmed cell. Maintained alongside
+    // WARM_CELLS by drainAnimals / restoreAnimals so MovingObjectSchedulerBucketAddAdvice can
+    // skip a warm animal at the bucket-add chokepoint without iterating WARM_CELLS each frame.
+    // Server main-thread only — no synchronization needed.
+    private static final Set<IsoAnimal> WARMED_ANIMALS =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     // ServerCell.chunkLoader and ServerCell.startedLoading are private; reach them once at
     // class-load so the body-replaced postupdate can still drive the save-job pump that vanilla
@@ -126,6 +136,15 @@ public final class StormCellWarmer {
 
     public static int warmCount() {
         return WARM_CELLS.size();
+    }
+
+    /**
+     * Fast O(1) test used by {@code MovingObjectSchedulerBucketAddAdvice} to skip warm animals at
+     * the bucket-add chokepoint. Returns {@code false} for non-animals and for any animal that
+     * isn't currently inside a warmed cell.
+     */
+    public static boolean isWarmedAnimal(Object obj) {
+        return obj instanceof IsoAnimal animal && WARMED_ANIMALS.contains(animal);
     }
 
     /**
@@ -395,6 +414,7 @@ public final class StormCellWarmer {
                         animal.unloaded();
                         animal.setMovingSquare(null);
                         sink.add(new WarmAnimal(animal, sq));
+                        WARMED_ANIMALS.add(animal);
                     }
                 }
             }
@@ -429,6 +449,9 @@ public final class StormCellWarmer {
     private static void restoreAnimals(List<WarmAnimal> animals) {
         for (WarmAnimal stash : animals) {
             IsoAnimal animal = stash.animal;
+            // Clear the warm marker unconditionally — once we've decided to restore, the animal
+            // must tick on the next frame even if reattaching to its original square fails.
+            WARMED_ANIMALS.remove(animal);
             IsoGridSquare sq = stash.originalSquare;
             if (sq == null) {
                 continue;
