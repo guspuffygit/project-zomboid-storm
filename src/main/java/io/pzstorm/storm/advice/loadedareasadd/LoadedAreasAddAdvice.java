@@ -23,7 +23,7 @@ import zombie.popman.LoadedAreas;
  */
 public class LoadedAreasAddAdvice {
 
-    private static final Field SERVER_CELLS_FIELD;
+    public static final Field SERVER_CELLS_FIELD;
 
     static {
         try {
