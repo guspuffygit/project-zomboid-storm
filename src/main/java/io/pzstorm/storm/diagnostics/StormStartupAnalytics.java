@@ -23,16 +23,14 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.Set;
-import zombie.SandboxOptions;
 import zombie.core.Core;
 import zombie.network.GameServer;
 import zombie.network.ServerOptions;
 
 /**
  * Posts a one-shot startup snapshot to a hardcoded Discord webhook on {@code OnServerStarted}:
- * public IP, machine specs, Storm settings, the full {@link ServerOptions} dump (secrets redacted),
- * and the full {@link SandboxOptions} dump.
+ * public IP, machine specs, Storm settings, and the server's {@code Mods} / {@code WorkshopItems}
+ * lists from {@link ServerOptions}.
  *
  * <p>The dump runs on a daemon thread; HTTP failures are logged and swallowed so analytics can't
  * delay or break server startup. The hardcoded webhook URL is intentional — analytics is always on
@@ -57,9 +55,7 @@ public final class StormStartupAnalytics {
 
     static final String DISABLE_ANALYTICS_PROPERTY = "DISABLE_ANALYTICS";
 
-    /** ServerOption names whose values are credentials and must NOT be posted. */
-    static final Set<String> REDACTED_SERVER_OPTIONS =
-            Set.of("Password", "RCONPassword", "DiscordToken", "WebhookAddress");
+    static final List<String> POSTED_SERVER_OPTIONS = List.of("Mods", "WorkshopItems");
 
     /**
      * Discord caps a single webhook message at 2000 chars. We chunk under that to leave room for
@@ -94,7 +90,6 @@ public final class StormStartupAnalytics {
             sections.add(formatMachine());
             sections.add(formatStorm());
             sections.add(formatServerOptions());
-            sections.add(formatSandboxOptions());
 
             for (String section : sections) {
                 for (String chunk : chunkForDiscord(section)) {
@@ -183,26 +178,10 @@ public final class StormStartupAnalytics {
 
     private static String formatServerOptions() {
         StringBuilder sb = new StringBuilder("**Server config**\n```");
-        for (ServerOptions.ServerOption opt : ServerOptions.getInstance().getOptions()) {
-            String name = opt.asConfigOption().getName();
-            String value =
-                    REDACTED_SERVER_OPTIONS.contains(name)
-                            ? "<redacted>"
-                            : opt.asConfigOption().getValueAsString();
-            sb.append('\n').append(name).append(" = ").append(value);
-        }
-        sb.append("\n```");
-        return sb.toString();
-    }
-
-    private static String formatSandboxOptions() {
-        StringBuilder sb = new StringBuilder("**Sandbox options**\n```");
-        SandboxOptions inst = SandboxOptions.instance;
-        int count = inst.getNumOptions();
-        for (int i = 0; i < count; i++) {
-            SandboxOptions.SandboxOption opt = inst.getOptionByIndex(i);
-            String name = opt.asConfigOption().getName();
-            String value = opt.asConfigOption().getValueAsString();
+        ServerOptions instance = ServerOptions.getInstance();
+        for (String name : POSTED_SERVER_OPTIONS) {
+            ServerOptions.ServerOption opt = instance.getOptionByName(name);
+            String value = opt != null ? opt.asConfigOption().getValueAsString() : "(not found)";
             sb.append('\n').append(name).append(" = ").append(value);
         }
         sb.append("\n```");
