@@ -6,7 +6,6 @@ import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
-import io.pzstorm.storm.patch.performance.StormChunkRecalcConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 
 /**
@@ -30,9 +29,6 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
  *       vanilla cap); 0 disables culling entirely.
  *   <li>{@code storm_server_los_threads} — concurrent ServerLOS worker count. Default 1
  *       (single-threaded baseline); max 16. Pool always pre-allocates 15 helper threads regardless.
- *   <li>{@code storm_chunk_recalc_threads} — active ServerChunkLoader recalc worker count. Default
- *       1 (vanilla single worker); max 16. Pool always pre-allocates all 16 workers (1 vanilla + 15
- *       Storm extras); this only controls how many drain the recalc queue.
  * </ul>
  */
 public final class StormPerformanceSandboxMetrics {
@@ -94,18 +90,6 @@ public final class StormPerformanceSandboxMetrics {
                                     + " value.")
                     .register(StormPrometheus.registry());
 
-    private static final Gauge CHUNK_RECALC_THREADS =
-            Gauge.builder()
-                    .name("storm_chunk_recalc_threads")
-                    .help(
-                            "Configured ServerChunkLoader recalc worker count (active slots"
-                                    + " draining the recalc queue). Sourced from the"
-                                    + " Storm.ChunkRecalcThreads sandbox option. Default 1 (vanilla"
-                                    + " single worker); max 16. The pool always pre-allocates all"
-                                    + " 16 workers regardless (1 vanilla + 15 Storm extras); this"
-                                    + " only controls how many are gated through to toThread.take.")
-                    .register(StormPrometheus.registry());
-
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -113,7 +97,6 @@ public final class StormPerformanceSandboxMetrics {
         ANIMAL_LOS_TICK_INTERVAL.set(AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
-        CHUNK_RECALC_THREADS.set(StormChunkRecalcConfig.DEFAULT_THREADS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -140,9 +123,5 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setServerLosThreads(int threads) {
         SERVER_LOS_THREADS.set(threads);
-    }
-
-    public static void setChunkRecalcThreads(int threads) {
-        CHUNK_RECALC_THREADS.set(threads);
     }
 }

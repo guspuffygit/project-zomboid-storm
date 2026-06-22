@@ -128,7 +128,6 @@ import io.pzstorm.storm.patch.performance.PolygonalMap2RemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePlayerCountPatch;
 import io.pzstorm.storm.patch.performance.RCONServerUpdatePatch;
-import io.pzstorm.storm.patch.performance.RecalcAllRunInnerPatch;
 import io.pzstorm.storm.patch.performance.RemoveAnimalsPatch;
 import io.pzstorm.storm.patch.performance.RemoveDeadBodiesPatch;
 import io.pzstorm.storm.patch.performance.RemoveVehiclesPatch;
@@ -378,7 +377,6 @@ public class StormClassTransformers {
             registerTransformer(new EngineUpdateSimulationPatch());
             registerTransformer(new EntitySimulationUpdatePatch());
             registerTransformer(new TryAddIndoorZombiesPatch());
-            registerTransformer(new RecalcAllRunInnerPatch());
             registerTransformer(new MapCollisionDataUpdateGameStatePatch());
             registerTransformer(new IngameStateUpdatePatch());
             registerTransformer(new RCONServerUpdatePatch());

@@ -11,6 +11,3 @@ option Storm.ZombieCullThreshold
 
 option Storm.ServerLosThreads
 {type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ServerLosThreads,}
-
-option Storm.ChunkRecalcThreads
-{type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ChunkRecalcThreads,}
