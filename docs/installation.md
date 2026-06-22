@@ -170,3 +170,7 @@ If your host exposes JVM args as a single text box instead of editable JSON, pas
 #### 4. Restart the server
 
 On the next start the bootstrap agent attaches and Storm initializes. Verify by checking `<zomboidDir>/Logs/storm/main.log` for Storm's startup banner, or send the `ping` console command if your host exposes one — Storm replies with `pong`.
+
+#### Updating mods on a hosted server
+
+If Storm or a Storm mod updates, the server quits so the new files load on the next start.

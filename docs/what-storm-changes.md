@@ -26,6 +26,7 @@ JVM unless noted, and is always-on unless it points at a tunable flag in
 - **Custom child-JVM bootstrap** — `CoopMaster` is rewritten to launch hosted servers through Storm's agent instead of a bare `ProcessBuilder`, so in-game-hosted servers also load Storm.
 - **Protected uncaught exception handler** — the handler Storm installs at startup cannot be replaced by mods or vanilla code that calls `Thread.setDefaultUncaughtExceptionHandler`, so crashes always route through Storm's log writer.
 - **Event hooks** — packet receipt (`OnPacketReceived`), ban actions (`onBanUser` / `onBanIp` / `onBanSteamID`), chat messages, Lua VM init, world-map render, item-transfer completion, and ~190 Lua event bridges become subscribable from Java via `@SubscribeEvent`. See [Mod Author Guide](mod-author-guide.md).
+- **Storm and Storm mod updates restart the server**: if Storm or a Storm mod updates, the server quits so the new files load on the next start.
 
 ## Bug fixes shipped with Storm
 
