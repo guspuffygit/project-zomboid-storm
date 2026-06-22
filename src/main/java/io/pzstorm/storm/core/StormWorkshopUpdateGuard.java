@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import zombie.core.znet.SteamUtils;
 
 /**
  * Guards against the race between Storm's premain mod-jar load and PZ's dedicated-server workshop
@@ -97,6 +98,17 @@ public final class StormWorkshopUpdateGuard {
 
         emitRestartBanner(updatedJars, newJarMods);
         System.out.flush();
+        // Quiesce Steam's native worker threads before the JVM unloads steamclient.so /
+        // tier0.so. Without this, Steam IPC threads keep pumping while the JVM shutdown
+        // sequence rips out their TLS, producing a SIGSEGV in malloc_consolidate() and a
+        // core dump even though the exit is intentional. Mirrors how PZ aborts in
+        // GameServer.main's other pre-startServer failure branches (Steam init failure,
+        // Steam connect timeout, startServer ConnectException).
+        try {
+            SteamUtils.shutdown();
+        } catch (Throwable t) {
+            LOGGER.warn("Storm workshop-update guard: SteamUtils.shutdown() failed", t);
+        }
         System.exit(0);
     }
 
