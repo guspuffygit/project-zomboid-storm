@@ -2,6 +2,8 @@ package io.pzstorm.storm.screenshot.commands;
 
 import io.pzstorm.storm.event.core.ClientCommand;
 import io.pzstorm.storm.event.core.ClientCommandEvent;
+import io.pzstorm.storm.lua.StormKahluaTable;
+import java.util.Optional;
 import org.jetbrains.annotations.Nullable;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.characters.IsoPlayer;
@@ -33,7 +35,7 @@ public class ScreenshotChunkCommand extends ClientCommandEvent {
         return d.intValue();
     }
 
-    public String getData() {
-        return getString("data");
+    public Optional<StormKahluaTable> getPieces() {
+        return getOptionalTable("pieces");
     }
 }

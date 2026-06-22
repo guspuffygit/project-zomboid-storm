@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.pzstorm.storm.event.core.OnClientCommand;
+import io.pzstorm.storm.lua.StormKahluaTable;
 import io.pzstorm.storm.screenshot.commands.ScreenshotChunkCommand;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -17,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,9 +75,9 @@ public class StormScreenshotReceiver {
         String id = event.getId();
         Integer indexBox = event.getIndex();
         Integer totalBox = event.getTotal();
-        String data = event.getData();
+        Optional<StormKahluaTable> piecesOpt = event.getPieces();
 
-        if (id == null || data == null || indexBox == null || totalBox == null) {
+        if (id == null || indexBox == null || totalBox == null || piecesOpt.isEmpty()) {
             LOGGER.warn("Invalid screenshot chunk from {}", player.getUsername());
             return;
         }
@@ -90,6 +92,27 @@ public class StormScreenshotReceiver {
                     player.getUsername());
             return;
         }
+
+        StormKahluaTable pieces = piecesOpt.get();
+        StringBuilder packetBase64 = new StringBuilder();
+        int pieceCount = 0;
+        while (true) {
+            Object piece = pieces.rawget(pieceCount + 1);
+            if (!(piece instanceof String)) {
+                break;
+            }
+            packetBase64.append((String) piece);
+            pieceCount++;
+        }
+        if (pieceCount == 0) {
+            LOGGER.warn(
+                    "Empty screenshot chunk index={} total={} from {}",
+                    index,
+                    total,
+                    player.getUsername());
+            return;
+        }
+        String data = packetBase64.toString();
 
         String playerName = player.getUsername();
         short playerOnlineId = player.getOnlineID();
@@ -120,7 +143,8 @@ public class StormScreenshotReceiver {
         }
 
         int got = pending.received.incrementAndGet();
-        LOGGER.debug("Screenshot chunk {}/{} from {}", index, total, playerName);
+        LOGGER.debug(
+                "Screenshot chunk {}/{} ({} pieces) from {}", index, total, pieceCount, playerName);
 
         if (got >= total) {
             PENDING.remove(key, pending);
