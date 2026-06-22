@@ -449,16 +449,21 @@ tasks.register('generateWorkshopFile') {
 	inputs.property('description', workshopDescription)
 	inputs.property('tags', 'Build 42')
 	inputs.property('visibility', getWorkshopVisibility())
+	inputs.property('modId', getModId())
 
 	doLast {
 		def file = outputFile.get().asFile
 		file.parentFile.mkdirs()
 
+		def workshopId = inputs.properties['id']
+		def modId = inputs.properties['modId']
+		def descriptionWithFooter = inputs.properties['description'].trim() + "\n\n[hr][/hr]\nWorkshop ID: ${workshopId}\nMod ID: ${modId}"
+
 		file.text = [
 			"version=${inputs.properties['version']}",
 			"title=${inputs.properties['title']}",
 			"id=${inputs.properties['id']}",
-			"description=${inputs.properties['description']}",
+			"description=${descriptionWithFooter}",
 			"tags=${inputs.properties['tags']}",
 			"visibility=${inputs.properties['visibility']}",
 		].join('\n')
@@ -529,6 +534,7 @@ tasks.register('writeWorkshopVdf') {
 	inputs.property('visibility', getWorkshopVisibility())
 	inputs.property('title', getWorkshopTitle())
 	inputs.property('description', workshopDescription)
+	inputs.property('modId', getModId())
 	inputs.property('changenote', 'Deployment')
 
 	outputs.file(outputFile)
@@ -536,7 +542,10 @@ tasks.register('writeWorkshopVdf') {
 	doLast {
 		def f = outputFile.get().asFile
 		f.parentFile.mkdirs()
-		def escDesc = inputs.properties['description'].replace('\r', '').readLines().collect { it.replaceFirst(/^\s+/, '') }.join('\n').trim().replace('"', "'")
+		def workshopId = inputs.properties['publishedfileid']
+		def modId = inputs.properties['modId']
+		def descriptionWithFooter = inputs.properties['description'].trim() + "\n\n[hr][/hr]\nWorkshop ID: ${workshopId}\nMod ID: ${modId}"
+		def escDesc = descriptionWithFooter.replace('\r', '').readLines().collect { it.replaceFirst(/^\s+/, '') }.join('\n').trim().replace('"', "'")
 		def escTitle = inputs.properties['title'].replace('"', "'").replace('\r', '').replace('\n', ' ')
 		f.text = [
 			'"workshopitem"',
