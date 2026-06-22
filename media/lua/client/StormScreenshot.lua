@@ -13,10 +13,10 @@ local BYTES_PER_PIECE = 24573
 -- ByteBufferWriter throws BufferOverflowException mid-send.
 local PIECES_PER_PACKET = 28
 
--- Ticks between consecutive packet sends. Keeps the reliable channel from staying saturated
--- so RakNet's keepalive ping has room to interleave (previously the channel was filled with
--- ~120 reliable packets back-to-back and the server's timeout was tripping).
-local TICKS_PER_PACKET = 4
+-- Minimum ticks between consecutive packet sends. With PIECES_PER_PACKET pieces encoded
+-- one-per-tick this is normally exceeded by the encoding phase alone, but keeps a floor
+-- for small PIECES_PER_PACKET values so RakNet's keepalive ping has room to interleave.
+local TICKS_PER_PACKET = 1
 
 local POLL_DELAY_TICKS = 60
 local POLL_TIMEOUT_TICKS = 600
@@ -90,31 +90,34 @@ local function processCapture()
         pendingCapture.encodePos = 1
         pendingCapture.packetIndex = 0
         pendingCapture.tickGap = TICKS_PER_PACKET
+        pendingCapture.pieces = {}
         pendingCapture.state = "streaming"
     elseif state == "streaming" then
+        local bytes = pendingCapture.bytes
+        local totalBytes = pendingCapture.totalBytes
+        local pieces = pendingCapture.pieces
+
+        -- Amortize Lua base64 work across ticks: encode at most one piece per tick.
+        -- Encoding all PIECES_PER_PACKET pieces in a single tick caused multi-100ms
+        -- main-thread stalls visible as client lag during the screenshot stream.
+        if pendingCapture.encodePos <= totalBytes and #pieces < PIECES_PER_PACKET then
+            local pos = pendingCapture.encodePos
+            local endPos = math.min(pos + BYTES_PER_PIECE - 1, totalBytes)
+            pieces[#pieces + 1] = StormBase64.encode(bytes, pos, endPos)
+            pendingCapture.encodePos = endPos + 1
+        end
+
+        local bufferFull = #pieces >= PIECES_PER_PACKET
+        local atEof = pendingCapture.encodePos > totalBytes
+        if not (bufferFull or (atEof and #pieces > 0)) then
+            return
+        end
+
         pendingCapture.tickGap = pendingCapture.tickGap + 1
         if pendingCapture.tickGap < TICKS_PER_PACKET then
             return
         end
         pendingCapture.tickGap = 0
-
-        local bytes = pendingCapture.bytes
-        local totalBytes = pendingCapture.totalBytes
-        if pendingCapture.encodePos > totalBytes then
-            pendingCapture = nil
-            return
-        end
-
-        local pieces = {}
-        for i = 1, PIECES_PER_PACKET do
-            if pendingCapture.encodePos > totalBytes then
-                break
-            end
-            local pos = pendingCapture.encodePos
-            local endPos = math.min(pos + BYTES_PER_PIECE - 1, totalBytes)
-            pieces[i] = StormBase64.encode(bytes, pos, endPos)
-            pendingCapture.encodePos = endPos + 1
-        end
 
         pendingCapture.packetIndex = pendingCapture.packetIndex + 1
         sendPacket(
@@ -123,8 +126,9 @@ local function processCapture()
             pendingCapture.totalPackets,
             pieces
         )
+        pendingCapture.pieces = {}
 
-        if pendingCapture.encodePos > totalBytes then
+        if atEof then
             pendingCapture = nil
         end
     end
