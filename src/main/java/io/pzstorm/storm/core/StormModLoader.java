@@ -301,6 +301,11 @@ public class StormModLoader extends URLClassLoader {
             localWorkshopDirectories.forEach(
                     (dir) -> LOGGER.debug("Local workshop directory: {}", dir.toAbsolutePath()));
 
+            // Snapshot Steam workshop jars before catalog. Only the Steam workshop content dir
+            // goes through GameServerWorkshopItems.Install — local workshop / mods dirs are
+            // managed locally and don't get updated by Steam between Storm catalog and main().
+            StormWorkshopUpdateGuard.snapshotWorkshopMods(workshopDirectories);
+
             boolean preferLocal = StormEnv.isStormLocal();
 
             catalogModJars(
