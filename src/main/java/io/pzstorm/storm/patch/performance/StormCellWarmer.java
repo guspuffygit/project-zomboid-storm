@@ -280,6 +280,7 @@ public final class StormCellWarmer {
         WARM_CELLS.put(key(cell.wx, cell.wy), new WarmCell(cell, now, animals, deadBodies));
         StormCellWarmingMetrics.incCellsWarmed();
         StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
+        StormCellWarmingMetrics.recordWarmOpNanos(System.nanoTime() - now);
         return true;
     }
 
@@ -294,6 +295,7 @@ public final class StormCellWarmer {
         if (warm == null) {
             return false;
         }
+        long opStart = System.nanoTime();
         try {
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
@@ -315,8 +317,10 @@ public final class StormCellWarmer {
                 }
             }
 
+            long opEnd = System.nanoTime();
             StormCellWarmingMetrics.incCellsRewarmed();
-            StormCellWarmingMetrics.recordWarmDurationNanos(System.nanoTime() - warm.warmedAtNanos);
+            StormCellWarmingMetrics.recordWarmDurationNanos(opEnd - warm.warmedAtNanos);
+            StormCellWarmingMetrics.recordRewarmOpNanos(opEnd - opStart);
             StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
             return true;
         } catch (Throwable t) {

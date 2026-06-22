@@ -1,6 +1,7 @@
 package io.pzstorm.storm.advice.servercellload2;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
+import io.pzstorm.storm.metrics.ServerCellLoad2Metrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
@@ -22,6 +23,8 @@ public class ServerCellLoad2Advice {
         if (startNanos == 0L) {
             return;
         }
-        MainLoopStepTimings.record("ServerCell.Load2", System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        ServerCellLoad2Metrics.recordNanos(elapsed);
+        MainLoopStepTimings.record("ServerCell.Load2", elapsed);
     }
 }

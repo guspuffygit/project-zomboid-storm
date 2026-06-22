@@ -17,6 +17,10 @@ import io.prometheus.metrics.core.metrics.Histogram;
  *       because the eligibility predicate rejected them, labelled by {@code reason}.
  *   <li>{@code storm_cell_warm_duration_seconds} — time a cell spent in warm state before either
  *       being rewarmed or fully unloaded.
+ *   <li>{@code storm_cell_warm_op_duration_seconds} — wall-clock time spent inside the warm
+ *       operation itself (chunk disconnect + animal/dead-body drain).
+ *   <li>{@code storm_cell_rewarm_op_duration_seconds} — wall-clock time spent inside the rewarm
+ *       operation itself (chunk reconnect + animal/dead-body restore + event dispatch).
  * </ul>
  */
 public final class StormCellWarmingMetrics {
@@ -59,6 +63,24 @@ public final class StormCellWarmingMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
+    private static final Histogram WARM_OP_DURATION =
+            Histogram.builder()
+                    .name("storm_cell_warm_op_duration_seconds")
+                    .help(
+                            "Wall-clock time spent inside StormCellWarmer.warm() per cell (chunk"
+                                    + " disconnect + animal/dead-body drain).")
+                    .nativeOnly()
+                    .register(StormPrometheus.registry());
+
+    private static final Histogram REWARM_OP_DURATION =
+            Histogram.builder()
+                    .name("storm_cell_rewarm_op_duration_seconds")
+                    .help(
+                            "Wall-clock time spent inside StormCellWarmer.rewarm() per cell (chunk"
+                                    + " reconnect + animal/dead-body restore + event dispatch).")
+                    .nativeOnly()
+                    .register(StormPrometheus.registry());
+
     private StormCellWarmingMetrics() {}
 
     public static void incCellsWarmed() {
@@ -79,5 +101,13 @@ public final class StormCellWarmingMetrics {
 
     public static void recordWarmDurationNanos(long nanos) {
         WARM_DURATION.observe(nanos / 1e9);
+    }
+
+    public static void recordWarmOpNanos(long nanos) {
+        WARM_OP_DURATION.observe(nanos / 1e9);
+    }
+
+    public static void recordRewarmOpNanos(long nanos) {
+        REWARM_OP_DURATION.observe(nanos / 1e9);
     }
 }
