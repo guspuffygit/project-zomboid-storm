@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnServerStartedEvent;
+import io.pzstorm.storm.event.zomboid.OnSandboxOptionsUpdateEvent;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
@@ -38,10 +39,15 @@ public final class StormPerformanceSandboxApplier {
         applyAll();
     }
 
+    @SubscribeEvent
+    public static void onSandboxOptionsUpdate(OnSandboxOptionsUpdateEvent event) {
+        applyAll();
+    }
+
     /**
      * Reads every Storm sandbox option and pushes it through the corresponding live setter. Used at
-     * {@code OnServerStarted} for the initial load, and re-invoked from {@code
-     * ReceiveSandboxOptionsAdvice} after an admin pushes new options at runtime so the Prometheus
+     * {@code OnServerStarted} for the initial load, and re-invoked on {@link
+     * OnSandboxOptionsUpdateEvent} after an admin pushes new options at runtime so the Prometheus
      * gauges (and the underlying config classes) reflect the change without a restart.
      */
     public static void applyAll() {
