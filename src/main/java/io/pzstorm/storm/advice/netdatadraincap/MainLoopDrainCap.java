@@ -29,13 +29,18 @@ import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
  */
 public final class MainLoopDrainCap {
 
-    public static final int DEFAULT_CAP_MS = 30;
     public static final int MIN_CAP_MS = 0;
     public static final int MAX_CAP_MS = 200;
 
     static final long BURST_GAP_NANOS = 1_000_000L;
 
-    private static volatile long CAP_NANOS = (long) DEFAULT_CAP_MS * 1_000_000L;
+    // Cap stays disabled until OnServerStarted fires the sandbox applier and the configured value
+    // (default 90 ms from media/sandbox-options.txt) is pushed in via setCapMs. During cold start
+    // the main thread spends tens of ms inside mainLoopDealWithNetData on first-touch packet types
+    // (lazy ClassLoader + StormClassTransformer pass + JIT). With the cap active at that point,
+    // legitimate login packets get short-circuited and clients fail to complete the handshake
+    // (regression: ActionByteIdCollisionLiveTest, June 2026).
+    private static volatile long CAP_NANOS = 0L;
 
     public static volatile long lastCallEndNanos = 0L;
     public static volatile long burstStartNanos = 0L;

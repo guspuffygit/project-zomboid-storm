@@ -1,7 +1,6 @@
 package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
-import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
@@ -36,7 +35,7 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
  *       Storm extras); this only controls how many drain the recalc queue.
  *   <li>{@code storm_netdata_cap_ms} — per-spin wall-clock cap on {@code
  *       GameServer.mainLoopDealWithNetData} drain time (HIGH + player-update + vehicle combined).
- *       Default 30 ms; 0 disables.
+ *       Default 90 ms; 0 disables. Stays at 0 until OnServerStarted fires the sandbox applier.
  * </ul>
  */
 public final class StormPerformanceSandboxMetrics {
@@ -116,7 +115,7 @@ public final class StormPerformanceSandboxMetrics {
                     .help(
                             "Per-spin wall-clock cap (milliseconds) on time spent inside"
                                     + " GameServer.mainLoopDealWithNetData. Sourced from the"
-                                    + " Storm.NetDataCapMs sandbox option. Default 30; 0 disables"
+                                    + " Storm.NetDataCapMs sandbox option. Default 90; 0 disables"
                                     + " the cap. When the cap fires during a spin, subsequent"
                                     + " packets in that spin's HIGH/player-update/vehicle drain"
                                     + " are short-circuited (counted by pz_netdata_deferred_total)"
@@ -131,7 +130,7 @@ public final class StormPerformanceSandboxMetrics {
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         CHUNK_RECALC_THREADS.set(StormChunkRecalcConfig.DEFAULT_THREADS);
-        NETDATA_CAP_MS.set(MainLoopDrainCap.DEFAULT_CAP_MS);
+        NETDATA_CAP_MS.set(0);
     }
 
     private StormPerformanceSandboxMetrics() {}
