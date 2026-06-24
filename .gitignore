@@ -85,8 +85,6 @@ gradle-app.setting
 ### Gradle Patch ###
 **/build/
 logs/
-CLAUDE.md
-.claude/
 .emmyrc.json
 .luarc.json
 
@@ -101,3 +99,5 @@ docs/*
 !docs/http-api.md
 !docs/mod-author-guide.md
 !docs/metrics.md
+
+CLAUDE.local.md

@@ -16,9 +16,9 @@ def env = project.hasProperty('env') ? project.property('env') : 'dev'
 
 def getWorkshopId = {
 	switch (env) {
-		case 'prod':  return '3670772371'
-		case 'stage': return '3694148746'
-		default: return '3676481910'
+		case 'prod':  return workshopIdProd
+		case 'stage': return workshopIdStage
+		default: return workshopIdDev
 	}
 }
 
@@ -95,7 +95,7 @@ allprojects {
 	version = "${pzVersion}_${stormVersion}" + versionSuffix
 	java {
 		toolchain {
-			languageVersion = JavaLanguageVersion.of(25)
+			languageVersion = JavaLanguageVersion.of(javaVersion as int)
 		}
 	}
 }
@@ -675,7 +675,7 @@ tasks.register('runProjectZomboidServer', Exec) {
 
 	doFirst {
 		def dir = getLocalProperty('serverPath').get()
-		def workshopModPath = "./steamapps/workshop/content/108600/3676481910/mods/storm"
+		def workshopModPath = "./steamapps/workshop/content/108600/${workshopIdDev}/mods/storm"
 		workingDir dir
 
 		environment 'LD_LIBRARY_PATH', "${dir}/jre64/lib:${dir}/jre64/lib/server:${System.getenv('LD_LIBRARY_PATH') ?: ''}"
