@@ -71,5 +71,5 @@ local function onServerCommand(module, command, _args)
     Events.OnTick.Remove(tickCheck)
 end
 
-Events.OnConnected.Add(onConnected)
-Events.OnServerCommand.Add(onServerCommand)
+-- Events.OnConnected.Add(onConnected)
+-- Events.OnServerCommand.Add(onServerCommand)
