@@ -1,6 +1,7 @@
 package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
+import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
@@ -33,6 +34,9 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
  *   <li>{@code storm_chunk_recalc_threads} — active ServerChunkLoader recalc worker count. Default
  *       1 (vanilla single worker); max 16. Pool always pre-allocates all 16 workers (1 vanilla + 15
  *       Storm extras); this only controls how many drain the recalc queue.
+ *   <li>{@code storm_netdata_cap_ms} — per-spin wall-clock cap on {@code
+ *       GameServer.mainLoopDealWithNetData} drain time (HIGH + player-update + vehicle combined).
+ *       Default 30 ms; 0 disables.
  * </ul>
  */
 public final class StormPerformanceSandboxMetrics {
@@ -106,6 +110,19 @@ public final class StormPerformanceSandboxMetrics {
                                     + " only controls how many are gated through to toThread.take.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge NETDATA_CAP_MS =
+            Gauge.builder()
+                    .name("storm_netdata_cap_ms")
+                    .help(
+                            "Per-spin wall-clock cap (milliseconds) on time spent inside"
+                                    + " GameServer.mainLoopDealWithNetData. Sourced from the"
+                                    + " Storm.NetDataCapMs sandbox option. Default 30; 0 disables"
+                                    + " the cap. When the cap fires during a spin, subsequent"
+                                    + " packets in that spin's HIGH/player-update/vehicle drain"
+                                    + " are short-circuited (counted by pz_netdata_deferred_total)"
+                                    + " until the next outer-loop iteration.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -114,6 +131,7 @@ public final class StormPerformanceSandboxMetrics {
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         CHUNK_RECALC_THREADS.set(StormChunkRecalcConfig.DEFAULT_THREADS);
+        NETDATA_CAP_MS.set(MainLoopDrainCap.DEFAULT_CAP_MS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -144,5 +162,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setChunkRecalcThreads(int threads) {
         CHUNK_RECALC_THREADS.set(threads);
+    }
+
+    public static void setNetDataCapMs(int ms) {
+        NETDATA_CAP_MS.set(ms);
     }
 }

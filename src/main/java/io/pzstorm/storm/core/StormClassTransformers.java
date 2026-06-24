@@ -108,6 +108,7 @@ import io.pzstorm.storm.patch.performance.IsoWorldUpdateDBsPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdatePatch;
 import io.pzstorm.storm.patch.performance.LoginQueueUpdatePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
+import io.pzstorm.storm.patch.performance.MainLoopDrainCapPatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataSavePatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataUpdateGameStatePatch;
@@ -296,6 +297,11 @@ public class StormClassTransformers {
 
         if (StormEnv.isStormServer()) {
             registerTransformer(new ServerTickPatch());
+            // Caps wall-clock time per outer-loop spin spent in mainLoopDealWithNetData,
+            // protecting world-tick scheduling and outbound send-buffer growth during
+            // connect storms. Must layer on top of GameServerNetDataPatch — registered
+            // above, unconditionally — so its timing advice still runs on un-skipped calls.
+            registerTransformer(new MainLoopDrainCapPatch());
             registerTransformer(new ZombieCullDisablePatch());
             registerTransformer(new ZombieCullThresholdPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
