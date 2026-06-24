@@ -2,6 +2,7 @@ package io.pzstorm.storm.sandbox;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnServerStartedEvent;
 import io.pzstorm.storm.event.zomboid.OnSandboxOptionsUpdateEvent;
@@ -29,6 +30,7 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ANIMAL_LOS_TICK_INTERVAL = "Storm.AnimalLOSTickInterval";
     public static final String OPT_ZOMBIE_CULL_THRESHOLD = "Storm.ZombieCullThreshold";
     public static final String OPT_SERVER_LOS_THREADS = "Storm.ServerLosThreads";
+    public static final String OPT_NETDATA_CAP_MS = "Storm.NetDataCapMs";
 
     private StormPerformanceSandboxApplier() {}
 
@@ -56,6 +58,7 @@ public final class StormPerformanceSandboxApplier {
         applyAnimalLosTickInterval();
         applyZombieCullThreshold();
         applyServerLosThreads();
+        applyNetDataCapMs();
     }
 
     /**
@@ -101,6 +104,14 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormServerLosConfig.setThreads(value);
+    }
+
+    private static void applyNetDataCapMs() {
+        Integer value = readIntOption(OPT_NETDATA_CAP_MS);
+        if (value == null) {
+            return;
+        }
+        MainLoopDrainCap.setCapMs(value);
     }
 
     private static Integer readIntOption(String name) {

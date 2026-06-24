@@ -7,5 +7,7 @@
   "Sandbox_Storm_ZombieCullThreshold": "Zombie cull threshold (0 = disabled)",
   "Sandbox_Storm_ZombieCullThreshold_tooltip": "Storm-controlled cull threshold. 500 = vanilla cap (default). Larger = allow more live zombies before culling. 0 disables culling entirely (no zombies ever queued for deletion).",
   "Sandbox_Storm_ServerLosThreads": "ServerLOS worker threads",
-  "Sandbox_Storm_ServerLosThreads_tooltip": "Number of concurrent player LOS scans per tick. 1 = vanilla single-threaded baseline. Up to 16. The helper pool always pre-allocates 15 threads regardless; this knob only controls how many receive work each tick."
+  "Sandbox_Storm_ServerLosThreads_tooltip": "Number of concurrent player LOS scans per tick. 1 = vanilla single-threaded baseline. Up to 16. The helper pool always pre-allocates 15 threads regardless; this knob only controls how many receive work each tick.",
+  "Sandbox_Storm_NetDataCapMs": "Net-data drain cap (ms, 0 = disabled)",
+  "Sandbox_Storm_NetDataCapMs_tooltip": "Per-outer-loop-spin wall-clock cap on time spent inside GameServer.mainLoopDealWithNetData (HIGH-priority + player-update + vehicle inbound drain combined). Default 90. When a spin exceeds the cap, subsequent packets in that spin are short-circuited (RakNet retransmits any reliable ones); the next spin starts fresh. Protects world-tick scheduling and the RakNet outbound send buffer during reconnect storms. 0 = disabled (vanilla behaviour, no cap). Counter: pz_netdata_deferred_total."
 }

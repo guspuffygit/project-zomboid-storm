@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read(./*.gradle)",
+      "Read(./docs/**)",
+      "Read(./bootstrap/build.gradle)",
+      "Read(./bootstrap/src/main/**)",
+      "Read(./local.properties)",
+      "Read(./src/main/**)",
+      "Read(./c/agentlib.c)",
+      "Read(./c/agentlib.def)",
+      "Read(./c/Makefile)",
+      "Read(./media/**)",
+      "Read(./README.md)",
+      "Read(./src/test/resources/**)",
+      "Edit(./src/test/resources/**)",
+      "Read(./src/test/java/com/**)",
+      "Edit(./src/test/java/com/**)",
+      "Edit(./*.gradle)",
+      "Edit(./bootstrap/build.gradle)",
+      "Edit(./bootstrap/src/main/**)",
+      "Edit(./src/main/**)",
+      "Edit(./c/agentlib.c)",
+      "Edit(./c/agentlib.def)",
+      "Edit(./c/Makefile)",
+      "Edit(./media/**)",
+      "Edit(./README.md)",
+      "Read(./.github/**)",
+      "Edit(./.github/**)"
+    ],
+    "deny": [
+      "Read(./.git)",
+      "Read(./.git/**)",
+      "Edit(./.git)",
+      "Edit(./.git/**)",
+      "Read(./.gradle)",
+      "Read(./.gradle/**)",
+      "Edit(./.gradle)",
+      "Edit(./.gradle/**)"
+    ]
+  }
+}

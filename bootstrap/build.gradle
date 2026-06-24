@@ -12,7 +12,7 @@ jar {
 }
 
 shadowJar {
-	archiveFileName = getProperty('bootstrapJarName')
+	archiveFileName = 'storm-bootstrap.jar'
 
 	manifest {
 		attributes(

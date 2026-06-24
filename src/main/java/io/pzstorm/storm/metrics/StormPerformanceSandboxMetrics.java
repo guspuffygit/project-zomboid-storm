@@ -29,6 +29,9 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
  *       vanilla cap); 0 disables culling entirely.
  *   <li>{@code storm_server_los_threads} — concurrent ServerLOS worker count. Default 1
  *       (single-threaded baseline); max 16. Pool always pre-allocates 15 helper threads regardless.
+ *   <li>{@code storm_netdata_cap_ms} — per-spin wall-clock cap on {@code
+ *       GameServer.mainLoopDealWithNetData} drain time (HIGH + player-update + vehicle combined).
+ *       Default 90 ms; 0 disables. Stays at 0 until OnServerStarted fires the sandbox applier.
  * </ul>
  */
 public final class StormPerformanceSandboxMetrics {
@@ -90,6 +93,19 @@ public final class StormPerformanceSandboxMetrics {
                                     + " value.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge NETDATA_CAP_MS =
+            Gauge.builder()
+                    .name("storm_netdata_cap_ms")
+                    .help(
+                            "Per-spin wall-clock cap (milliseconds) on time spent inside"
+                                    + " GameServer.mainLoopDealWithNetData. Sourced from the"
+                                    + " Storm.NetDataCapMs sandbox option. Default 90; 0 disables"
+                                    + " the cap. When the cap fires during a spin, subsequent"
+                                    + " packets in that spin's HIGH/player-update/vehicle drain"
+                                    + " are short-circuited (counted by pz_netdata_deferred_total)"
+                                    + " until the next outer-loop iteration.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -97,6 +113,7 @@ public final class StormPerformanceSandboxMetrics {
         ANIMAL_LOS_TICK_INTERVAL.set(AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
+        NETDATA_CAP_MS.set(0);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -123,5 +140,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setServerLosThreads(int threads) {
         SERVER_LOS_THREADS.set(threads);
+    }
+
+    public static void setNetDataCapMs(int ms) {
+        NETDATA_CAP_MS.set(ms);
     }
 }

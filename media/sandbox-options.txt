@@ -11,3 +11,6 @@ option Storm.ZombieCullThreshold
 
 option Storm.ServerLosThreads
 {type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ServerLosThreads,}
+
+option Storm.NetDataCapMs
+{type = integer, min = 0, max = 200, default = 90, page = Storm, translation = Storm_NetDataCapMs,}
