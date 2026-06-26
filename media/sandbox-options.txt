@@ -20,3 +20,6 @@ option Storm.PeerSendBufferKickMb
 
 option Storm.PeerSendBufferKickHoldTicks
 {type = integer, min = 1, max = 6000, default = 50, page = Storm, translation = Storm_PeerSendBufferKickHoldTicks,}
+
+option Storm.ScreenshotPiecesPerPacket
+{type = integer, min = 1, max = 28, default = 4, page = Storm, translation = Storm_ScreenshotPiecesPerPacket,}

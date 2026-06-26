@@ -12,6 +12,7 @@ import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFact
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
+import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 import zombie.SandboxOptions;
 import zombie.network.GameServer;
 
@@ -35,6 +36,7 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_PEER_SEND_BUFFER_KICK_MB = "Storm.PeerSendBufferKickMb";
     public static final String OPT_PEER_SEND_BUFFER_KICK_HOLD_TICKS =
             "Storm.PeerSendBufferKickHoldTicks";
+    public static final String OPT_SCREENSHOT_PIECES_PER_PACKET = "Storm.ScreenshotPiecesPerPacket";
 
     private StormPerformanceSandboxApplier() {}
 
@@ -65,6 +67,7 @@ public final class StormPerformanceSandboxApplier {
         applyNetDataCapMs();
         applyPeerSendBufferKickMb();
         applyPeerSendBufferKickHoldTicks();
+        applyScreenshotPiecesPerPacket();
     }
 
     /**
@@ -134,6 +137,14 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         PeerSendBufferKickConfig.setHoldTicks(value);
+    }
+
+    private static void applyScreenshotPiecesPerPacket() {
+        Integer value = readIntOption(OPT_SCREENSHOT_PIECES_PER_PACKET);
+        if (value == null) {
+            return;
+        }
+        StormScreenshotConfig.setPiecesPerPacket(value);
     }
 
     private static Integer readIntOption(String name) {

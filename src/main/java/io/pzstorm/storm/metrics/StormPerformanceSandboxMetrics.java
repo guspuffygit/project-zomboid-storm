@@ -8,6 +8,7 @@ import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
+import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 
 /**
  * Live gauges reflecting Storm's performance knobs.
@@ -134,6 +135,19 @@ public final class StormPerformanceSandboxMetrics {
                                     + " when the threshold gauge is 0 (watchdog disabled).")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge SCREENSHOT_PIECES_PER_PACKET =
+            Gauge.builder()
+                    .name("storm_screenshot_pieces_per_packet")
+                    .help(
+                            "Number of 24573-byte base64 pieces packed into each"
+                                    + " sendClientCommand packet when a client uploads a /screenshot"
+                                    + " back to the server. Sourced from the"
+                                    + " Storm.ScreenshotPiecesPerPacket sandbox option. Default 4"
+                                    + " (~131 KB/packet, safe on saturated home uplinks); hard"
+                                    + " ceiling 28 (~918 KB/packet, just under vanilla"
+                                    + " UdpConnection's 1 MB outbound buffer).")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -144,6 +158,7 @@ public final class StormPerformanceSandboxMetrics {
         NETDATA_CAP_MS.set(0);
         PEER_SEND_BUFFER_KICK_MB.set(PeerSendBufferKickConfig.DEFAULT_MB);
         PEER_SEND_BUFFER_KICK_HOLD_TICKS.set(PeerSendBufferKickConfig.DEFAULT_HOLD_TICKS);
+        SCREENSHOT_PIECES_PER_PACKET.set(StormScreenshotConfig.DEFAULT_PIECES_PER_PACKET);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -182,5 +197,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setPeerSendBufferKickHoldTicks(int ticks) {
         PEER_SEND_BUFFER_KICK_HOLD_TICKS.set(ticks);
+    }
+
+    public static void setScreenshotPiecesPerPacket(int n) {
+        SCREENSHOT_PIECES_PER_PACKET.set(n);
     }
 }

@@ -44,12 +44,13 @@ the world setup UI. Edit them through the admin UI before world creation, or han
 | `Storm.NetDataCapMs` | `90` | `0..200` | Per-outer-loop-spin wall-clock cap on `GameServer.mainLoopDealWithNetData` (HIGH-priority + player-update + vehicle inbound drain combined). When a spin exceeds the cap, subsequent packets in that spin are short-circuited (RakNet retransmits any reliable ones); the next spin starts fresh. Protects world-tick scheduling and the RakNet outbound send buffer during reconnect storms. `0` disables (vanilla behaviour, no cap). Deferrals counted by `pz_netdata_deferred_total`. |
 | `Storm.PeerSendBufferKickMb` | `20` | `0..1000` | Per-peer HIGH-priority RakNet send-buffer threshold (MB) above which Storm force-disconnects the peer after `Storm.PeerSendBufferKickHoldTicks` consecutive ticks. Protects the server from OOM when a peer on a saturated/lossy uplink accumulates the server's broadcast firehose (PZ has no backpressure in the HIGH send paths). `0` disables the watchdog (per-peer telemetry still populates). |
 | `Storm.PeerSendBufferKickHoldTicks` | `50` | `1..6000` | Consecutive server ticks a peer's HIGH send buffer must stay above the kick threshold before disconnect fires. At vanilla 10 TPS, 50 ticks = 5 s. Has no effect when `Storm.PeerSendBufferKickMb = 0`. |
+| `Storm.ScreenshotPiecesPerPacket` | `4` | `1..28` | Base64 pieces (24573 raw bytes each) packed into a single `sendClientCommand` packet when a client uploads a `/screenshot` back to the server. `4` ≈ 131 KB/packet — safe on saturated home uplinks: small frequent packets keep server ACKs and downstream traffic interleaved so RakNet's ~10 s client-side keepalive doesn't time out mid-upload. Larger = faster uploads on good networks but more risk of "Connection Lost" on weak uplinks. Hard ceiling 28 (~918 KB/packet, ~82 KB headroom under vanilla `UdpConnection`'s 1 MB outbound buffer); 30+ throws `BufferOverflowException` mid-send. |
 
 The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_server_lock_fps`, `storm_iso_physics_server_fps`, `storm_animal_los_tick_interval`,
 `storm_zombie_cull_threshold`, `storm_server_los_threads`, `storm_netdata_cap_ms`,
-`storm_peer_send_buffer_kick_mb`, `storm_peer_send_buffer_kick_hold_ticks`) reflect the
-currently-applied value.
+`storm_peer_send_buffer_kick_mb`, `storm_peer_send_buffer_kick_hold_ticks`,
+`storm_screenshot_pieces_per_packet`) reflect the currently-applied value.
 
 ## Production launcher example (Linux)
 

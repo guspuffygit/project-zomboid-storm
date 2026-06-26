@@ -7,11 +7,30 @@ StormScreenshot = StormScreenshot or {}
 -- so non-final pieces never emit '=' padding.
 local BYTES_PER_PIECE = 24573
 
--- Number of base64 pieces packed into a single sendClientCommand. UdpConnection's outbound
--- ByteBuffer is 1 MB; 28 maxed pieces serialize to ~918 KB (including outer-table overhead),
--- leaving ~82 KB of headroom under the cap. 30 is the hard upper bound; beyond that the
--- ByteBufferWriter throws BufferOverflowException mid-send.
-local PIECES_PER_PACKET = 28
+-- Base64 pieces packed into a single sendClientCommand. Configured via the
+-- Storm.ScreenshotPiecesPerPacket sandbox option (default 4 ≈ 131 KB/packet, hard ceiling 28
+-- ≈ 918 KB/packet just under UdpConnection's 1 MB outbound buffer). Lower values send more
+-- smaller packets so RakNet ACKs and keepalives keep flowing during the upload; higher values
+-- send fewer, larger packets which is faster but on saturated uplinks can starve out the
+-- ~10s client-side RakNet keepalive and trigger "Connection Lost" mid-stream.
+local PIECES_PER_PACKET_DEFAULT = 4
+local PIECES_PER_PACKET_MIN = 1
+local PIECES_PER_PACKET_MAX = 28
+
+local function getPiecesPerPacket()
+    local sandbox = SandboxVars and SandboxVars.Storm
+    local value = sandbox and sandbox.ScreenshotPiecesPerPacket
+    if type(value) ~= "number" then
+        return PIECES_PER_PACKET_DEFAULT
+    end
+    if value < PIECES_PER_PACKET_MIN then
+        return PIECES_PER_PACKET_MIN
+    end
+    if value > PIECES_PER_PACKET_MAX then
+        return PIECES_PER_PACKET_MAX
+    end
+    return value
+end
 
 -- Minimum ticks between consecutive packet sends. With PIECES_PER_PACKET pieces encoded
 -- one-per-tick this is normally exceeded by the encoding phase alone, but keeps a floor
@@ -84,7 +103,8 @@ local function processCapture()
         stream:close()
 
         pendingCapture.totalBytes = #pendingCapture.bytes
-        local bytesPerPacket = BYTES_PER_PIECE * PIECES_PER_PACKET
+        pendingCapture.piecesPerPacket = getPiecesPerPacket()
+        local bytesPerPacket = BYTES_PER_PIECE * pendingCapture.piecesPerPacket
         pendingCapture.totalPackets =
             math.max(1, math.ceil(pendingCapture.totalBytes / bytesPerPacket))
         pendingCapture.encodePos = 1
@@ -98,16 +118,17 @@ local function processCapture()
         local pieces = pendingCapture.pieces
 
         -- Amortize Lua base64 work across ticks: encode at most one piece per tick.
-        -- Encoding all PIECES_PER_PACKET pieces in a single tick caused multi-100ms
+        -- Encoding all piecesPerPacket pieces in a single tick caused multi-100ms
         -- main-thread stalls visible as client lag during the screenshot stream.
-        if pendingCapture.encodePos <= totalBytes and #pieces < PIECES_PER_PACKET then
+        local piecesPerPacket = pendingCapture.piecesPerPacket
+        if pendingCapture.encodePos <= totalBytes and #pieces < piecesPerPacket then
             local pos = pendingCapture.encodePos
             local endPos = math.min(pos + BYTES_PER_PIECE - 1, totalBytes)
             pieces[#pieces + 1] = StormBase64.encode(bytes, pos, endPos)
             pendingCapture.encodePos = endPos + 1
         end
 
-        local bufferFull = #pieces >= PIECES_PER_PACKET
+        local bufferFull = #pieces >= piecesPerPacket
         local atEof = pendingCapture.encodePos > totalBytes
         if not (bufferFull or (atEof and #pieces > 0)) then
             return
