@@ -33,6 +33,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_SERVER_LOS_THREADS = "Storm.ServerLosThreads";
     public static final String OPT_NETDATA_CAP_MS = "Storm.NetDataCapMs";
     public static final String OPT_PEER_SEND_BUFFER_KICK_MB = "Storm.PeerSendBufferKickMb";
+    public static final String OPT_PEER_SEND_BUFFER_KICK_HOLD_TICKS =
+            "Storm.PeerSendBufferKickHoldTicks";
 
     private StormPerformanceSandboxApplier() {}
 
@@ -62,6 +64,7 @@ public final class StormPerformanceSandboxApplier {
         applyServerLosThreads();
         applyNetDataCapMs();
         applyPeerSendBufferKickMb();
+        applyPeerSendBufferKickHoldTicks();
     }
 
     /**
@@ -123,6 +126,14 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         PeerSendBufferKickConfig.setKickMb(value);
+    }
+
+    private static void applyPeerSendBufferKickHoldTicks() {
+        Integer value = readIntOption(OPT_PEER_SEND_BUFFER_KICK_HOLD_TICKS);
+        if (value == null) {
+            return;
+        }
+        PeerSendBufferKickConfig.setHoldTicks(value);
     }
 
     private static Integer readIntOption(String name) {

@@ -48,21 +48,12 @@ import zombie.network.GameServer;
  *
  * <p><b>Watchdog.</b> When {@link PeerSendBufferKickConfig#enabled()} and a peer's {@code
  * bytesInSendBufferHigh} stays above {@link PeerSendBufferKickConfig#thresholdBytes()} for {@link
- * #KICK_HOLD_TICKS} consecutive ticks, that peer is force-disconnected with reason {@link
- * #KICK_REASON}. Disconnects are deferred until after the iteration finishes because {@code
- * UdpEngine.forceDisconnect} mutates {@code udpEngine.connections} (calls {@code removeConnection})
- * — kicking mid-iteration would skip the next peer in the list.
+ * PeerSendBufferKickConfig#holdTicks()} consecutive ticks, that peer is force-disconnected with
+ * reason {@link #KICK_REASON}. Disconnects are deferred until after the iteration finishes because
+ * {@code UdpEngine.forceDisconnect} mutates {@code udpEngine.connections} (calls {@code
+ * removeConnection}) — kicking mid-iteration would skip the next peer in the list.
  */
 public final class StormConnectionMetrics {
-
-    /**
-     * Consecutive ticks a peer must remain above the kick threshold before being disconnected. At
-     * the vanilla 10&nbsp;TPS this is 5&nbsp;seconds — long enough to avoid kicking a peer for a
-     * single-tick chunk-broadcast spike, short enough to fire well before the buffer reaches a size
-     * that endangers the JVM. Kept as a hard constant rather than a sandbox option to keep the
-     * admin-visible surface small; the headline knob is the byte threshold.
-     */
-    public static final int KICK_HOLD_TICKS = 50;
 
     public static final String KICK_REASON = "storm-send-buffer-overflow";
 
@@ -198,7 +189,7 @@ public final class StormConnectionMetrics {
             if (watchdogEnabled && stats.bytesInSendBufferHigh > kickThresholdBytes) {
                 int count = consecutiveTicksOverThreshold.getOrDefault(username, 0) + 1;
                 consecutiveTicksOverThreshold.put(username, count);
-                if (count >= KICK_HOLD_TICKS) {
+                if (count >= PeerSendBufferKickConfig.holdTicks()) {
                     if (toKick == null) {
                         toKick = new ArrayList<>(2);
                     }
@@ -244,7 +235,7 @@ public final class StormConnectionMetrics {
                         c.getSteamId(),
                         c.getIP(),
                         String.format("%.1f", mb),
-                        KICK_HOLD_TICKS);
+                        PeerSendBufferKickConfig.holdTicks());
                 KICKED_SEND_BUFFER.inc();
                 try {
                     c.forceDisconnect(KICK_REASON);

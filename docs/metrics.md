@@ -256,6 +256,42 @@ Metrics that measure Storm's own caches / framework code, not PZ behavior.
 | `storm_transfer_pending_size` | GaugeWithCallback | — | Current number of in-flight transfers. Backed by `StormTransferHandler.pendingSize()`. |
 | `storm_transfer_settle_duration_seconds` | Histogram (native) | — | Wall-clock duration from accept to done. |
 
+#### Per-peer network telemetry + send-buffer watchdog
+
+`StormConnectionMetrics.recordAll()` is called every server tick from `ServerTickAdvice` (server-only). It iterates `GameServer.udpEngine.connections`, reads each connection's `ZNetStatistics`, and publishes per-peer gauges labelled by `username`. Vanilla PZ exports the same numbers but sums them across all peers (`network{parameter="bytes-in-send-buffer-high"}`); the per-peer breakdown identifies *which* peer is filling the buffer during a chunk-transfer storm or congested-link incident. When a peer disconnects between ticks, its label series are explicitly set to `0` so the drop is visible as a step-down rather than a stale flat line.
+
+The watchdog (see `Storm.PeerSendBufferKickMb` / `Storm.PeerSendBufferKickHoldTicks` in [Server Configuration](server-configuration.md)) reads the same per-peer HIGH send-buffer value each tick and force-disconnects peers that stay above the threshold for the configured hold window. `username` is bounded by concurrent player population; `guid:<rakNetGuid>` is used as a fallback when the connection authenticated but never set a username (~the same bound).
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_peer_send_buffer_bytes` | Gauge | `username`, `priority={immediate,high,medium,low}` | Pending outbound bytes per peer in RakNet's send queue. Spikes on the `high` series identify chunk-transfer / broadcast-storm recipients. |
+| `storm_peer_resend_buffer_bytes` | Gauge | `username` | Reliable bytes awaiting ACK retransmission. Sustained growth precedes a timeout-driven disconnect. |
+| `storm_peer_packetloss_last_second` | Gauge | `username` | `RakNetStatistics::packetlossLastSecond` (0..1). A peer pinned high here is congesting. |
+| `storm_peer_average_ping_ms` | Gauge | `username` | Running-average RTT (ms) to the peer. |
+| `storm_peer_congestion_limited` | Gauge | `username` | `1` when RakNet's congestion control is currently throttling outbound BPS for this peer, else `0`. |
+| `storm_peer_bps_limit_congestion` | Gauge | `username` | Current outbound BPS ceiling imposed by congestion control (bytes/second). Drops toward 0 as loss increases. |
+| `storm_peer_kicked_send_buffer_total` | Counter | — | Cumulative peers force-disconnected by the watchdog. Unlabelled to keep cardinality bounded; the kicked peer's username/steamId/IP/observed-MB are logged at INFO in `storm/main.log`. |
+
+The sandbox knobs that drive the watchdog are also exposed:
+
+| Name | Type | What |
+|------|------|------|
+| `storm_peer_send_buffer_kick_mb` | Gauge | Current `Storm.PeerSendBufferKickMb` value (MB). `0` = watchdog disabled. |
+| `storm_peer_send_buffer_kick_hold_ticks` | Gauge | Current `Storm.PeerSendBufferKickHoldTicks` value (server ticks). |
+
+Useful PromQL:
+
+```promql
+# top-5 peers by HIGH send buffer
+topk(5, storm_peer_send_buffer_bytes{priority="high"})
+
+# peers actively throttled by RakNet congestion control
+storm_peer_congestion_limited == 1
+
+# auto-kicks in the last hour
+increase(storm_peer_kicked_send_buffer_total[1h])
+```
+
 #### HTTP endpoint
 
 `HttpEndpointDispatcher` activity. `path` is the matched route — requests to unregistered paths are bucketed under `path="unknown"` to keep cardinality bounded. `status` is the HTTP status code as a string (e.g. `"200"`, `"404"`, `"500"`).

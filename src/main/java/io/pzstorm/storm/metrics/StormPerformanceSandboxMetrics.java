@@ -112,15 +112,26 @@ public final class StormPerformanceSandboxMetrics {
                     .name("storm_peer_send_buffer_kick_mb")
                     .help(
                             "Per-peer HIGH send-buffer threshold (megabytes) above which Storm"
-                                    + " auto-disconnects the peer after the hold-time elapses."
+                                    + " auto-disconnects the peer after the hold window elapses."
                                     + " Sourced from the Storm.PeerSendBufferKickMb sandbox"
-                                    + " option. Default 0 (watchdog disabled); recommended"
-                                    + " operational value 35-50 MB. When this gauge is non-zero"
-                                    + " and a peer's storm_peer_send_buffer_bytes{priority=\"high\"}"
-                                    + " stays above (gauge_value * 1 MiB) for"
-                                    + " StormConnectionMetrics.KICK_HOLD_TICKS consecutive ticks,"
-                                    + " the peer is force-disconnected with reason"
-                                    + " storm-send-buffer-overflow.")
+                                    + " option. Default 20 MB; 0 disables the watchdog. When this"
+                                    + " gauge is non-zero and a peer's"
+                                    + " storm_peer_send_buffer_bytes{priority=\"high\"} stays above"
+                                    + " (gauge_value * 1 MiB) for storm_peer_send_buffer_kick_hold_ticks"
+                                    + " consecutive ticks, the peer is force-disconnected with"
+                                    + " reason storm-send-buffer-overflow.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge PEER_SEND_BUFFER_KICK_HOLD_TICKS =
+            Gauge.builder()
+                    .name("storm_peer_send_buffer_kick_hold_ticks")
+                    .help(
+                            "Consecutive server ticks a peer's HIGH send buffer must stay above"
+                                    + " storm_peer_send_buffer_kick_mb before Storm"
+                                    + " force-disconnects the peer. Sourced from the"
+                                    + " Storm.PeerSendBufferKickHoldTicks sandbox option. Default"
+                                    + " 50 ticks (= 5 seconds at vanilla 10 TPS). Has no effect"
+                                    + " when the threshold gauge is 0 (watchdog disabled).")
                     .register(StormPrometheus.registry());
 
     static {
@@ -132,6 +143,7 @@ public final class StormPerformanceSandboxMetrics {
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         NETDATA_CAP_MS.set(0);
         PEER_SEND_BUFFER_KICK_MB.set(PeerSendBufferKickConfig.DEFAULT_MB);
+        PEER_SEND_BUFFER_KICK_HOLD_TICKS.set(PeerSendBufferKickConfig.DEFAULT_HOLD_TICKS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -166,5 +178,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setPeerSendBufferKickMb(int mb) {
         PEER_SEND_BUFFER_KICK_MB.set(mb);
+    }
+
+    public static void setPeerSendBufferKickHoldTicks(int ticks) {
+        PEER_SEND_BUFFER_KICK_HOLD_TICKS.set(ticks);
     }
 }
