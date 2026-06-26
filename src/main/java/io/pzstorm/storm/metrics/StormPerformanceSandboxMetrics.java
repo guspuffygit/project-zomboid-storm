@@ -1,6 +1,7 @@
 package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
+import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
@@ -106,6 +107,22 @@ public final class StormPerformanceSandboxMetrics {
                                     + " until the next outer-loop iteration.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge PEER_SEND_BUFFER_KICK_MB =
+            Gauge.builder()
+                    .name("storm_peer_send_buffer_kick_mb")
+                    .help(
+                            "Per-peer HIGH send-buffer threshold (megabytes) above which Storm"
+                                    + " auto-disconnects the peer after the hold-time elapses."
+                                    + " Sourced from the Storm.PeerSendBufferKickMb sandbox"
+                                    + " option. Default 0 (watchdog disabled); recommended"
+                                    + " operational value 35-50 MB. When this gauge is non-zero"
+                                    + " and a peer's storm_peer_send_buffer_bytes{priority=\"high\"}"
+                                    + " stays above (gauge_value * 1 MiB) for"
+                                    + " StormConnectionMetrics.KICK_HOLD_TICKS consecutive ticks,"
+                                    + " the peer is force-disconnected with reason"
+                                    + " storm-send-buffer-overflow.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -114,6 +131,7 @@ public final class StormPerformanceSandboxMetrics {
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         NETDATA_CAP_MS.set(0);
+        PEER_SEND_BUFFER_KICK_MB.set(PeerSendBufferKickConfig.DEFAULT_MB);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -144,5 +162,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setNetDataCapMs(int ms) {
         NETDATA_CAP_MS.set(ms);
+    }
+
+    public static void setPeerSendBufferKickMb(int mb) {
+        PEER_SEND_BUFFER_KICK_MB.set(mb);
     }
 }

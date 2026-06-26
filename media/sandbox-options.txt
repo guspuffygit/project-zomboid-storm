@@ -14,3 +14,6 @@ option Storm.ServerLosThreads
 
 option Storm.NetDataCapMs
 {type = integer, min = 0, max = 200, default = 90, page = Storm, translation = Storm_NetDataCapMs,}
+
+option Storm.PeerSendBufferKickMb
+{type = integer, min = 0, max = 1000, default = 0, page = Storm, translation = Storm_PeerSendBufferKickMb,}
