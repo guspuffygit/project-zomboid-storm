@@ -148,6 +148,29 @@ public final class StormPerformanceSandboxMetrics {
                                     + " UdpConnection's 1 MB outbound buffer).")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge SCREENSHOT_UPLOAD_KB_PER_SEC =
+            Gauge.builder()
+                    .name("storm_screenshot_upload_kb_per_sec")
+                    .help(
+                            "Wall-clock throughput cap (KiB/s of base64 wire bytes) on how fast a"
+                                    + " client streams a captured /screenshot back to the server."
+                                    + " Keeps the upload under the player's uplink so RakNet"
+                                    + " ACK/keepalive traffic survives and the ~10s connection"
+                                    + " timeout does not fire mid-upload. Sourced from the"
+                                    + " Storm.ScreenshotUploadKbPerSec sandbox option. Default 128.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge SCREENSHOT_ENCODE_KB_PER_TICK =
+            Gauge.builder()
+                    .name("storm_screenshot_encode_kb_per_tick")
+                    .help(
+                            "Ceiling on source KiB base64-encoded per client tick while uploading a"
+                                    + " /screenshot. Bounds per-frame cost of the single-threaded Lua"
+                                    + " base64 encoder so it does not stall rendering for the whole"
+                                    + " upload. Sourced from the Storm.ScreenshotEncodeKbPerTick"
+                                    + " sandbox option. Default 4.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -159,6 +182,8 @@ public final class StormPerformanceSandboxMetrics {
         PEER_SEND_BUFFER_KICK_MB.set(PeerSendBufferKickConfig.DEFAULT_MB);
         PEER_SEND_BUFFER_KICK_HOLD_TICKS.set(PeerSendBufferKickConfig.DEFAULT_HOLD_TICKS);
         SCREENSHOT_PIECES_PER_PACKET.set(StormScreenshotConfig.DEFAULT_PIECES_PER_PACKET);
+        SCREENSHOT_UPLOAD_KB_PER_SEC.set(StormScreenshotConfig.DEFAULT_UPLOAD_KB_PER_SEC);
+        SCREENSHOT_ENCODE_KB_PER_TICK.set(StormScreenshotConfig.DEFAULT_ENCODE_KB_PER_TICK);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -201,5 +226,13 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setScreenshotPiecesPerPacket(int n) {
         SCREENSHOT_PIECES_PER_PACKET.set(n);
+    }
+
+    public static void setScreenshotUploadKbPerSec(int n) {
+        SCREENSHOT_UPLOAD_KB_PER_SEC.set(n);
+    }
+
+    public static void setScreenshotEncodeKbPerTick(int n) {
+        SCREENSHOT_ENCODE_KB_PER_TICK.set(n);
     }
 }

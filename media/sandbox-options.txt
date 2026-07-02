@@ -23,3 +23,9 @@ option Storm.PeerSendBufferKickHoldTicks
 
 option Storm.ScreenshotPiecesPerPacket
 {type = integer, min = 1, max = 28, default = 4, page = Storm, translation = Storm_ScreenshotPiecesPerPacket,}
+
+option Storm.ScreenshotUploadKbPerSec
+{type = integer, min = 8, max = 4096, default = 128, page = Storm, translation = Storm_ScreenshotUploadKbPerSec,}
+
+option Storm.ScreenshotEncodeKbPerTick
+{type = integer, min = 1, max = 64, default = 4, page = Storm, translation = Storm_ScreenshotEncodeKbPerTick,}

@@ -37,6 +37,9 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_PEER_SEND_BUFFER_KICK_HOLD_TICKS =
             "Storm.PeerSendBufferKickHoldTicks";
     public static final String OPT_SCREENSHOT_PIECES_PER_PACKET = "Storm.ScreenshotPiecesPerPacket";
+    public static final String OPT_SCREENSHOT_UPLOAD_KB_PER_SEC = "Storm.ScreenshotUploadKbPerSec";
+    public static final String OPT_SCREENSHOT_ENCODE_KB_PER_TICK =
+            "Storm.ScreenshotEncodeKbPerTick";
 
     private StormPerformanceSandboxApplier() {}
 
@@ -68,6 +71,8 @@ public final class StormPerformanceSandboxApplier {
         applyPeerSendBufferKickMb();
         applyPeerSendBufferKickHoldTicks();
         applyScreenshotPiecesPerPacket();
+        applyScreenshotUploadKbPerSec();
+        applyScreenshotEncodeKbPerTick();
     }
 
     /**
@@ -145,6 +150,22 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormScreenshotConfig.setPiecesPerPacket(value);
+    }
+
+    private static void applyScreenshotUploadKbPerSec() {
+        Integer value = readIntOption(OPT_SCREENSHOT_UPLOAD_KB_PER_SEC);
+        if (value == null) {
+            return;
+        }
+        StormScreenshotConfig.setUploadKbPerSec(value);
+    }
+
+    private static void applyScreenshotEncodeKbPerTick() {
+        Integer value = readIntOption(OPT_SCREENSHOT_ENCODE_KB_PER_TICK);
+        if (value == null) {
+            return;
+        }
+        StormScreenshotConfig.setEncodeKbPerTick(value);
     }
 
     private static Integer readIntOption(String name) {
