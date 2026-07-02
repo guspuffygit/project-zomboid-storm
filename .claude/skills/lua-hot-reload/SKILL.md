@@ -50,6 +50,23 @@ On the dedicated server the Lua runs directly on the HTTP dispatcher thread (no 
 
 Both must be set on the JVM before launch — confirm with `ps -ef | grep storm.hotreload` on any Linux-side JVM, or grep the launcher batch script for the client. Changing the flags requires a restart.
 
+## Kahlua field-access gotcha
+
+Kahlua doesn't expose arbitrary public Java fields — only classes that PZ ran through `LuaExposer` (and its inherited method table) are Lua-readable. Static inner classes like `VehicleScript$Skin`, and Java classes that have no getter methods and rely on public fields (`public String texture;` etc.), typically fall through: `sk.texture` from Lua throws a bare `java.lang.RuntimeException` with no message, no line, no stack in the `/reload` reply.
+
+Signs you've hit this:
+
+- `curl … /reload` returns `ERROR:  java.lang.RuntimeException` (two spaces, no colon-message).
+- Wrapping the access in `pcall` gives `err = " java.lang.RuntimeException"` — Kahlua strips the detail before returning.
+- The class has no `@class Foo` block under `../project-zomboid-base/src/main/lua/stubs/` (Storm's `LuaTypeStubGenerator` writes one per LuaExposer-registered class — its absence is the reliable signal).
+- `luajava` / `luajava.bindClass` are NOT available in PZ's Kahlua build, so you can't reflect around it from Lua.
+
+Fixes, in order of preference:
+
+1. **Ship the value from the server / mod Java side.** If the class is opaque to Kahlua but you own a Java handler that already sees it, pack the value into a `KahluaTable` and send it over `sendServerCommand` (or attach it to whatever payload the client already reads). The ATF economy pattern is `AdminStoreBridge.buildSkinNamesTable` — server iterates `VehicleScript.getSkin(i).texture` in Java, writes strings into a `KahluaTable`, and clients read `row.skinNames[i+1]` with no Kahlua field access at all.
+2. **Read it from `java-eval-hot-reload` instead.** A `/eval` `EvalScript.run()` runs as Java, so `sk.texture` works fine — good for one-shot inspection.
+3. **Grep for an accessor method** (`getTexture`, `getX`, `getName`, …). Method calls go through Kahlua's method dispatch, which handles more classes than field lookup does. Only some classes have them.
+
 ## When to use the other workflow
 
 For state only reachable from Java (private fields, Storm internals, JNA/FMOD), overloaded/generic methods, or anything not exposed to Lua, use `java-eval-hot-reload` instead.
