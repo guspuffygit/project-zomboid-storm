@@ -3,6 +3,8 @@ package io.pzstorm.storm.advice.netdatadraincap;
 import io.pzstorm.storm.metrics.NetDataMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
+import zombie.network.ZomboidNetData;
+import zombie.network.ZomboidNetDataPool;
 
 /**
  * Per-spin wall-clock cap for {@code GameServer.mainLoopDealWithNetData}.
@@ -15,10 +17,14 @@ import zombie.network.GameServer;
  * new burst with a fresh budget.
  *
  * <p>Dropped packets behave like overflow from the existing vehicle-queue cap ({@code
- * GameServer.java:902-915}): they are not re-queued. Clients re-send reliable packets via RakNet
- * retransmission, so connection-handshake packets (LoginPacket → ConnectionDetails) are not lost in
- * practice. Per-tick player-update packets are best-effort and the client interpolates over a
- * single missed update.
+ * GameServer.java:902-915}): they are not re-queued, and they are gone for good — by the time a
+ * packet reaches this queue RakNet has already ACKed it at the transport layer, so RakNet
+ * retransmission never covers an application-level drop, reliable or not. What bounds the damage is
+ * that the bulk of the per-spin drain volume is periodic state (player updates, zombie/animal sync,
+ * pings) regenerated every tick; a one-shot reliable packet (item transaction, action, chat) lost
+ * while the cap is engaged desyncs until the next authoritative resync — the same tradeoff vanilla
+ * accepts when its 70&nbsp;ms cycle cap drops the tail of the vehicle queue, VehiclePhysicsReliable
+ * included.
  *
  * <p>Gated on {@link GameServer#server} as defense-in-depth; the patch itself is registered only
  * when {@link io.pzstorm.storm.util.StormEnv#isStormServer()} (HARD RULE: no Storm patches on the
@@ -27,7 +33,7 @@ import zombie.network.GameServer;
 public class MainLoopDrainCapAdvice {
 
     @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
-    public static boolean onEnter() {
+    public static boolean onEnter(@Advice.Argument(0) ZomboidNetData data) {
         if (!GameServer.server) {
             return false;
         }
@@ -41,6 +47,12 @@ public class MainLoopDrainCapAdvice {
         }
         if (now - MainLoopDrainCap.burstStartNanos > cap) {
             NetDataMetrics.recordDeferred();
+            // The skipped body's own drop paths end in ZomboidNetDataPool.instance.discard(d);
+            // without this every deferral strands a pooled 2 KB ZomboidNetData, so a sustained
+            // burst drains the pool and turns every later packet into a fresh allocation.
+            if (data != null) {
+                ZomboidNetDataPool.instance.discard(data);
+            }
             return true;
         }
         return false;

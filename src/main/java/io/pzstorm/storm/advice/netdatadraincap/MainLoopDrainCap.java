@@ -13,9 +13,12 @@ import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
  *
  * <p>The cap implemented here bounds the cumulative wall-clock time spent in {@code
  * mainLoopDealWithNetData} per outer-loop spin. Once {@link #burstStartNanos} + cap is exceeded,
- * subsequent calls in the same spin short-circuit (the packet is dropped, same as the vehicle
- * queue's existing overflow behavior at {@code GameServer.java:902-915}). Clients re-send reliable
- * packets on RakNet, so dropped HIGH packets are not lost in practice.
+ * subsequent calls in the same spin short-circuit (the packet is dropped and returned to the pool,
+ * same as the vehicle queue's existing overflow behavior at {@code GameServer.java:902-915}).
+ * Dropped packets are NOT retransmitted — RakNet ACKed them at the transport layer before they were
+ * queued, whatever their declared reliability — so while the cap is engaged one-shot reliable
+ * packets are lost, not deferred; see {@link MainLoopDrainCapAdvice} for why that tradeoff is
+ * accepted.
  *
  * <p>"Spin boundary" is detected by a gap of more than {@link #BURST_GAP_NANOS} between consecutive
  * advice invocations. Calls within the same drain section happen back-to-back (sub-microsecond

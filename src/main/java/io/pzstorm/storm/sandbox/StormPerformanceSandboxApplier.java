@@ -11,7 +11,10 @@ import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
+import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
+import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 import zombie.SandboxOptions;
 import zombie.network.GameServer;
@@ -30,6 +33,10 @@ public final class StormPerformanceSandboxApplier {
 
     public static final String OPT_SERVER_FPS = "Storm.ServerFps";
     public static final String OPT_ANIMAL_LOS_TICK_INTERVAL = "Storm.AnimalLOSTickInterval";
+    public static final String OPT_VIRTUAL_ANIMAL_TICK_INTERVAL = "Storm.VirtualAnimalTickInterval";
+    public static final String OPT_ZOMBIE_AUTH_TICK_INTERVAL = "Storm.ZombieAuthTickInterval";
+    public static final String OPT_INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
+            "Storm.InventoryItemSweepTickInterval";
     public static final String OPT_ZOMBIE_CULL_THRESHOLD = "Storm.ZombieCullThreshold";
     public static final String OPT_SERVER_LOS_THREADS = "Storm.ServerLosThreads";
     public static final String OPT_NETDATA_CAP_MS = "Storm.NetDataCapMs";
@@ -65,6 +72,9 @@ public final class StormPerformanceSandboxApplier {
         }
         applyServerFps();
         applyAnimalLosTickInterval();
+        applyVirtualAnimalTickInterval();
+        applyZombieAuthTickInterval();
+        applyInventoryItemSweepTickInterval();
         applyZombieCullThreshold();
         applyServerLosThreads();
         applyNetDataCapMs();
@@ -77,13 +87,16 @@ public final class StormPerformanceSandboxApplier {
 
     /**
      * Pushes {@link #OPT_SERVER_FPS} through {@link ServerFpsConfig#applyUnifiedFps(int)}. Called
-     * from {@link #applyAll()} (boot + admin push) and from {@link UpdateLimitFactory#create(long)}
-     * once the server tick limiter is installed.
+     * from {@link #applyAll()} (boot + admin push) and from {@link
+     * io.pzstorm.storm.patch.networking.ServerLockFpsConfig#applyServerLockFps(int)} — the
+     * substituted {@code PerformanceSettings.setLockFPS(10)} call at {@code GameServer.main()} line
+     * 823, which runs immediately after {@link UpdateLimitFactory#create(long)} installs the tick
+     * limiter at line 822.
      *
      * <p>{@code OnServerStartedEvent} fires inside {@code GameServer.startServer()} at line 1513,
      * before the patched {@code new UpdateLimit(100L)} at {@code GameServer.main()} line 822. The
      * first call from {@link #applyAll()} therefore arrives with no limiter installed; it returns
-     * silently and waits for {@code UpdateLimitFactory.create()} to re-invoke this method.
+     * silently and waits for the {@code applyServerLockFps} boot seam to re-invoke this method.
      */
     public static void applyServerFps() {
         Integer value = readIntOption(OPT_SERVER_FPS);
@@ -102,6 +115,30 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         AnimalLOSTickInterval.setTickInterval(value);
+    }
+
+    private static void applyVirtualAnimalTickInterval() {
+        Integer value = readIntOption(OPT_VIRTUAL_ANIMAL_TICK_INTERVAL);
+        if (value == null) {
+            return;
+        }
+        VirtualAnimalTickInterval.setTickInterval(value);
+    }
+
+    private static void applyZombieAuthTickInterval() {
+        Integer value = readIntOption(OPT_ZOMBIE_AUTH_TICK_INTERVAL);
+        if (value == null) {
+            return;
+        }
+        ZombieAuthTickInterval.setTickInterval(value);
+    }
+
+    private static void applyInventoryItemSweepTickInterval() {
+        Integer value = readIntOption(OPT_INVENTORY_ITEM_SWEEP_TICK_INTERVAL);
+        if (value == null) {
+            return;
+        }
+        InventoryItemSweepTickInterval.setTickInterval(value);
     }
 
     private static void applyZombieCullThreshold() {

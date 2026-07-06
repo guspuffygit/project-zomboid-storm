@@ -10,7 +10,10 @@ import io.pzstorm.storm.event.lua.OnServerStartedEvent;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
+import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
+import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.RuntimeMXBean;
@@ -170,6 +173,12 @@ public final class StormStartupAnalytics {
         sb.append("\nServer FPS           : ").append(ServerLockFpsConfig.getCurrentLockFps());
         sb.append("\nAnimal LOS interval  : ")
                 .append(AnimalLOSTickInterval.getCurrentTickInterval());
+        sb.append("\nVirtual animal intvl : ")
+                .append(VirtualAnimalTickInterval.getCurrentTickInterval());
+        sb.append("\nZombie auth interval : ")
+                .append(ZombieAuthTickInterval.getCurrentTickInterval());
+        sb.append("\nItem sweep interval  : ")
+                .append(InventoryItemSweepTickInterval.getCurrentTickInterval());
         sb.append("\nZombie cull thresh.  : ").append(StormZombieCullConfig.getThreshold());
         sb.append("\nServer LOS threads   : ").append(StormServerLosConfig.threads());
         sb.append("\n```");

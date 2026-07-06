@@ -89,9 +89,14 @@ Set a non-default in the world's `<SaveName>.ini`, start the server, and hit `/m
 |---|---|---|
 | `Storm.ServerFps` | `ServerFpsConfig#applyUnifiedFps` | Server fps. Sets `tickIntervalMs = round(1000 / fps)`, `PerformanceSettings.getLockFPS()` on the server, and the `IsoPhysicsObject.update()` fps scalar. Vanilla 10. |
 | `Storm.AnimalLOSTickInterval` | `AnimalLOSTickInterval#setTickInterval` | Per-animal stride for `IsoAnimal.updateLOS()`. 1 = vanilla every tick; 0 disables. |
+| `Storm.VirtualAnimalTickInterval` | `VirtualAnimalTickInterval#setTickInterval` | Stride for the whole `AnimalZones.updateVirtualAnimals()` pass, with `GameTime.perObjectMultiplier` compensation on executing ticks. 1 = vanilla; 0 freezes virtual animals. Max 16. |
+| `Storm.ZombieAuthTickInterval` | `ZombieAuthTickInterval#setTickInterval` | Per-zombie stride for the unowned-zombie ownership rescan in `NetworkZombieManager.updateAuth()`. Owned zombies keep vanilla's 2 s gate. 1 = vanilla; min 1 (never disabled), max 16. |
+| `Storm.InventoryItemSweepTickInterval` | `InventoryItemSweepTickInterval#setTickInterval` | Stride for the orphaned-item GC sweep in `InventoryItemSystem.update()`. 1 = vanilla; min 1 (never disabled), max 64. |
 | `Storm.ZombieCullThreshold` | `StormZombieCullConfig#setThreshold` | Storm cull threshold. 500 = vanilla cap; 0 disables culling. |
 | `Storm.ServerLosThreads` | `StormServerLosConfig#setThreads` | Concurrent ServerLOS worker count (1–16). Pool always pre-allocates 15 helpers; this only controls how many receive work per tick. |
 | `Storm.NetDataCapMs` | `MainLoopDrainCap#setCapMs` | Per-outer-loop-spin wall-clock cap (ms) on `GameServer.mainLoopDealWithNetData`. 0 disables; default 90. |
 | `Storm.PeerSendBufferKickMb` | `PeerSendBufferKickConfig#setKickMb` | Per-peer HIGH send-buffer kick threshold (MB). 0 disables the watchdog. |
 | `Storm.PeerSendBufferKickHoldTicks` | `PeerSendBufferKickConfig#setHoldTicks` | Consecutive server ticks the peer's HIGH send buffer must stay above the kick threshold before disconnect fires. |
 | `Storm.ScreenshotPiecesPerPacket` | `StormScreenshotConfig#setPiecesPerPacket` | Base64 pieces (24573 bytes each) packed into a single `sendClientCommand` packet during a client `/screenshot` upload. Client-side read via `SandboxVars.Storm.ScreenshotPiecesPerPacket` in `StormScreenshot.lua`; this Java mirror exists only for the gauge. |
+| `Storm.ScreenshotUploadKbPerSec` | `StormScreenshotConfig#setUploadKbPerSec` | Wall-clock cap (KiB/s) on a client's `/screenshot` upload stream — the disconnect fix. |
+| `Storm.ScreenshotEncodeKbPerTick` | `StormScreenshotConfig#setEncodeKbPerTick` | Source KiB base64-encoded per client tick during a `/screenshot` upload — the client-lag fix. |

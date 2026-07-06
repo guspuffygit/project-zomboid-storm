@@ -7,8 +7,9 @@ import io.pzstorm.storm.metrics.StormCellWarmingMetrics;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,12 +52,19 @@ import zombie.popman.ZombiePopulationManager;
  * {@code ServerCell.Unload} stays untouched (vanilla destructive behavior) because it's used by the
  * shutdown save flow; warming is invoked from postupdate only.
  *
+ * <p>The warm set is bounded by {@link StormCellWarmingConfig#maxWarmCells()}; when exceeded, the
+ * least-recently-warm cells are restored and destructively unloaded via the vanilla path (see
+ * {@link #evictOverBudget(ServerMap, boolean)}).
+ *
  * <p>Gated server-side on {@link StormCellWarmingConfig#isEnabled()}. Single-threaded — all calls
  * happen from the server main thread.
  */
 public final class StormCellWarmer {
 
-    private static final Map<Long, WarmCell> WARM_CELLS = new HashMap<>();
+    // Insertion order == warm order (rewarm removes, a later warm re-inserts), so the head of the
+    // map is always the least-recently-warm cell — the eviction candidate when the set exceeds
+    // StormCellWarmingConfig.maxWarmCells().
+    private static final Map<Long, WarmCell> WARM_CELLS = new LinkedHashMap<>();
 
     // Identity-backed set of every animal currently inside a warmed cell. Maintained alongside
     // WARM_CELLS by drainAnimals / restoreAnimals so MovingObjectSchedulerBucketAddAdvice can
@@ -176,8 +184,12 @@ public final class StormCellWarmer {
 
                 if (warm) {
                     if (shouldBeLoaded) {
-                        rewarm(cell);
-                        cell.update();
+                        // Only update on successful rewarm — a failed rewarm leaves the cell in
+                        // the warm map with chunks possibly half-attached, and update() on that
+                        // state would tick disconnected chunks.
+                        if (rewarm(cell)) {
+                            cell.update();
+                        }
                     }
                     // else: stay warm — skip both Unload and update.
                     continue;
@@ -211,6 +223,7 @@ public final class StormCellWarmer {
                     cell.update();
                 }
             }
+            pathfindPaused = evictOverBudget(serverMap, pathfindPaused);
         } catch (Throwable t) {
             StormLogger.LOGGER.error("StormCellWarmer.runPostUpdate failed", t);
         } finally {
@@ -316,16 +329,7 @@ public final class StormCellWarmer {
         }
         long opStart = System.nanoTime();
         try {
-            for (int cx = 0; cx < 8; cx++) {
-                for (int cy = 0; cy < 8; cy++) {
-                    IsoChunk chunk = cell.chunks[cx][cy];
-                    if (chunk != null) {
-                        reconnectChunk(chunk);
-                    }
-                }
-            }
-            restoreAnimals(warm.animals);
-            restoreDeadBodies(warm.deadBodies);
+            reconnectAndRestore(cell, warm);
 
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
@@ -352,6 +356,74 @@ public final class StormCellWarmer {
             StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
             return false;
         }
+    }
+
+    private static void reconnectAndRestore(ServerMap.ServerCell cell, WarmCell warm) {
+        for (int cx = 0; cx < 8; cx++) {
+            for (int cy = 0; cy < 8; cy++) {
+                IsoChunk chunk = cell.chunks[cx][cy];
+                if (chunk != null) {
+                    reconnectChunk(chunk);
+                }
+            }
+        }
+        restoreAnimals(warm.animals);
+        restoreDeadBodies(warm.deadBodies);
+    }
+
+    /**
+     * Memory bound on the warm set. A warm cell keeps its full chunk/square state resident, so
+     * without a cap the map grows with every cell any player has ever walked away from. Evicts
+     * least-recently-warm cells above {@link StormCellWarmingConfig#maxWarmCells()} through the
+     * vanilla destructive path: reconnect + restore first, so the pop managers virtualize animals
+     * and the chunk save jobs persist state exactly as a vanilla Unload of a live cell would.
+     *
+     * <p>Everything still in {@code WARM_CELLS} at this point was not relevant this tick (relevant
+     * cells were rewarmed by the caller's loop), so evicting the oldest is always safe.
+     *
+     * @return updated pathfindPaused flag — caller's finally block resumes ServerLOS.
+     */
+    private static boolean evictOverBudget(ServerMap serverMap, boolean pathfindPaused) {
+        int max = StormCellWarmingConfig.maxWarmCells();
+        if (max <= 0) {
+            return pathfindPaused;
+        }
+        boolean evicted = false;
+        while (WARM_CELLS.size() > max) {
+            Iterator<WarmCell> it = WARM_CELLS.values().iterator();
+            WarmCell oldest = it.next();
+            it.remove();
+            ServerMap.ServerCell cell = oldest.cell;
+            try {
+                // No OnChunkRewarmedEvent here — these chunks are leaving the world, not
+                // re-entering the active set; mods must not be told they are live again.
+                reconnectAndRestore(cell, oldest);
+            } catch (Throwable t) {
+                StormLogger.LOGGER.error(
+                        "StormCellWarmer eviction restore failed for cell {},{} — unloading anyway",
+                        cell.wx,
+                        cell.wy,
+                        t);
+            }
+            if (!pathfindPaused) {
+                ServerLOS.instance.suspend();
+                pathfindPaused = true;
+            }
+            int x = cell.wx - serverMap.getMinX();
+            int y = cell.wy - serverMap.getMinY();
+            int width = serverMap.getMaxX() - serverMap.getMinX() + 1;
+            cell.Unload();
+            serverMap.cellMap[y * width + x] = null;
+            serverMap.loadedCells.remove(cell);
+            evicted = true;
+            StormCellWarmingMetrics.incCellsEvicted();
+            StormCellWarmingMetrics.recordWarmDurationNanos(
+                    System.nanoTime() - oldest.warmedAtNanos);
+        }
+        if (evicted) {
+            StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
+        }
+        return pathfindPaused;
     }
 
     // Re-implementation of ServerMap.outsidePlayerInfluence(ServerCell) which is private. Kept

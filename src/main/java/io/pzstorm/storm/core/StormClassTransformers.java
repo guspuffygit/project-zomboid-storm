@@ -74,6 +74,7 @@ import io.pzstorm.storm.patch.performance.GameServerNetDataPatch;
 import io.pzstorm.storm.patch.performance.GlobalModDataSavePatch;
 import io.pzstorm.storm.patch.performance.ImportantAreaManagerProcessPatch;
 import io.pzstorm.storm.patch.performance.IngameStateUpdatePatch;
+import io.pzstorm.storm.patch.performance.InventoryItemSweepStridePatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
 import io.pzstorm.storm.patch.performance.IsoCellObjectDeletionAdditionPatch;
@@ -129,6 +130,7 @@ import io.pzstorm.storm.patch.performance.PolygonalMap2RemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePlayerCountPatch;
 import io.pzstorm.storm.patch.performance.RCONServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.RandAdjustForFrameratePatch;
 import io.pzstorm.storm.patch.performance.RemoveAnimalsPatch;
 import io.pzstorm.storm.patch.performance.RemoveDeadBodiesPatch;
 import io.pzstorm.storm.patch.performance.RemoveVehiclesPatch;
@@ -162,12 +164,15 @@ import io.pzstorm.storm.patch.performance.TradingManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.TryAddIndoorZombiesPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
+import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdateOptPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.VirtualAnimalStridePatch;
 import io.pzstorm.storm.patch.performance.WarManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.WorldMapServerWriteSavefilePatch;
 import io.pzstorm.storm.patch.performance.WorldMapVisitedServerUpdatePatch;
 import io.pzstorm.storm.patch.performance.WorldSimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ZipBackupOnPeriodPatch;
+import io.pzstorm.storm.patch.performance.ZombieAuthStridePatch;
 import io.pzstorm.storm.patch.performance.ZombieCullDisablePatch;
 import io.pzstorm.storm.patch.performance.ZombieCullThresholdPatch;
 import io.pzstorm.storm.patch.performance.ZombieGroupManagerPreupdatePatch;
@@ -237,57 +242,59 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalCanClimbStairsNullDefGuardPatch());
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
-        registerTransformer(new GameServerTickRatePatch());
-        registerTransformer(new GameServerLockFpsPatch());
-        registerTransformer(new IsoPhysicsObjectFpsPatch());
-        registerTransformer(new IsoGeneratorElectricityPatch());
-        registerTransformer(new IsoAnimalUpdateTimingPatch());
-        registerTransformer(new IsoChunkRemoveFromWorldPatch());
-        registerTransformer(new CellAddToProcessObjectFastPatch());
-        registerTransformer(new CellAddToProcessObjectRemoveFastPatch());
-        registerTransformer(new CellAddToStaticUpdaterFastPatch());
-        registerTransformer(new CellProcessIsoObjectFlushPatch());
-        registerTransformer(new IsoObjectRemoveFromWorldPatch());
-        registerTransformer(new IsoObjectStaticUpdaterRemoveSubstPatch());
+        // Server-only: IsoGenerator also executes on the client JVM (HARD RULE). The advice
+        // gates on GameServer.server, so gating registration is behavior-preserving.
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new IsoGeneratorElectricityPatch());
+            registerTransformer(new IsoAnimalUpdateTimingPatch());
+            registerTransformer(new IsoChunkRemoveFromWorldPatch());
+            registerTransformer(new CellAddToProcessObjectFastPatch());
+            registerTransformer(new CellAddToProcessObjectRemoveFastPatch());
+            registerTransformer(new CellAddToStaticUpdaterFastPatch());
+            registerTransformer(new CellProcessIsoObjectFlushPatch());
+            registerTransformer(new IsoObjectRemoveFromWorldPatch());
+            registerTransformer(new IsoObjectStaticUpdaterRemoveSubstPatch());
+        }
         registerTransformer(new ServerCellUnloadPatch());
-        registerTransformer(new IsoAnimalUpdateLOSPatch());
-        registerTransformer(new IsoPlayerUpdateLOSPatch());
         registerTransformer(new ServerLOSUpdatePatch());
         registerTransformer(new ServerLOSFindDataPatch());
         registerTransformer(new ServerLOSIsCouldSeePatch());
         registerTransformer(new ServerLOSRemovePlayerPatch());
-        registerTransformer(new StatsGetPatch());
-        registerTransformer(new IsoPlayerUpdateRemotePatch());
-        registerTransformer(new TestZombieSpotPlayerPatch());
-        registerTransformer(new VehicleManagerServerUpdatePatch());
-        registerTransformer(new VehicleManagerSendVehiclesPatch());
-        registerTransformer(new BaseVehicleUpdatePatch());
-        registerTransformer(new GameServerNetDataPatch());
-        registerTransformer(new IsoChunkLoadPatch());
-        registerTransformer(new IsoChunkSavePatch());
-        registerTransformer(new BitHeaderGetHeaderPatch());
-        registerTransformer(new BitHeaderByteReleasePatch());
-        registerTransformer(new BitHeaderShortReleasePatch());
-        registerTransformer(new BitHeaderIntReleasePatch());
-        registerTransformer(new BitHeaderLongReleasePatch());
-        registerTransformer(new ServerMapPostUpdatePatch());
-        registerTransformer(new UsingPlayerUpdatePatch());
-        registerTransformer(new GameEntityManagerUpdatePatch());
-        registerTransformer(new NetworkZombieManagerAuthPatch());
-        registerTransformer(new AnimalSyncManagerUpdatePatch());
-        registerTransformer(new LuaMainloopPatch());
-        registerTransformer(new IsoWorldUpdatePatch());
-        registerTransformer(new AnimalControllerUpdatePatch());
-        registerTransformer(new ZomboidRadioUpdatePatch());
+        // Server-only: Stats executes on the client JVM (HARD RULE). Unlike most perf advice,
+        // StatsGetAdvice replaces the method body unconditionally (no GameServer.server gate),
+        // so this registration gate is the only thing keeping the client on vanilla bytecode.
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new StatsGetPatch());
+            registerTransformer(new IsoPlayerUpdateRemotePatch());
+            registerTransformer(new IsoPlayerUpdateLOSPatch());
+            registerTransformer(new IsoAnimalUpdateLOSPatch());
+            registerTransformer(new TestZombieSpotPlayerPatch());
+            registerTransformer(new VehicleManagerServerUpdatePatch());
+            registerTransformer(new VehicleManagerSendVehiclesPatch());
+            registerTransformer(new BaseVehicleUpdatePatch());
+            registerTransformer(new GameServerNetDataPatch());
+            registerTransformer(new IsoChunkLoadPatch());
+            registerTransformer(new IsoChunkSavePatch());
+            registerTransformer(new BitHeaderGetHeaderPatch());
+            registerTransformer(new BitHeaderByteReleasePatch());
+            registerTransformer(new BitHeaderShortReleasePatch());
+            registerTransformer(new BitHeaderIntReleasePatch());
+            registerTransformer(new BitHeaderLongReleasePatch());
+            registerTransformer(new ServerMapPostUpdatePatch());
+            registerTransformer(new UsingPlayerUpdatePatch());
+            registerTransformer(new GameEntityManagerUpdatePatch());
+            registerTransformer(new NetworkZombieManagerAuthPatch());
+            registerTransformer(new AnimalSyncManagerUpdatePatch());
+            registerTransformer(new LuaMainloopPatch());
+            registerTransformer(new IsoWorldUpdatePatch());
+            registerTransformer(new AnimalControllerUpdatePatch());
+            registerTransformer(new ZomboidRadioUpdatePatch());
+        }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
         registerTransformer(new KahluaMetatableCachePatch());
 
-        if (StormEnv.isStormServer()) {
-            registerTransformer(new ServerLOSRunInnerPatch());
-            registerTransformer(new IsoGridSquareLosParallelPatch());
-            registerTransformer(new IsoRoomOnSeePatch());
-        }
+        if (StormEnv.isStormServer()) {}
 
         // Client-only: reacts to a client-side packet-ordering race by asking the
         // server to resend full vehicle state. The advice already gates on
@@ -298,11 +305,15 @@ public class StormClassTransformers {
         }
 
         if (StormEnv.isStormServer()) {
+            registerTransformer(new ServerLOSRunInnerPatch());
+            registerTransformer(new IsoGridSquareLosParallelPatch());
+            registerTransformer(new IsoRoomOnSeePatch());
+            registerTransformer(new GameServerTickRatePatch());
+            registerTransformer(new GameServerLockFpsPatch());
+            registerTransformer(new IsoPhysicsObjectFpsPatch());
+            registerTransformer(new RandAdjustForFrameratePatch());
+            registerTransformer(new VehicleManagerServerUpdateOptPatch());
             registerTransformer(new ServerTickPatch());
-            // Caps wall-clock time per outer-loop spin spent in mainLoopDealWithNetData,
-            // protecting world-tick scheduling and outbound send-buffer growth during
-            // connect storms. Must layer on top of GameServerNetDataPatch — registered
-            // above, unconditionally — so its timing advice still runs on un-skipped calls.
             registerTransformer(new MainLoopDrainCapPatch());
             registerTransformer(new ZombieCullDisablePatch());
             registerTransformer(new ZombieCullThresholdPatch());
@@ -412,6 +423,9 @@ public class StormClassTransformers {
             registerTransformer(new StatisticManagerUpdatePatch());
             registerTransformer(new PublicServerUtilUpdatePlayerCountPatch());
             registerTransformer(new CoopSlaveUpdatePatch());
+            registerTransformer(new VirtualAnimalStridePatch());
+            registerTransformer(new ZombieAuthStridePatch());
+            registerTransformer(new InventoryItemSweepStridePatch());
         }
 
         // Register generic packet event dispatching for all supported packet types

@@ -44,10 +44,11 @@ import zombie.network.ServerMap;
  * {@code @Advice.FieldValue} on the private static &mdash; same source of truth, public API, no
  * Byte Buddy field-binding edge cases.
  *
- * <p>{@code totalPowerUsing} guard: this field is not persisted by {@code save()/load()} (it
- * defaults to {@code 0.0F} on every world load) and is the multiplier for fuel drain in {@code
- * update()}'s hourly loop &mdash; if it stays at {@code 0}, fuel never decreases. The first call to
- * {@code setSurroundingElectricity()} sets the baseline {@code 0.02F}, so the guard below lets the
+ * <p>{@code totalPowerUsing} guard: on load, vanilla restores this field from modData {@code
+ * "totalPowerDraw"} only when that key is present &mdash; older saves and freshly placed generators
+ * start at {@code 0.0F}. It is the multiplier for fuel drain in {@code update()}'s hourly loop
+ * &mdash; if it stays at {@code 0}, fuel never decreases. The first call to {@code
+ * setSurroundingElectricity()} sets the baseline {@code 0.02F}, so the guard below lets the
  * original method run when {@code totalPowerUsing <= 0}, then the cheap path takes over once the
  * baseline is set.
  *
@@ -81,7 +82,10 @@ public class SkipServerScanAdvice {
         }
 
         int generatorRadius = SandboxOptions.getInstance().generatorTileRange.getValue();
-        int generatorChunkRange = generatorRadius / 10 + 1;
+        // Must match vanilla IsoGenerator.setGeneratorRange(): chunks are 8 tiles wide, so the
+        // divisor is 8. A larger divisor under-covers the chunk box for many GeneratorTileRange
+        // values (e.g. 16-19, 24-29), leaving edge chunks without addGeneratorPos bookkeeping.
+        int generatorChunkRange = generatorRadius / 8 + 1;
 
         int chunkX = myChunk.wx;
         int chunkY = myChunk.wy;

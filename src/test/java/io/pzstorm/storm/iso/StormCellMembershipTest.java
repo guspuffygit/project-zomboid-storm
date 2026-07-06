@@ -178,6 +178,88 @@ class StormCellMembershipTest implements UnitTest {
         assertSame(b, list.get(0));
     }
 
+    // -------- staticUpdater: bypass-mutation healing --------
+    // Vanilla IsoDeadBody.setReanimateTime and StormCellWarmer.drainDeadBodies mutate
+    // staticUpdaterObjectList directly, shifting positions under the sidecar. The sidecar
+    // must detect the divergence (size mismatch or stale slot) and rebuild instead of
+    // trusting stale indices.
+
+    @Test
+    void directRemoveBypassIsHealedOnNextRemoval() throws Exception {
+        IsoObject a = newObject();
+        IsoObject b = newObject();
+        IsoObject c = newObject();
+        ArrayList<IsoObject> list = new ArrayList<>();
+        StormCellMembership.addToStaticUpdaterObjectList(cell, a, list);
+        StormCellMembership.addToStaticUpdaterObjectList(cell, b, list);
+        StormCellMembership.addToStaticUpdaterObjectList(cell, c, list);
+
+        // Bypass: IsoDeadBody.setReanimateTime-style direct remove shifts b and c left.
+        list.remove(a);
+
+        assertTrue(StormCellMembership.removeStaticUpdater(cell, b, list));
+        // b must be removed — not c, which a stale index (b was recorded at slot 1,
+        // where c now lives) would have swapped out instead.
+        assertEquals(1, list.size());
+        assertSame(c, list.get(0));
+        assertEquals(0, StormCellMembership.staticUpdaterIndexFor(cell, c));
+        assertNull(StormCellMembership.staticUpdaterIndexFor(cell, a));
+        assertNull(StormCellMembership.staticUpdaterIndexFor(cell, b));
+    }
+
+    @Test
+    void directAddBypassDoesNotDuplicateOnSidecarAdd() throws Exception {
+        IsoObject a = newObject();
+        ArrayList<IsoObject> list = new ArrayList<>();
+
+        // Bypass: direct append without touching the sidecar.
+        list.add(a);
+
+        StormCellMembership.addToStaticUpdaterObjectList(cell, a, list);
+
+        // Vanilla contains() would have suppressed the duplicate; the sidecar must too.
+        assertEquals(1, list.size());
+        assertSame(a, list.get(0));
+        assertEquals(0, StormCellMembership.staticUpdaterIndexFor(cell, a));
+    }
+
+    @Test
+    void directRemoveThenSidecarReAddRestoresMembership() throws Exception {
+        // StormCellWarmer drain/restore cycle: drain removes the body directly from the
+        // list, restore re-adds it through the patched path. The stale index entry left
+        // by the drain must not suppress the re-add.
+        IsoObject body = newObject();
+        ArrayList<IsoObject> list = new ArrayList<>();
+        StormCellMembership.addToStaticUpdaterObjectList(cell, body, list);
+
+        list.remove(body);
+        StormCellMembership.addToStaticUpdaterObjectList(cell, body, list);
+
+        assertEquals(1, list.size());
+        assertSame(body, list.get(0));
+        assertEquals(0, StormCellMembership.staticUpdaterIndexFor(cell, body));
+    }
+
+    @Test
+    void staleSlotWithMatchingSizesStillRemovesRightElement() throws Exception {
+        IsoObject a = newObject();
+        IsoObject b = newObject();
+        ArrayList<IsoObject> list = new ArrayList<>();
+        StormCellMembership.addToStaticUpdaterObjectList(cell, a, list);
+        StormCellMembership.addToStaticUpdaterObjectList(cell, b, list);
+
+        // Bypass mutation that keeps sizes equal but moves elements: recorded slots are
+        // stale while the size-lockstep check cannot fire.
+        list.set(0, b);
+        list.set(1, a);
+
+        assertTrue(StormCellMembership.removeStaticUpdater(cell, a, list));
+        assertEquals(1, list.size());
+        assertSame(b, list.get(0));
+        assertEquals(0, StormCellMembership.staticUpdaterIndexFor(cell, b));
+        assertNull(StormCellMembership.staticUpdaterIndexFor(cell, a));
+    }
+
     // -------- processIsoObject set semantics --------
 
     @Test

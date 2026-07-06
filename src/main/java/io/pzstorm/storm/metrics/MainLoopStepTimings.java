@@ -21,9 +21,12 @@ import org.slf4j.Logger;
  * {@code debug.log}.
  *
  * <p>Gated by {@code -Dstorm.mainloop.timings=true}. Off by default; when off, {@link #enabled()}
- * is {@code false} and the recording path is a no-op (the per-step advices short-circuit before
- * reading {@code nanoTime}). Server-only by registration — the patches that feed this are
- * registered under the {@code StormEnv.isStormServer()} gate in {@code StormClassTransformers}.
+ * is {@code false} and {@link #record}, {@link #beginTick} and {@link #markFrameStepEnd} are no-ops
+ * ({@code ENABLED} is {@code static final}, so the JIT folds the guard and dead-codes the bodies).
+ * The per-step advices themselves still pay two {@code System.nanoTime()} reads per call (they gate
+ * only on {@code GameServer.server} — several also feed always-on Prometheus metrics that need the
+ * elapsed time regardless of this flag). Server-only by registration — the patches that feed this
+ * are registered under the {@code StormEnv.isStormServer()} gate in {@code StormClassTransformers}.
  */
 public final class MainLoopStepTimings {
 
@@ -195,7 +198,8 @@ public final class MainLoopStepTimings {
         sb.append(" steps=").append(entries.size());
         for (Map.Entry<String, AtomicLong> e : entries) {
             long stepNanos = e.getValue().get();
-            long calls = STEP_CALLS.getOrDefault(e.getKey(), new AtomicLong()).get();
+            AtomicLong callCounter = STEP_CALLS.get(e.getKey());
+            long calls = callCounter != null ? callCounter.get() : 0L;
             sb.append(" | ").append(e.getKey()).append('=').append(fmtMs(stepNanos));
             if (calls > 1L) {
                 sb.append('x').append(calls);

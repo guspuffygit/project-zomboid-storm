@@ -8,8 +8,8 @@ import net.bytebuddy.asm.Advice;
  * ({@code roomSpotted}, {@code StashSystem.visitedBuilding}, {@code RoomDef.explored}) that vanilla
  * already invokes repeatedly but never concurrently. Under parallel LOS, two workers can enter
  * {@code onSee} for the same building at once; this guard takes a global lock so those calls run
- * one at a time, matching the single-threaded execution they were written for. No-op at {@code
- * threads < 2}, so the default path is untouched.
+ * one at a time, matching the single-threaded execution they were written for. No-op while no
+ * parallel batch is in flight, so the default single-threaded path is untouched.
  */
 public class IsoRoomOnSeeAdvice {
 

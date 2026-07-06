@@ -136,8 +136,22 @@ public final class StormCellMembership {
             return;
         }
         Entry e = entryFor(cell);
-        if (e.staticUpdaterIndex.containsKey(object)) {
-            return;
+        if (e.staticUpdaterIndex.size() != list.size()) {
+            // A bypass site mutated the list directly (IsoDeadBody.setReanimateTime,
+            // StormCellWarmer.drainDeadBodies); rebuild from the list, the ground truth.
+            reindexStaticUpdater(e, list);
+        }
+        Integer idx = e.staticUpdaterIndex.get(object);
+        if (idx != null) {
+            if (idx >= 0 && idx < list.size() && list.get(idx) == object) {
+                return;
+            }
+            // Stale entry: the recorded slot no longer holds this object. Re-derive
+            // membership from the list before deciding whether this is a duplicate add.
+            reindexStaticUpdater(e, list);
+            if (e.staticUpdaterIndex.containsKey(object)) {
+                return;
+            }
         }
         e.staticUpdaterIndex.put(object, list.size());
         list.add(object);
@@ -164,13 +178,17 @@ public final class StormCellMembership {
      * IsoCell.ProcessStaticUpdaters}, {@code IsoCell:3500}, {@code FBORenderCell:292}, {@code
      * ServerGUI:299}, {@code TutorialManager:54}); none depend on insertion order.
      *
-     * <p>If the sidecar has no entry for {@code object}, falls through to the vanilla {@code
-     * ArrayList.remove(Object)} linear scan. This handles cases where the object was appended
-     * directly to {@code staticUpdaterObjectList} without going through {@code
-     * IsoCell.addToStaticUpdaterObjectList} — notably {@code IsoDeadBody.setReanimateTime}, which
-     * is the one vanilla site that bypasses the patched add path. Without this fallback, those
-     * objects could never be removed by {@code IsoObject.removeFromWorld()}, leaving e.g.
-     * reanimating corpses ticking forever and spawning a zombie per frame.
+     * <p>Bypass sites mutate {@code staticUpdaterObjectList} directly without going through the
+     * patched add path — {@code IsoDeadBody.setReanimateTime} (direct add and direct remove, both
+     * server-reachable) and {@code StormCellWarmer.drainDeadBodies} (direct remove). A direct add
+     * leaves an untracked element; a direct remove shifts every element after the removal point,
+     * invalidating recorded indices. Both are detected here: a size mismatch between the index and
+     * the list, or a recorded slot that no longer holds {@code object}, triggers an O(n) rebuild of
+     * the index from the list before the O(1) swap-with-last removal proceeds. The rebuild only
+     * fires after a bypass mutation, so the hot path (every {@code IsoObject.removeFromWorld()})
+     * stays O(1). Never trust a recorded index without the {@code list.get(i) == object} identity
+     * check — a stale index would swap-remove the wrong element, silently dropping a live static
+     * updater (e.g. a burning fire) from the list.
      */
     public static boolean removeStaticUpdater(
             IsoCell cell, IsoObject object, ArrayList<IsoObject> list) {
@@ -178,15 +196,28 @@ public final class StormCellMembership {
             return false;
         }
         Entry e = entryFor(cell);
-        Integer idx = e.staticUpdaterIndex.remove(object);
+        if (e.staticUpdaterIndex.size() != list.size()) {
+            reindexStaticUpdater(e, list);
+        }
+        Integer idx = e.staticUpdaterIndex.get(object);
         if (idx == null) {
-            return list.remove(object);
+            // Post-reindex the index mirrors the list exactly, so a miss means the object
+            // is genuinely absent — matches vanilla list.remove(object) returning false,
+            // without the O(n) scan (this is the hot path for every removeFromWorld call).
+            return false;
         }
         int i = idx;
         int last = list.size() - 1;
-        if (i < 0 || i > last) {
-            return list.remove(object);
+        if (i < 0 || i > last || list.get(i) != object) {
+            reindexStaticUpdater(e, list);
+            idx = e.staticUpdaterIndex.get(object);
+            if (idx == null) {
+                return false;
+            }
+            i = idx;
+            last = list.size() - 1;
         }
+        e.staticUpdaterIndex.remove(object);
         if (i != last) {
             IsoObject moved = list.get(last);
             list.set(i, moved);
@@ -194,6 +225,18 @@ public final class StormCellMembership {
         }
         list.remove(last);
         return true;
+    }
+
+    /**
+     * Rebuilds {@code staticUpdaterIndex} from the list, the ground truth. Elements are indexed
+     * unconditionally (no null filtering) so the {@code index.size() == list.size()} lockstep
+     * invariant that add/remove use to detect bypass mutations holds after every rebuild.
+     */
+    private static void reindexStaticUpdater(Entry e, ArrayList<IsoObject> list) {
+        e.staticUpdaterIndex.clear();
+        for (int i = 0; i < list.size(); i++) {
+            e.staticUpdaterIndex.put(list.get(i), i);
+        }
     }
 
     /**
@@ -231,14 +274,7 @@ public final class StormCellMembership {
      * code populated the list without going through {@link #addToStaticUpdaterObjectList}.
      */
     public static void primeStaticUpdater(IsoCell cell, ArrayList<IsoObject> list) {
-        Entry e = entryFor(cell);
-        e.staticUpdaterIndex.clear();
-        for (int i = 0; i < list.size(); i++) {
-            IsoObject obj = list.get(i);
-            if (obj != null) {
-                e.staticUpdaterIndex.put(obj, i);
-            }
-        }
+        reindexStaticUpdater(entryFor(cell), list);
     }
 
     /**

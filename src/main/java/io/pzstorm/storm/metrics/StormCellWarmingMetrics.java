@@ -13,6 +13,8 @@ import io.prometheus.metrics.core.metrics.Histogram;
  *   <li>{@code storm_cell_rewarmed_total} — cells re-attached from the warm map (avoided disk read
  *       + binary parse + RecalcAll2).
  *   <li>{@code storm_cell_warm_count} — current number of warm cells held in memory.
+ *   <li>{@code storm_cell_warm_evicted_total} — warm cells destructively unloaded because the warm
+ *       set exceeded {@code -Dstorm.cells.maxWarm}.
  *   <li>{@code storm_cell_warm_eligibility_fail_total} — cells that fell through to vanilla unload
  *       because the eligibility predicate rejected them, labelled by {@code reason}.
  *   <li>{@code storm_cell_warm_duration_seconds} — time a cell spent in warm state before either
@@ -43,6 +45,14 @@ public final class StormCellWarmingMetrics {
             Gauge.builder()
                     .name("storm_cell_warm_count")
                     .help("Current number of cells held warm in memory.")
+                    .register(StormPrometheus.registry());
+
+    private static final Counter CELLS_EVICTED =
+            Counter.builder()
+                    .name("storm_cell_warm_evicted_total")
+                    .help(
+                            "Warm cells destructively unloaded because the warm set exceeded"
+                                    + " -Dstorm.cells.maxWarm.")
                     .register(StormPrometheus.registry());
 
     private static final Counter ELIGIBILITY_FAILS =
@@ -93,6 +103,10 @@ public final class StormCellWarmingMetrics {
 
     public static void setWarmCount(int count) {
         CELLS_WARM_COUNT.set(count);
+    }
+
+    public static void incCellsEvicted() {
+        CELLS_EVICTED.inc();
     }
 
     public static void incEligibilityFail(String reason) {

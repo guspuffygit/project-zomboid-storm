@@ -6,8 +6,11 @@ import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
+import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
+import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 
 /**
@@ -73,6 +76,38 @@ public final class StormPerformanceSandboxMetrics {
                             "Configured per-animal stride for IsoAnimal.updateLOS() on the server."
                                     + " Sourced from the Storm.AnimalLOSTickInterval sandbox option."
                                     + " Vanilla 1 (every tick); 0 = LOS disabled.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge VIRTUAL_ANIMAL_TICK_INTERVAL =
+            Gauge.builder()
+                    .name("storm_virtual_animal_tick_interval")
+                    .help(
+                            "Configured stride for the AnimalZones.updateVirtualAnimals() pass on"
+                                    + " the server (executing ticks compensate via"
+                                    + " GameTime.perObjectMultiplier). Sourced from the"
+                                    + " Storm.VirtualAnimalTickInterval sandbox option. Vanilla 1"
+                                    + " (every tick); 0 = virtual-animal simulation frozen.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ZOMBIE_AUTH_TICK_INTERVAL =
+            Gauge.builder()
+                    .name("storm_zombie_auth_tick_interval")
+                    .help(
+                            "Configured per-zombie stride for the unowned-zombie ownership rescan"
+                                    + " in NetworkZombieManager.updateAuth() on the server. Owned"
+                                    + " zombies keep vanilla's 2s gate. Sourced from the"
+                                    + " Storm.ZombieAuthTickInterval sandbox option. Vanilla 1"
+                                    + " (every tick).")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
+            Gauge.builder()
+                    .name("storm_inventory_item_sweep_tick_interval")
+                    .help(
+                            "Configured stride for the orphaned-item GC sweep in"
+                                    + " InventoryItemSystem.update() on the server. Sourced from"
+                                    + " the Storm.InventoryItemSweepTickInterval sandbox option."
+                                    + " Vanilla 1 (every tick).")
                     .register(StormPrometheus.registry());
 
     private static final Gauge ZOMBIE_CULL_THRESHOLD =
@@ -176,6 +211,10 @@ public final class StormPerformanceSandboxMetrics {
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
         ISO_PHYSICS_SERVER_FPS.set(IsoPhysicsObjectFpsConfig.DEFAULT_PHYSICS_FPS);
         ANIMAL_LOS_TICK_INTERVAL.set(AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL);
+        VIRTUAL_ANIMAL_TICK_INTERVAL.set(VirtualAnimalTickInterval.DEFAULT_TICK_INTERVAL);
+        ZOMBIE_AUTH_TICK_INTERVAL.set(ZombieAuthTickInterval.DEFAULT_TICK_INTERVAL);
+        INVENTORY_ITEM_SWEEP_TICK_INTERVAL.set(
+                InventoryItemSweepTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         NETDATA_CAP_MS.set(0);
@@ -202,6 +241,18 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setAnimalLOSTickInterval(int interval) {
         ANIMAL_LOS_TICK_INTERVAL.set(interval);
+    }
+
+    public static void setVirtualAnimalTickInterval(int interval) {
+        VIRTUAL_ANIMAL_TICK_INTERVAL.set(interval);
+    }
+
+    public static void setZombieAuthTickInterval(int interval) {
+        ZOMBIE_AUTH_TICK_INTERVAL.set(interval);
+    }
+
+    public static void setInventoryItemSweepTickInterval(int interval) {
+        INVENTORY_ITEM_SWEEP_TICK_INTERVAL.set(interval);
     }
 
     public static void setZombieCullThreshold(int threshold) {

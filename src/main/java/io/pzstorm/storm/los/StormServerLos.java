@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.metrics.StormServerLosMetrics;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -95,8 +96,16 @@ public final class StormServerLos {
      */
     private static volatile ThreadPoolExecutor losPool;
 
-    /** Serializes {@code IsoRoom.onSee} across workers (only taken when {@code threads >= 2}). */
+    /** Serializes {@code IsoRoom.onSee} across workers (only taken while a batch is in flight). */
     private static final ReentrantLock ON_SEE_LOCK = new ReentrantLock();
+
+    /**
+     * True while {@link #runBatch} has helper workers in flight. {@link #lockOnSee()} gates on this
+     * rather than on {@link StormServerLosConfig#threads()} because the sandbox applier can lower
+     * {@code threads} mid-batch: a worker dispatched at {@code threads >= 2} must keep locking even
+     * if the option drops to 1 while its scan is still running.
+     */
+    private static volatile boolean parallelBatchActive;
 
     private StormServerLos() {}
 
@@ -192,30 +201,50 @@ public final class StormServerLos {
 
         ThreadPoolExecutor pool = pool();
         Future<?>[] futures = new Future<?>[workers - 1];
-        for (int s = 1; s < workers; s++) {
-            final int slot = s;
-            final int lo = bounds[s];
-            final int hi = bounds[s + 1];
-            futures[s - 1] =
-                    pool.submit(
-                            () -> {
-                                for (int i = lo; i < hi; i++) {
-                                    processPlayer(batch.get(i), slot);
-                                }
-                            });
-        }
-
-        // Slot 0 runs inline on the LOS thread.
-        for (int i = bounds[0]; i < bounds[1]; i++) {
-            processPlayer(batch.get(i), 0);
-        }
-
-        for (Future<?> f : futures) {
+        Throwable failure = null;
+        parallelBatchActive = true;
+        try {
             try {
-                f.get();
-            } catch (Exception e) {
-                throw new IllegalStateException("StormServerLos parallel LOS worker failed", e);
+                for (int s = 1; s < workers; s++) {
+                    final int slot = s;
+                    final int lo = bounds[s];
+                    final int hi = bounds[s + 1];
+                    futures[s - 1] =
+                            pool.submit(
+                                    () -> {
+                                        for (int i = lo; i < hi; i++) {
+                                            processPlayer(batch.get(i), slot);
+                                        }
+                                    });
+                }
+
+                // Slot 0 runs inline on the LOS thread.
+                for (int i = bounds[0]; i < bounds[1]; i++) {
+                    processPlayer(batch.get(i), 0);
+                }
+            } catch (Throwable t) {
+                failure = t;
             }
+            // Join every worker even after a failure: propagating early would let stragglers
+            // from this batch overlap the next one, breaking the one-thread-per-slot invariant
+            // on cachedresults[slot] / lighting[slot].
+            for (Future<?> f : futures) {
+                if (f == null) {
+                    continue;
+                }
+                try {
+                    f.get();
+                } catch (Exception e) {
+                    if (failure == null) {
+                        failure = e;
+                    }
+                }
+            }
+        } finally {
+            parallelBatchActive = false;
+        }
+        if (failure != null) {
+            throw new IllegalStateException("StormServerLos parallel LOS batch failed", failure);
         }
     }
 
@@ -285,9 +314,11 @@ public final class StormServerLos {
     // onSee serialization (used by IsoRoomOnSeeAdvice)
     // ------------------------------------------------------------------------------------------
 
-    /** Acquires the onSee lock when running parallel; returns whether it was taken. */
+    /**
+     * Acquires the onSee lock while a parallel batch is in flight; returns whether it was taken.
+     */
     public static boolean lockOnSee() {
-        if (StormServerLosConfig.threads() < 2) {
+        if (!parallelBatchActive) {
             return false;
         }
         ON_SEE_LOCK.lock();
@@ -341,9 +372,7 @@ public final class StormServerLos {
             byte[][][] cache = ppd.cachedresults;
             for (int x = 0; x < LosUtil.sizeX; x++) {
                 for (int y = 0; y < LosUtil.sizeY; y++) {
-                    for (int z = 0; z < LosUtil.sizeZ; z++) {
-                        cache[x][y][z] = 0;
-                    }
+                    Arrays.fill(cache[x][y], 0, LosUtil.sizeZ, (byte) 0);
                 }
             }
 

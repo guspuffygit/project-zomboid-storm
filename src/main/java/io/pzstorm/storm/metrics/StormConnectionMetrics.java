@@ -123,7 +123,7 @@ public final class StormConnectionMetrics {
                     .help(
                             "Peers force-disconnected by the Storm send-buffer watchdog for"
                                     + " staying above Storm.PeerSendBufferKickMb for"
-                                    + " StormConnectionMetrics.KICK_HOLD_TICKS consecutive ticks."
+                                    + " Storm.PeerSendBufferKickHoldTicks consecutive ticks."
                                     + " Unlabelled to avoid label-cardinality growth; the specific"
                                     + " username is logged at INFO with the kick.")
                     .register(StormPrometheus.registry());
@@ -136,7 +136,7 @@ public final class StormConnectionMetrics {
     /**
      * Iterate {@link GameServer#udpEngine} connections, update every per-peer gauge, and
      * force-disconnect any peer whose HIGH send buffer has been above the watchdog threshold for
-     * {@link #KICK_HOLD_TICKS} consecutive ticks.
+     * {@link PeerSendBufferKickConfig#holdTicks()} consecutive ticks.
      *
      * <p>Called from the server tick (single-threaded, main-thread iteration of the connections
      * list). Any peer that was present last tick but is absent now has its label series set to
