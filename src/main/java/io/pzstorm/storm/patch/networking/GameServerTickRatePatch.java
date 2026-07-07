@@ -224,8 +224,6 @@ public class GameServerTickRatePatch extends StormClassTransformer {
         }
 
         private static String formatTps(long intervalMs) {
-            // Round instead of truncating so the log agrees with
-            // ServerFpsConfig.tickIntervalMsToFps (17ms -> "59", not "58").
             return Long.toString(Math.round(1000.0 / intervalMs));
         }
     }

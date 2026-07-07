@@ -294,7 +294,11 @@ public class StormClassTransformers {
         registerTransformer(new ChatServerProcessWhisperPatch());
         registerTransformer(new KahluaMetatableCachePatch());
 
-        if (StormEnv.isStormServer()) {}
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new ServerLOSRunInnerPatch());
+            registerTransformer(new IsoGridSquareLosParallelPatch());
+            registerTransformer(new IsoRoomOnSeePatch());
+        }
 
         // Client-only: reacts to a client-side packet-ordering race by asking the
         // server to resend full vehicle state. The advice already gates on
@@ -305,9 +309,6 @@ public class StormClassTransformers {
         }
 
         if (StormEnv.isStormServer()) {
-            registerTransformer(new ServerLOSRunInnerPatch());
-            registerTransformer(new IsoGridSquareLosParallelPatch());
-            registerTransformer(new IsoRoomOnSeePatch());
             registerTransformer(new GameServerTickRatePatch());
             registerTransformer(new GameServerLockFpsPatch());
             registerTransformer(new IsoPhysicsObjectFpsPatch());
