@@ -19,7 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * End-to-end test for Storm's developer hot-reload endpoints against a live dedicated server. The
  * server is launched by {@link ServerExtension} with {@code -Dstorm.hotreload=true} and {@code
  * -Dstorm.http.port=}{@link ServerExtension#TEST_HTTP_PORT}, so both {@code POST /reload} and
- * {@code GET /eval} should be registered and reachable.
+ * {@code POST /eval} should be registered and reachable.
  *
  * <p>Only the server execution path is exercised here ({@code GameServer.server} is true, so the
  * endpoints run directly on the HTTP dispatcher thread). The client {@code MainThreadQueue} path
@@ -65,34 +65,57 @@ class HotReloadEndpointsLiveTest implements IntegrationTest {
     }
 
     @Test
-    void evalLoadsAndRunsCompiledScript() throws Exception {
+    void evalRunsPostedClassBytes() throws Exception {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         Assumptions.assumeTrue(
                 compiler != null, "No system Java compiler (running on a JRE) — skipping /eval");
 
-        Path classesDir = ServerExtension.getEvalClassesDir();
-        Assertions.assertNotNull(classesDir, "ServerExtension did not configure eval classes dir");
+        byte[] classBytes = compileEvalScript(compiler, "return \"eval-ok-42\";");
+        HttpResponse<String> response = postEval(classBytes);
 
+        Assertions.assertEquals(200, response.statusCode(), () -> "body: " + response.body());
+        Assertions.assertEquals("eval-ok-42", response.body());
+    }
+
+    @Test
+    void evalRejectsEmptyBody() throws Exception {
+        HttpResponse<String> response = postEval(new byte[0]);
+
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertTrue(
+                response.body().contains("missing EvalScript.class bytes"),
+                "expected missing-body message, got: " + response.body());
+    }
+
+    @Test
+    void evalRejectsNonClassPayload() throws Exception {
+        HttpResponse<String> response = postEval("not a class file".getBytes());
+
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertTrue(
+                response.body().startsWith("ERROR: request body is not a valid Java class file"),
+                "expected 0xCAFEBABE guard message, got: " + response.body());
+    }
+
+    private byte[] compileEvalScript(JavaCompiler compiler, String returnStatement)
+            throws Exception {
         Path srcDir = Files.createTempDirectory("storm-hotreload-eval-src");
+        Path classesDir = Files.createTempDirectory("storm-hotreload-eval-classes");
         Path srcFile = srcDir.resolve("EvalScript.java");
         Files.writeString(
                 srcFile,
                 "public class EvalScript {\n"
                         + "    public static Object run() {\n"
-                        + "        return \"eval-ok-42\";\n"
+                        + "        "
+                        + returnStatement
+                        + "\n"
                         + "    }\n"
                         + "}\n");
-
         int rc = compiler.run(null, null, null, "-d", classesDir.toString(), srcFile.toString());
         Assertions.assertEquals(0, rc, "EvalScript.java failed to compile");
-        Assertions.assertTrue(
-                Files.exists(classesDir.resolve("EvalScript.class")),
-                "EvalScript.class was not produced in " + classesDir);
-
-        HttpResponse<String> response = get("/eval");
-
-        Assertions.assertEquals(200, response.statusCode(), () -> "body: " + response.body());
-        Assertions.assertEquals("eval-ok-42", response.body());
+        Path classFile = classesDir.resolve("EvalScript.class");
+        Assertions.assertTrue(Files.exists(classFile), "EvalScript.class was not produced");
+        return Files.readAllBytes(classFile);
     }
 
     private HttpResponse<String> postReload(String luaSource) throws Exception {
@@ -105,12 +128,13 @@ class HotReloadEndpointsLiveTest implements IntegrationTest {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private HttpResponse<String> get(String path) throws Exception {
+    private HttpResponse<String> postEval(byte[] body) throws Exception {
         HttpRequest request =
                 HttpRequest.newBuilder()
-                        .uri(URI.create(BASE_URL + path))
+                        .uri(URI.create(BASE_URL + "/eval"))
                         .timeout(TIMEOUT)
-                        .GET()
+                        .header("Content-Type", "application/java-vm")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                         .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }

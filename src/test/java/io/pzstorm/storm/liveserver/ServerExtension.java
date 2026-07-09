@@ -57,7 +57,6 @@ public class ServerExtension
     private static Thread outputReaderThread;
     @Getter private static Path logFile;
     @Getter private static Path stormMainLogFile;
-    @Getter private static Path evalClassesDir;
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
@@ -119,11 +118,6 @@ public class ServerExtension
             Files.createSymbolicLink(localModDir, workshopStormDir);
         }
 
-        // Hot-reload endpoints are gated behind -Dstorm.hotreload=true. /eval loads a compiled
-        // EvalScript from this absolute dir (the server JVM's cwd is the server dir, not here).
-        evalClassesDir = buildDir.toPath().resolve("eval-classes").toAbsolutePath();
-        Files.createDirectories(evalClassesDir);
-
         // Pre-populate the world INI with storm enabled before the server boots. PZ creates it
         // on first launch with Mods= empty, then never re-syncs from CLI; without this, Storm's
         // sandbox-options.txt is never loaded and SandboxOptions has no Storm.* entries.
@@ -149,7 +143,6 @@ public class ServerExtension
                                 "-Dstorm.http.port=" + TEST_HTTP_PORT,
                                 "-DprometheusPort=" + TEST_PROMETHEUS_PORT,
                                 "-Dstorm.hotreload=true",
-                                "-Dstorm.hotreload.eval.classes=" + evalClassesDir,
                                 "-Dstorm.server=true",
                                 "-javaagent:" + STORM_BOOTSTRAP_JAR,
                                 "--",

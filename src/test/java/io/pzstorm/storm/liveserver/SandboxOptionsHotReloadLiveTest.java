@@ -155,11 +155,8 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
         Assumptions.assumeTrue(
                 compiler != null, "No system Java compiler (running on a JRE) — skipping");
 
-        Path classesDir = ServerExtension.getEvalClassesDir();
-        Assertions.assertNotNull(classesDir, "ServerExtension did not configure eval classes dir");
-        compileEvalScript(compiler, classesDir);
-
-        HttpResponse<String> evalResp = get(STORM_HTTP_URL + "/eval");
+        byte[] classBytes = compileEvalScript(compiler);
+        HttpResponse<String> evalResp = postEval(classBytes);
         Assertions.assertEquals(200, evalResp.statusCode(), () -> "body: " + evalResp.body());
         Assertions.assertFalse(
                 evalResp.body().startsWith("ERROR:"),
@@ -192,9 +189,9 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
                         + gauge);
     }
 
-    private static void compileEvalScript(JavaCompiler compiler, Path classesDir)
-            throws IOException {
+    private static byte[] compileEvalScript(JavaCompiler compiler) throws IOException {
         Path srcDir = Files.createTempDirectory("storm-sandbox-eval-src");
+        Path classesDir = Files.createTempDirectory("storm-sandbox-eval-classes");
         Path srcFile = srcDir.resolve("EvalScript.java");
         String src =
                 "import io.pzstorm.storm.patch.performance.StormZombieCullConfig;\n"
@@ -243,9 +240,20 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
         Files.writeString(srcFile, src);
         int rc = compiler.run(null, null, null, "-d", classesDir.toString(), srcFile.toString());
         Assertions.assertEquals(0, rc, "EvalScript.java failed to compile");
-        Assertions.assertTrue(
-                Files.exists(classesDir.resolve("EvalScript.class")),
-                "EvalScript.class was not produced in " + classesDir);
+        Path classFile = classesDir.resolve("EvalScript.class");
+        Assertions.assertTrue(Files.exists(classFile), "EvalScript.class was not produced");
+        return Files.readAllBytes(classFile);
+    }
+
+    private HttpResponse<String> postEval(byte[] body) throws Exception {
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create(STORM_HTTP_URL + "/eval"))
+                        .timeout(TIMEOUT)
+                        .header("Content-Type", "application/java-vm")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                        .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static double parsePrometheusGauge(String body, String name) {

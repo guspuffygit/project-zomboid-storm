@@ -42,15 +42,13 @@ They are **off by default** and intended for local development only.
 
 ### Enabling
 
-The endpoints ride on Storm's built-in HTTP server, so you need **both** of the first two flags below.
-`/eval` additionally needs the classes directory.
+The endpoints ride on Storm's built-in HTTP server, so you need both flags below. `/eval` no longer
+needs a classes directory — the caller ships the compiled bytecode in the request body.
 
 | Flag | Purpose |
 |------|---------|
 | `-Dstorm.http.port=<port>` | Starts Storm's HTTP server on `<port>` (required for any endpoint). |
 | `-Dstorm.hotreload=true` | Registers `/reload` and `/eval`. Without it they return `404`. |
-| `-Dstorm.hotreload.eval.classes=<dir>` | Directory holding the compiled `EvalScript.class`. Required by `/eval`. |
-| `-Dstorm.hotreload.eval.source=<dir>` | Optional. Directory holding `EvalScript.java`; enables a staleness guard that fails fast when the source is newer than the compiled class. |
 
 Example (Linux dedicated server, local install):
 
@@ -61,7 +59,6 @@ Example (Linux dedicated server, local install):
   -DstormType=local \
   -Dstorm.http.port=41798 \
   -Dstorm.hotreload=true \
-  -Dstorm.hotreload.eval.classes=/path/to/eval-classes \
   -- \
   -servername yourserver
 ```
@@ -83,13 +80,13 @@ Responses:
 - `ERROR: <message>` — compilation or execution failed (HTTP `200`, body carries the Lua error).
 - `400` — empty request body.
 
-### `GET /eval` — Java
+### `POST /eval` — Java
 
 Write an `EvalScript.java` in the **default package** (no `package` line) with a
-`public static Object run()` method, compile it into the directory named by
-`-Dstorm.hotreload.eval.classes`, then call the endpoint. A fresh classloader is created on every
-request, so each call picks up the latest recompiled class. The script has full access to `zombie.*`
-and `io.pzstorm.*`.
+`public static Object run()` method, compile it locally, and POST the raw `.class` bytes as the
+request body. Storm defines the class in a fresh one-shot `ClassLoader` per request, so each call
+sees exactly the bytecode it posted — no shared directory, no stale-class window. The script has
+full access to `zombie.*` and `io.pzstorm.*`.
 
 ```java
 // EvalScript.java  (default package — no package declaration)
@@ -101,11 +98,14 @@ public class EvalScript {
 ```
 
 ```bash
-# Compile against projectzomboid.jar + the Storm jar, output into the configured classes dir:
-javac -cp '<projectzomboid.jar>:<storm.jar>' -d /path/to/eval-classes EvalScript.java
-curl http://localhost:41798/eval
+# Compile against projectzomboid.jar + the Storm jar, then POST the .class bytes:
+javac -cp '<projectzomboid.jar>:<storm.jar>' -d /tmp/eval EvalScript.java
+curl -X POST --data-binary @/tmp/eval/EvalScript.class \
+  -H 'Content-Type: application/java-vm' \
+  http://localhost:41798/eval
 # -> server=true
 ```
 
-The endpoint returns `String.valueOf(run())`, or an `ERROR:` line with a stack trace if the class is
-missing, stale, or `run()` throws. Both endpoints run on the dedicated-server JVM's HTTP thread.
+The endpoint returns `String.valueOf(run())`, or an `ERROR:` line with a stack trace if the body is
+not a valid class file (missing the `0xCAFEBABE` magic), `defineClass` rejects it, or `run()` throws.
+`400` is returned for an empty body. Both endpoints run on the dedicated-server JVM's HTTP thread.

@@ -1,19 +1,18 @@
 ---
 name: java-eval-hot-reload
-description: Compile a Java snippet and run it in either live Project Zomboid JVM (client or dedicated server) via Storm's built-in `GET /eval` endpoint. Use when you need type-checked, IDE-assisted Java access to game state that Lua can't reach (private fields, Storm internals, JNA/FMOD), or to call overloaded/generic methods cleanly.
+description: Compile a Java snippet and run it in either live Project Zomboid JVM (client or dedicated server) via Storm's built-in `POST /eval` endpoint. Use when you need type-checked, IDE-assisted Java access to game state that Lua can't reach (private fields, Storm internals, JNA/FMOD), or to call overloaded/generic methods cleanly.
 ---
 
 # Java eval hot-reload (Storm built-in)
 
-Storm hosts `GET /eval` itself when a JVM is launched with `-Dstorm.http.port=<port>`, `-Dstorm.hotreload=true`, and `-Dstorm.hotreload.eval.classes=<dir>`. The client (port 8089) and dedicated server (port 41798) share a classes dir, so one `javac` invocation feeds both endpoints. Each call:
+Storm hosts `POST /eval` itself when a JVM is launched with `-Dstorm.http.port=<port>` and `-Dstorm.hotreload=true`. The caller compiles `EvalScript.java` locally and POSTs the raw `.class` bytes; Storm defines the class in-memory and runs it. No shared classes dir, no `-Dstorm.hotreload.eval.*` flags. Each call:
 
-1. Opens a fresh `URLClassLoader` parented to the Storm class loader, rooted at the classes dir.
-2. Loads `EvalScript` from the **default package** in that dir.
+1. Reads the raw bytes from the request body and checks the `0xCAFEBABE` class-file magic.
+2. Defines `EvalScript` in a fresh one-shot `ClassLoader` parented to Storm's own loader.
 3. Invokes `public static Object run()` reflectively.
-4. Closes the loader.
-5. Returns `String.valueOf(result)` — or `ERROR:\n<stack>` on failure.
+4. Returns `String.valueOf(result)` — or `ERROR:\n<stack>` on failure.
 
-Implementation: `io.pzstorm.storm.hotreload.HotReloadEndpoints#eval` → `JavaEvalRunner#run`. Storm does **not** compile the source; the caller compiles `EvalScript.java` into the classes dir before each `curl`.
+Implementation: `io.pzstorm.storm.hotreload.HotReloadEndpoints#eval` → `JavaEvalRunner#run(byte[])`. Storm does **not** compile the source; the caller compiles `EvalScript.java` and ships the bytecode.
 
 ## When to use
 
@@ -25,7 +24,7 @@ Prefer `lua-hot-reload` for anything already wrapped by a clean Lua API (`getPla
 
 ## Workflow
 
-Put `EvalScript.java` in the eval source dir (see CLAUDE.local.md) in the **default package** (no `package` line) with a `public static Object run()`:
+Write `EvalScript.java` in the **default package** (no `package` line) with a `public static Object run()`:
 
 ```java
 public class EvalScript {
@@ -35,36 +34,29 @@ public class EvalScript {
 }
 ```
 
-Compile and call (paths from CLAUDE.local.md):
+Compile and POST the `.class` bytes:
 
 ```bash
-javac -cp "$PZ_JAR:$STORM_JAR" -d "$EVAL_CLASSES" "$EVAL_SRC/EvalScript.java"
-curl http://localhost:8089/eval    # client
+javac -cp "$PZ_JAR:$STORM_JAR" -d /tmp/eval EvalScript.java
+curl -X POST --data-binary @/tmp/eval/EvalScript.class \
+  -H 'Content-Type: application/java-vm' \
+  http://localhost:8089/eval    # client
 # or
-curl http://localhost:41798/eval   # dedicated server
+curl -X POST --data-binary @/tmp/eval/EvalScript.class \
+  -H 'Content-Type: application/java-vm' \
+  http://localhost:41798/eval   # dedicated server
 ```
 
-(The Storm jar filename is versioned, e.g. `storm-42.19.0_2.1.7-SNAPSHOT.jar`; glob the install dir for whichever one is present.)
+(The Storm jar filename is versioned, e.g. `storm-42.19.0_2.1.7-SNAPSHOT.jar`; glob the install dir for whichever one is present. `/tmp/eval` is just a scratch dir for `javac`'s output — Storm never reads it.)
 
-To verify the configured dirs on a running JVM:
-
-```bash
-ps -ef | grep -oP 'storm\.hotreload\.eval\.\w+=\S+'   # any Linux-side JVM
-```
-
-For the Windows client, grep the same `-D` flags from its launcher batch script.
-
-No restart needed between iterations — recompile + curl. The classloader is freshly built per call, so there's no stale-class state across runs.
-
-## Source-staleness guard
-
-When `-Dstorm.hotreload.eval.source=<dir>` is set, `/eval` compares mtimes on each call and fails fast with `ERROR: stale class …` when `EvalScript.java` is newer than the compiled `EvalScript.class`. Catches "I forgot to recompile" before it returns a confusing old result.
+No restart needed between iterations — recompile + curl. The classloader is freshly built per call, so there's no stale-class state across runs, and there's no shared directory that could serve a stale `.class` from a previous javac failure.
 
 ## Notes
 
-- The loader is closed after each call — return primitive/string-rendered data; don't hand out references and expect them to outlive the call.
+- The loader isn't retained across calls — return primitive/string-rendered data; don't hand out references and expect them to outlive the call.
 - Don't auto-serialize game objects (Jackson, etc.) — cyclic graphs and native references will explode. Build a string/JSON inside `run()`.
 - Class name (`EvalScript`), default package, and `public static Object run()` signature are all hard-coded — match them exactly.
+- `400` is returned for an empty request body. A body that isn't a valid class file (missing the `0xCAFEBABE` magic) comes back as `ERROR: request body is not a valid Java class file …` with a `200`.
 
 ## Required JVM flags
 
@@ -72,8 +64,6 @@ When `-Dstorm.hotreload.eval.source=<dir>` is set, `/eval` compares mtimes on ea
 |------|---------|
 | `-Dstorm.http.port=<port>` | Starts Storm's HTTP server. |
 | `-Dstorm.hotreload=true` | Registers `/eval` and `/reload`. |
-| `-Dstorm.hotreload.eval.classes=<dir>` | Directory holding the compiled `EvalScript.class`. |
-| `-Dstorm.hotreload.eval.source=<dir>` | Optional staleness guard for `EvalScript.java`. |
 
 ## Reference
 

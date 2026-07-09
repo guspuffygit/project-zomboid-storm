@@ -15,8 +15,8 @@ import zombie.network.GameServer;
  *
  * <ul>
  *   <li>{@code POST /reload} — runs the Lua source in the request body via {@link LuaHotReload}.
- *   <li>{@code GET /eval} — loads and runs a compiled {@code EvalScript} via {@link
- *       JavaEvalRunner}.
+ *   <li>{@code POST /eval} — defines {@code EvalScript} from the raw {@code .class} bytes in the
+ *       request body and runs it via {@link JavaEvalRunner}.
  * </ul>
  *
  * <p>On the dedicated server ({@link GameServer#server}) the work runs directly on the HTTP
@@ -40,9 +40,14 @@ public final class HotReloadEndpoints {
         event.send(200, runMaybeOnMain(() -> LuaHotReload.run(luaSource)));
     }
 
-    @HttpEndpoint(path = "/eval")
+    @HttpEndpoint(path = "/eval", method = "POST")
     public static void eval(HttpRequestEvent event) throws IOException {
-        event.send(200, runMaybeOnMain(JavaEvalRunner::run));
+        byte[] classBytes = event.getRequestBody();
+        if (classBytes.length == 0) {
+            event.send(400, "missing EvalScript.class bytes in request body");
+            return;
+        }
+        event.send(200, runMaybeOnMain(() -> JavaEvalRunner.run(classBytes)));
     }
 
     @SubscribeEvent

@@ -21,8 +21,6 @@ script). All flags are opt-in unless noted.
 | `-DLOG_LEVEL=DEBUG` | Storm log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). Default `INFO`. |
 | `-Dstorm.http.port=<port>` | Start Storm's HTTP server on `<port>`. Required for inspection endpoints and developer hot-reload. Conventionally `41798` on the dedicated server. |
 | `-Dstorm.hotreload=true` | Register the `/reload` and `/eval` developer endpoints. See [Developer Hot-Reload Endpoints](http-api.md#developer-hot-reload-endpoints). **Local development only.** |
-| `-Dstorm.hotreload.eval.classes=<dir>` | Directory holding the compiled `EvalScript.class` (required by `/eval`). |
-| `-Dstorm.hotreload.eval.source=<dir>` | Optional. Directory holding `EvalScript.java`; enables a staleness guard. |
 | `-DprometheusPort=<port>` | Start PZ's built-in Prometheus HTTP server on `<port>`. Required to scrape Storm + `pz_*` + `jvm_*` metrics at `/metrics`. (PZ flag — Storm registers into PZ's default registry.) |
 | `-DprometheusHost=<host>` | Hostname/IP the server reports for itself in metrics endpoints. Defaults to `GameServer.ip`. (PZ flag.) |
 | `-Dstorm.mainloop.timings=true` | Emit a per-tick wall-clock breakdown of `GameServer.main`'s frame-step to a dedicated `<STORM_LOG_DIR>/storm/timings.log` (25 MB cap, one rolled archive). Each line lists every patched step (`ServerMap.preupdate`, `IngameState.update`, `VehicleManager.serverUpdate`, …) sorted by duration, plus `other=` for unmeasured wall-clock. Off by default — leave off in production unless investigating a slow tick. See [Per-tick step timings](server-thread-main-loop.md#7-per-tick-step-timings). |
@@ -98,7 +96,6 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} \
     -DLOG_LEVEL=debug \
     -Dstorm.http.port=41798 \
     -Dstorm.hotreload=true \
-    -Dstorm.hotreload.eval.classes=/home/pzuser/lua-scripts/eval-scripts \
     -DprometheusPort=9092 \
     -DprometheusHost=<your-host>"
 
