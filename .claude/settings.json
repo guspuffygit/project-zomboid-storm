@@ -37,7 +37,9 @@
       "Read(./.gradle)",
       "Read(./.gradle/**)",
       "Edit(./.gradle)",
-      "Edit(./.gradle/**)"
+      "Edit(./.gradle/**)",
+      "mcp__pzmcp__pz_find_jvm",
+      "mcp__pzmcp__pz_jfr_*"
     ]
   }
 }
