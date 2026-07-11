@@ -19,9 +19,20 @@ public class TryAddIndoorZombiesPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(typePool.describe(PKG + "TryAddIndoorZombiesAdvice").resolve(), locator)
-                        .on(
-                                ElementMatchers.named("tryAddIndoorZombies")
-                                        .and(ElementMatchers.takesArguments(2))));
+                        Advice.to(
+                                        typePool.describe(PKG + "TryAddIndoorZombiesAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("tryAddIndoorZombies")
+                                                .and(ElementMatchers.takesArguments(2))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "TryAddIndoorZombiesSkipAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("tryAddIndoorZombies")
+                                                .and(ElementMatchers.takesArguments(2))));
     }
 }

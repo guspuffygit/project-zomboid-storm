@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.servertick;
 
+import io.pzstorm.storm.mapscan.MapScanJob;
 import io.pzstorm.storm.metrics.ServerTickMetrics;
 import io.pzstorm.storm.metrics.StormConnectionMetrics;
 import net.bytebuddy.asm.Advice;
@@ -14,5 +15,6 @@ public class ServerTickAdvice {
         }
         ServerTickMetrics.recordTick(tickMillis);
         StormConnectionMetrics.recordAll();
+        MapScanJob.pump();
     }
 }

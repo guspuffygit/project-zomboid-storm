@@ -1,6 +1,7 @@
 package io.pzstorm.storm.core;
 
 import io.pzstorm.storm.commands.CreateTestCharCommand;
+import io.pzstorm.storm.commands.MapScanCommand;
 import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.commands.PrintDebugCommand;
 import io.pzstorm.storm.commands.ScreenshotCommand;
@@ -33,6 +34,7 @@ public class StormCommandRegistry {
         MOD_COMMANDS.add(PingCommand.class);
         MOD_COMMANDS.add(PrintDebugCommand.class);
         MOD_COMMANDS.add(ScreenshotCommand.class);
+        MOD_COMMANDS.add(MapScanCommand.class);
 
         if (StormEnv.isStormTesting()) {
             MOD_COMMANDS.add(CreateTestCharCommand.class);
