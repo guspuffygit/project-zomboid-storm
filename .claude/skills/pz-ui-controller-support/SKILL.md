@@ -10,7 +10,9 @@ description: >-
   "gamepad support", "add controller navigation to <mod>'s dialog",
   "why doesn't my mod's UI show up on controller", "dpad doesn't move in my
   mod window", "ISCollapsableWindow joypad", "ISScrollingListBox controller",
-  "OnFillWorldObjectContextMenu setTest".
+  "OnFillWorldObjectContextMenu setTest", "ISPanel joypad retrofit",
+  "ISPanelJoypad", "ISTextEntryBox controller / on-screen keyboard",
+  "controller support for a custom grid or stepper UI".
 ---
 
 # Controller support for a PZ mod's Lua UI
@@ -18,9 +20,10 @@ description: >-
 Every PZ Lua UI ships as a chain of `ISUIElement`s, and every one of those
 elements has controller hooks (`onGainJoypadFocus`, `onJoypadDown`,
 `onJoypadDirUp/Down/Left/Right`). Mods usually skip those hooks because
-`ISCollapsableWindow` alone doesn't wire anything up. Swapping the base class
-to `ISCollapsableWindowJoypad` and handing focus through to a
-`ISScrollingListBox` is 90% of the work.
+`ISCollapsableWindow` / `ISPanel` alone don't wire anything up. Swapping the
+base class to the joypad flavour (`ISCollapsableWindowJoypad`, or
+`ISPanelJoypad` for a hand-rolled plain-`ISPanel` window) and handing focus
+through to a `ISScrollingListBox` is 90% of the work.
 
 **HARD RULE reminder.** Everything here is Lua on the client — no Byte Buddy,
 no `StormClassTransformer`, no Java helper. Controller support is a
@@ -34,7 +37,11 @@ patch even if the vanilla flow seems awkward.
    `../project-zomboid-base/src/main/lua/client/ISUI/ISCollapsableWindowJoypad.lua`
    as `ISPanelJoypad:derive(...)` with every `ISCollapsableWindow` method
    mixed in. `ISPanelJoypad` is where `onJoypadDown` / `onJoypadDirUp` etc.
-   actually live — `ISCollapsableWindow` has none of them.
+   actually live — `ISCollapsableWindow` has none of them. Windows that
+   derive from plain `ISPanel` swap to `ISPanelJoypad` directly (same
+   invariants; `ISPanelJoypad:new` initialises `joypadIndex`/`joypadButtons`
+   and its `onJoypadDown` fallback is a safe no-op with no button rows, so a
+   bare swap can't crash on stray buttons).
 2. **You must explicitly grab joypad focus after `addToUIManager`.** Adding a
    window to the UI manager only makes it visible; the focused joypad target
    for a player still points at whatever it was pointing at before (usually
@@ -188,6 +195,52 @@ Events.OnFillWorldObjectContextMenu.Add(onFillWorldObjectContextMenu)
 `openWindow`'s signature is `(worldobjects, playerNum)` — matching the
 `target, param1` positional-arg convention.
 
+## Beyond the list — text entries, steppers, custom grids
+
+Patterns for a hand-rolled plain-`ISPanel` window with custom-drawn
+widgets; all verified against vanilla source.
+
+**`ISTextEntryBox` has native pad support, but only for A and X.** When the
+entry holds joypad focus, A opens the `OnScreenKeyboard` (it stashes
+`osk.prevFocus` and hands focus back on confirm) and X clears when a clear
+button is set. Every other button routes to
+`self.parent:onJoypadDown_Descendant(...)`, which `ISUIElement` walks up the
+parent chain as a no-op — and the entry never consults `joypadParent`. So
+"set `joypadParent` on the entry so B backs out" does nothing: to make B or
+X act from a focused entry (back out to a list, apply a typed price),
+subclass the entry and intercept those buttons in `onJoypadDown` before
+deferring to `ISTextEntryBox.onJoypadDown`.
+
+**Entry + button dialogs: use the button-row grammar.** For a small dialog
+(amount box + Send button), don't forward focus to a child — keep focus on
+the window and register rows in creation order:
+`self:insertNewLineOfButtons(self.amountEntry)`,
+`self:insertNewLineOfButtons(self.sendBtn)`, then seed
+`self.joypadIndexY = 1` / `self.joypadIndex = 1` (see
+`ISDesignationZonePanel`). D-pad up/down moves between rows;
+`ISPanelJoypad:onJoypadDown` routes A to `forceClick()` on buttons and A/X
+into text entries. The focused control highlights itself (`ISTextEntryBox`
+prerender draws a cyan double border when `joypadFocused`; `ISButton`
+renders focus styling) — no extra rendering code needed.
+
+**D-pad left/right on a list are free for steppers.**
+`ISScrollingListBox:onJoypadDirLeft/Right` just forward to `joypadParent`,
+so a list subclass can override them for per-row quantity/count steppers —
+route through the same handler the mouse hit-test uses so clamping and
+guards stay shared. Bumpers work too: `Joypad.LBumper` / `Joypad.RBumper`
+reach the focused element's `onJoypadDown` on a short press (vanilla only
+hijacks RBumper on a 250 ms *hold* for UI-navigation mode) — good for ±10
+steps or cycling currency chips.
+
+**Custom grids: keep focus on the window.** For a hand-rolled grid of cell
+panels (not an `ISScrollingListBox`), don't try to make cells focusable —
+leave joypad focus on the window itself and implement
+`onJoypadDirUp/Down/Left/Right` + `onJoypadDown` at window level, moving
+your existing selection state and reusing the mouse-path select/scroll
+functions so the selected cell stays on-screen. Gate every pad action on the
+same enable conditions the equivalent button's prerender enforces (purchase
+in flight, affordability, selection present).
+
 ## Focus lifecycle — who owns focus when
 
 | Moment | Focus owner |
@@ -224,6 +277,23 @@ verbatim; do not "clean up".
 raw-field-set path skips those and produces a "focus is here but no border
 draws and nothing responds" ghost state.
 
+**`setJoypadFocused(true, ...)` auto-selects row 1 only when `selected ==
+-1`.** Windows that use `selected = 0` as "no selection" (common in mods)
+never trigger it — default the selection yourself on focus gain AND when
+rows arrive after a server round-trip, guarded on `list.joypadFocused`, or
+pad users land on a list with no highlight where A does nothing.
+
+**`drawJoypadFocus` only matters for `ISCollapsableWindow`-based windows.**
+Its only consumer is `ISCollapsableWindow:render`; `ISPanelJoypad` never
+reads it. On an `ISPanelJoypad`-derived window the flag is dead code either
+way — the focus highlight comes from the child widgets themselves.
+
+**A custom `doDrawItem` that ignores `selected` makes pad nav invisible.**
+Mouse-only lists whose rows route clicks straight to per-row controls often
+never draw a selection highlight. Add a selected-row fill guarded on
+`self.joypadFocused` so pad users can see the cursor while mouse sessions
+look exactly as before.
+
 **`autoAddJoypadButton` on custom elements.** `ISButton` /
 `ISScrollingListBox` / `ISTickBox` / `ISComboBox` / `ISTextEntryBox` have
 `autoAddJoypadButton = true` and get picked up by
@@ -248,12 +318,35 @@ player. Track `playerNum` on the window and thread it through
 
 ## Verifying it works
 
-Restart the client — do NOT try to hot-reload this change. The base-class
-swap, the `Events.OnFillWorldObjectContextMenu` re-registration, and the
-per-instance methods bound in `createChildren` all interact with the caches
-described in [[pz-lua-hotreload-cache-traps]]. Hot-reload leaves the old
-event closure holding stale references. Full client restart is the reliable
-path.
+Restart the client — do NOT try to hot-reload this change. Two PZ Lua
+hot-reload traps combine to leave the game running the old code with no
+warning:
+
+1. **`reloadLuaFile` compiles with `rewriteEvents=true`, which silently
+   swallows every `Events.X.Add(fn)` call** in the reloaded file. Your new
+   `OnFillWorldObjectContextMenu` handler never registers, and PZ keeps
+   invoking the old one — the one closed over the old `openWindow`, the old
+   window class, everything you just changed.
+2. **String-named callbacks are cached in `LuaManager.luaFunctionMap`
+   forever.** Only `reloadLuaFile(<abs path>)` clears the map; a raw
+   `/reload` eval redefines the field but the game keeps calling the old
+   function object. Anything the game resolves by name (some sprite-config
+   / crafting hooks) stays pinned to the pre-edit function.
+
+The base-class swap, the `Events.OnFillWorldObjectContextMenu`
+re-registration, and the per-instance methods bound in `createChildren` all
+depend on those hooks running fresh. Hot-reload leaves them stale. Full
+client restart is the reliable path.
+
+If you really need to iterate without restarting (uncommon; not required
+for the pattern in this skill), the working workaround is: rsync to the
+Steam Workshop dev-mod dir → `reloadLuaFile(<abs path>)` to clear the
+function map → in the same raw eval, re-register a **permanent trampoline**
+with `Events.X.Remove(tramp); Events.X.Add(tramp)` (idempotent). The
+trampoline resolves the real handler from the module table at call time,
+so subsequent reloads only swap a table field. `Events.X.Remove` by
+reference across reloads is unreliable, so without a trampoline you stack
+orphaned handlers every iteration.
 
 Once running, on a controller:
 
@@ -276,18 +369,14 @@ Once running, on a controller:
 | A on an empty list crashes with `attempt to index nil` | `overrideAButtonFunction` is set on a list with `items == {}`. Subclass and swallow A when empty (see the `MyList:onJoypadDown` snippet above). |
 | B takes two presses to close the window | The list is walking B back to `joypadParent`. Handle B directly in the list's `onJoypadDown` (call `parentWindow:close()`) instead of relying on the vanilla parent walk. |
 | After closing, controller feels frozen | `close()` doesn't reset joypad focus. Add `setJoypadFocus(self.playerNum, nil)` when `JoypadState.players[playerNum + 1]` is set. |
-| Focus border draws on the window AND the list at the same time | `self.drawJoypadFocus = true` (default from `ISCollapsableWindowJoypad`). Set it to `false` in `onGainJoypadFocus` after forwarding to the list — the list draws its own border. |
-| Changes don't take effect after edit | Hot-reload traps — see [[pz-lua-hotreload-cache-traps]]. Restart the client. |
+| Focus border draws on the window AND the list at the same time | `self.drawJoypadFocus = true` (default from `ISCollapsableWindowJoypad`). Set it to `false` in `onGainJoypadFocus` after forwarding to the list — the list draws its own border. (`ISCollapsableWindow`-based windows only; `ISPanelJoypad` never reads the flag.) |
+| List has focus but no row is highlighted and A does nothing | The window uses `selected = 0` as "none"; vanilla auto-select fires only on `selected == -1`. Default to row 1 on focus gain and on refresh, guarded on `joypadFocused`. |
+| B (or any non-A/X button) is dead while a text entry has focus | `ISTextEntryBox` only handles A (on-screen keyboard) and X (clear); everything else no-op walks `parent:onJoypadDown_Descendant` and `joypadParent` is ignored. Subclass the entry and intercept in `onJoypadDown`. |
+| Changes don't take effect after edit | Hot-reload traps: `reloadLuaFile` compiles with `rewriteEvents=true` and drops `Events.X.Add(fn)` calls; `LuaManager.luaFunctionMap` pins string-named callbacks forever. Restart the client — see the "Verifying it works" section for the trampoline workaround if you really need to iterate live. |
 
 ## Reference implementations
 
-Working example in this monorepo's mods:
-
-- `../project-zomboid-java-mod/survivor-skill-obelisk/media/lua/client/SurvivorSkillObeliskClient.lua`
-  — `RecoverSkillsWindow` and `RecoverDeathList`. The exact shape this skill
-  documents.
-
-In vanilla PZ (read for the wider grammar):
+Read these in the vanilla PZ source for the wider grammar:
 
 - `../project-zomboid-base/src/main/lua/client/ISUI/ISPanelJoypad.lua` —
   every joypad hook, `insertNewLineOfButtons`, `setISButtonForA/B/X/Y`,
