@@ -62,6 +62,7 @@ import io.pzstorm.storm.patch.performance.ClimateManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerResolveContactsPatch;
 import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
+import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
 import io.pzstorm.storm.patch.performance.EngineUpdatePatch;
 import io.pzstorm.storm.patch.performance.EngineUpdateSimulationPatch;
 import io.pzstorm.storm.patch.performance.EntitySimulationUpdatePatch;
@@ -97,6 +98,7 @@ import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
 import io.pzstorm.storm.patch.performance.IsoDeadBodyUpdateBodiesPatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
 import io.pzstorm.storm.patch.performance.IsoGridSquareLosParallelPatch;
+import io.pzstorm.storm.patch.performance.IsoLightSwitchElectricityMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectStaticUpdaterRemoveSubstPatch;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
@@ -104,9 +106,11 @@ import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.IsoRegionsUpdatePatch;
 import io.pzstorm.storm.patch.performance.IsoRoomOnSeePatch;
+import io.pzstorm.storm.patch.performance.IsoWaterFlowMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateBuildingsPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateDBsPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdatePatch;
+import io.pzstorm.storm.patch.performance.JniLightingCleanSquarePatch;
 import io.pzstorm.storm.patch.performance.LoadedAreasAddPatch;
 import io.pzstorm.storm.patch.performance.LoginQueueUpdatePatch;
 import io.pzstorm.storm.patch.performance.LuaMainloopPatch;
@@ -242,6 +246,16 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalCanClimbStairsNullDefGuardPatch());
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
+        // EXPERIMENTAL client-side perf patches. Deliberate, user-approved exception to the
+        // no-client-patches HARD RULE, strictly opt-in via -Dstorm.experimental.clientperf=true:
+        // default launches (no flag) keep vanilla bytecode on the client. Do not add entries here
+        // without the same explicit approval, and do not cite this block as precedent.
+        if (Boolean.getBoolean("storm.experimental.clientperf")) {
+            registerTransformer(new EcsComponentGetClassMemoPatch());
+            registerTransformer(new IsoLightSwitchElectricityMemoPatch());
+            registerTransformer(new JniLightingCleanSquarePatch());
+            registerTransformer(new IsoWaterFlowMemoPatch());
+        }
         // Server-only: IsoGenerator also executes on the client JVM (HARD RULE). The advice
         // gates on GameServer.server, so gating registration is behavior-preserving.
         if (StormEnv.isStormServer()) {
