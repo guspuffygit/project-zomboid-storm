@@ -4,37 +4,53 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class StormWorkshopItemProbeTest {
 
     @Test
-    void moderationRemovedBannerClassifiesAsRemoved() {
-        String page =
-                "<div class=\"error_ctn\">This item has been removed from the community because"
-                        + " it violates Steam Community &amp; Content Guidelines. It is only"
-                        + " visible to you.</div>";
-        String verdict = StormWorkshopItemProbe.classifyPage(page);
-        assertTrue(verdict != null && verdict.startsWith("REMOVED BY STEAM MODERATION"), verdict);
+    void publiclyVisibleItemKeepsTitleAndSuggestsTransientFailure() {
+        String json =
+                "{\"response\":{\"result\":1,\"resultcount\":1,\"publishedfiledetails\":["
+                        + "{\"publishedfileid\":\"2335368829\",\"result\":1,"
+                        + "\"title\":\"Authentic Z\"}]}}";
+        Map<Long, StormWorkshopItemProbe.ProbeResult> results =
+                StormWorkshopItemProbe.parseDetails(json);
+        StormWorkshopItemProbe.ProbeResult result = results.get(2335368829L);
+        assertEquals("Authentic Z", result.title);
+        assertTrue(result.verdict.startsWith("publicly visible"), result.verdict);
     }
 
     @Test
-    void missingItemPageClassifiesAsDeleted() {
-        String page = "<h3>That item does not exist. It may have been removed by the author.</h3>";
-        String verdict = StormWorkshopItemProbe.classifyPage(page);
-        assertTrue(verdict != null && verdict.startsWith("DELETED"), verdict);
+    void fileNotFoundItemHasNoTitleAndListsIndistinguishableCauses() {
+        String json =
+                "{\"response\":{\"result\":1,\"resultcount\":1,\"publishedfiledetails\":["
+                        + "{\"publishedfileid\":\"3717669793\",\"result\":9}]}}";
+        Map<Long, StormWorkshopItemProbe.ProbeResult> results =
+                StormWorkshopItemProbe.parseDetails(json);
+        StormWorkshopItemProbe.ProbeResult result = results.get(3717669793L);
+        assertNull(result.title);
+        assertTrue(result.verdict.startsWith("not visible to anonymous accounts"), result.verdict);
     }
 
     @Test
-    void healthyItemPageHasNoVerdict() {
-        String page = "<div class=\"workshopItemTitle\">Some Mod</div><div>description</div>";
-        assertNull(StormWorkshopItemProbe.classifyPage(page));
+    void unexpectedResultCodeIsReportedVerbatim() {
+        String json =
+                "{\"response\":{\"result\":1,\"resultcount\":1,\"publishedfiledetails\":["
+                        + "{\"publishedfileid\":\"42\",\"result\":16}]}}";
+        Map<Long, StormWorkshopItemProbe.ProbeResult> results =
+                StormWorkshopItemProbe.parseDetails(json);
+        assertTrue(results.get(42L).verdict.contains("result 16"), results.get(42L).verdict);
     }
 
     @Test
-    void titleIsExtractedFromItemPage() {
-        String page = "<div class=\"workshopItemTitle\">[DEV] After The Fall: Economy</div>";
-        assertEquals("[DEV] After The Fall: Economy", StormWorkshopItemProbe.extractTitle(page));
-        assertNull(StormWorkshopItemProbe.extractTitle("<html>no title div</html>"));
+    void malformedResponsesYieldNoEntries() {
+        assertTrue(StormWorkshopItemProbe.parseDetails("not json at all").isEmpty());
+        assertTrue(StormWorkshopItemProbe.parseDetails("{\"response\":{}}").isEmpty());
+        assertTrue(
+                StormWorkshopItemProbe.parseDetails(
+                                "{\"response\":{\"publishedfiledetails\":[{\"result\":9}]}}")
+                        .isEmpty());
     }
 }

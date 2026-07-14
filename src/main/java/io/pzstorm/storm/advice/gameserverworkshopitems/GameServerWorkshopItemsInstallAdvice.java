@@ -14,10 +14,11 @@ import net.bytebuddy.asm.Advice;
  *
  * <p>On failure - {@code Install} returning false or throwing (vanilla NPEs through {@code
  * ZomboidFileSystem.deleteDirectory(null)} when a failing item was never installed) - hands off to
- * {@link StormWorkshopInstallRecovery}, which retries the install and, if items remain unavailable
- * (deleted/hidden workshop items, post-update manifest deny-windows), drops them and lets the
- * server start with what is on disk. When recovery succeeds the thrown exception is swallowed and
- * the return value flipped to true.
+ * {@link StormWorkshopInstallRecovery}, which logs a per-item diagnosis of why Steam refuses each
+ * unavailable item (moderation-removed, deleted, hidden, or a transient post-update manifest
+ * deny-window) and retries the install a few times. When a retry succeeds the thrown exception is
+ * swallowed and the return value flipped to true; otherwise the failure stands and the server does
+ * not start, matching vanilla.
  */
 public class GameServerWorkshopItemsInstallAdvice {
 

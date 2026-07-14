@@ -25,10 +25,6 @@ script). All flags are opt-in unless noted.
 | `-DprometheusHost=<host>` | Hostname/IP the server reports for itself in metrics endpoints. Defaults to `GameServer.ip`. (PZ flag.) |
 | `-Dstorm.mainloop.timings=true` | Emit a per-tick wall-clock breakdown of `GameServer.main`'s frame-step to a dedicated `<STORM_LOG_DIR>/storm/timings.log` (25 MB cap, one rolled archive). Each line lists every patched step (`ServerMap.preupdate`, `IngameState.update`, `VehicleManager.serverUpdate`, …) sorted by duration, plus `other=` for unmeasured wall-clock. Off by default — leave off in production unless investigating a slow tick. See [Per-tick step timings](server-thread-main-loop.md#7-per-tick-step-timings). |
 | `-Dstorm.cells.keepWarm=true` | Keep `IsoCell` state resident in memory past vanilla's unload point to eliminate load/unload thrash on repeated boundary crossings. Read once at class-load time by `StormCellWarmingConfig#isEnabled()`. Off by default — vanilla unload semantics. |
-| `-Dstorm.workshop.retryAttempts=<n>` | How many times Storm re-runs the workshop item install after a failure before skipping unavailable items (see [what-storm-changes.md](what-storm-changes.md#bug-fixes-shipped-with-storm)). Default `2`. |
-| `-Dstorm.workshop.retryDelaySeconds=<n>` | Delay before each workshop install retry. Default `15`. |
-| `-Dstorm.workshop.requireAllItems=true` | Restore vanilla all-or-nothing workshop install: any unavailable item stops the server (minus vanilla's NPE crash). Off by default. |
-| `-Dstorm.workshop.vanillaDeleteOnFail=true` | Restore vanilla's wipe of an already-installed workshop item folder when its update download fails. Off by default — Storm preserves the last installed copy. |
 
 ## Sandbox options (performance knobs)
 
