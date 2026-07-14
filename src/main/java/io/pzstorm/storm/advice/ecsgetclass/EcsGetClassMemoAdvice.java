@@ -2,6 +2,7 @@ package io.pzstorm.storm.advice.ecsgetclass;
 
 import java.util.concurrent.ConcurrentHashMap;
 import net.bytebuddy.asm.Advice;
+import zombie.characters.ecs.ECSComponent;
 
 /**
  * Advice for the static {@code zombie.characters.ecs.ECSComponent.getECSClass(Class)}.
@@ -10,15 +11,17 @@ import net.bytebuddy.asm.Advice;
  * The result is a pure function of the argument, but the method sits on the component
  * <em>query</em> path ({@code ECSEntity.getECSComponent} / {@code tryGetECSComponent} / {@code
  * hasECSComponent}), which runs per character per tick — live-client sampling in a dense Louisville
- * scene attributed 3.7% of MainThread to this walk.
+ * scene attributed 11.9% of MainThread to this walk when memoized via {@code
+ * ConcurrentHashMap.get}, and the raw walk would be far more.
  *
- * <p>The advice memoizes argument-to-result in a {@link ConcurrentHashMap}. The mapping can never
- * change for a given class, so the cache needs no invalidation. Class keys are strongly held; the
- * set of component classes is a small fixed population owned by the game's own class loader, so
- * there is no unload/leak concern.
+ * <p>Fast path: every known {@code ECSComponent} subclass in vanilla extends {@code ECSComponent}
+ * directly, so {@code clazz.getSuperclass() == ECSComponent.class} → return {@code clazz}, no map
+ * operation, no synchronization. This shortcut eliminates the {@code ConcurrentHashMap.get} cost
+ * that dominated the query path.
  *
- * <p>Pattern: enter advice returns the cached value and skips the body on a hit; exit advice either
- * installs the cached value as the return or records the freshly computed result.
+ * <p>Slow-path fallback (a modded class that goes {@code MyComponent extends AIComponent extends
+ * ECSComponent}) still walks once and memoizes into a {@link ConcurrentHashMap}. Keys are strongly
+ * held Class objects from the game's own loader — no unload/leak concern.
  */
 public class EcsGetClassMemoAdvice {
 
@@ -28,6 +31,9 @@ public class EcsGetClassMemoAdvice {
     public static Class<?> onEnter(@Advice.Argument(0) Class<?> clazz) {
         if (clazz == null) {
             return null;
+        }
+        if (clazz.getSuperclass() == ECSComponent.class) {
+            return clazz;
         }
         return CACHE.get(clazz);
     }
