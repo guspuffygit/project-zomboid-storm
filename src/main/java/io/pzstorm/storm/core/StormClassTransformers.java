@@ -12,6 +12,7 @@ import io.pzstorm.storm.patch.core.ZomboidGlobalsPatch;
 import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ThreadPatch;
 import io.pzstorm.storm.patch.events.ChatManagerPatch;
+import io.pzstorm.storm.patch.events.ChatServerSendMessagePatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
@@ -322,6 +323,9 @@ public class StormClassTransformers {
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
+        if (StormEnv.isStormServer()) {
+            registerTransformer(new ChatServerSendMessagePatch());
+        }
         registerTransformer(new KahluaMetatableCachePatch());
 
         if (StormEnv.isStormServer()) {

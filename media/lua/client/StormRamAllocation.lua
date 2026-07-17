@@ -2,9 +2,12 @@ require("PersistedTable")
 
 local MODULE = "StormDiagnostics"
 local COMMAND = "ramAlloc"
+local COMMAND_SHOW_RAM_ALLOC = "showRamAlloc"
 local SETTINGS_FILE = "StormRamAllocationSettings.txt"
 local LOW_RAM_THRESHOLD_GIB = 4
 local RECOMMENDED_ARG = "-Xmx8g --"
+
+local activeModal = nil
 
 local function loadDontShowAgain()
     local settings = PersistedTable:read(SETTINGS_FILE)
@@ -20,6 +23,9 @@ local function saveDontShowAgain(tickBox)
 end
 
 local function showLowRamModal(maxMb, maxGiB)
+    if activeModal and activeModal:isVisible() then
+        return
+    end
     local descriptionLines = {
         "LOW RAM ALLOCATION DETECTED",
         string.format("Your game has only allocated %.1f GiB of RAM (max=%d MB).", maxGiB, maxMb),
@@ -41,6 +47,7 @@ local function showLowRamModal(maxMb, maxGiB)
     local modal = ISModalDialog:new(x, y, width, height, description, false, nil, nil, nil)
     modal:initialise()
     modal:addToUIManager()
+    activeModal = modal
 
     if modal.ok then
         modal:removeChild(modal.ok)
@@ -85,6 +92,7 @@ local function showLowRamModal(maxMb, maxGiB)
         function(self)
             saveDontShowAgain(tickBox)
             modal:destroy()
+            activeModal = nil
         end
     )
     btnClose:initialise()
@@ -117,4 +125,20 @@ local function onTick()
     end
 end
 
+local function onServerCommand(module, command, args)
+    if module ~= MODULE or command ~= COMMAND_SHOW_RAM_ALLOC then
+        return
+    end
+    local maxMb = (args and tonumber(args.maxMb)) or 0
+    if maxMb <= 0 then
+        local perf = getPerformanceLocal()
+        maxMb = (perf and perf["memory-max"]) or 0
+    end
+    if maxMb <= 0 then
+        return
+    end
+    showLowRamModal(maxMb, maxMb / 1073)
+end
+
 Events.OnTick.Add(onTick)
+Events.OnServerCommand.Add(onServerCommand)
