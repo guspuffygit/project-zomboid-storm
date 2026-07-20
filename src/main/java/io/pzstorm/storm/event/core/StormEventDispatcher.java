@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.google.common.collect.Sets;
 import io.pzstorm.storm.event.lua.OnClientCommandEvent;
 import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
+import io.pzstorm.storm.event.zomboid.OnTriggerLuaEvent;
 import io.pzstorm.storm.http.HttpEndpoint;
 import io.pzstorm.storm.http.HttpEndpointDispatcher;
 import io.pzstorm.storm.http.HttpRequestEvent;
@@ -63,6 +64,15 @@ public class StormEventDispatcher {
             DISPATCH_REGISTRY = new HashMap<>();
 
     /**
+     * True when at least one registered handler makes the per-trigger Lua event bridge worth
+     * running: an external (non-{@link StormEventHandler}) subscriber to {@link OnTriggerLuaEvent},
+     * or a subscriber to any typed {@link LuaEvent}. Recomputed on every handler registration;
+     * consulted once per {@code LuaEventManager.triggerEvent} by {@code TriggerEventAdvice}, so a
+     * volatile read is the entire per-trigger cost when no such handlers exist.
+     */
+    private static volatile boolean luaEventInterest;
+
+    /**
      * Internally register given method for specified event handler.
      *
      * @param method {@code Method} to register with event handler.
@@ -109,6 +119,7 @@ public class StormEventDispatcher {
                     if (handlerMethods == null) {
                         DISPATCH_REGISTRY.put(eventClass, Sets.newHashSet(eventHandlerMethod));
                     } else handlerMethods.add(eventHandlerMethod);
+                    recomputeLuaEventInterest();
                 } else {
                     String className =
                             handler instanceof Class
@@ -241,6 +252,44 @@ public class StormEventDispatcher {
      *
      * @param event {@link ZomboidEvent} to dispatch.
      */
+    /** Returns whether at least one handler is registered for the given event class. */
+    public static boolean hasHandlers(Class<? extends ZomboidEvent> eventClass) {
+        Set<EventHandlerMethod> handlerMethods = DISPATCH_REGISTRY.get(eventClass);
+        return handlerMethods != null && !handlerMethods.isEmpty();
+    }
+
+    /**
+     * Returns whether the per-trigger Lua event bridge ({@code TriggerEventAdvice} → {@link
+     * OnTriggerLuaEvent} → {@code StormEventHandler.handleLuaEventTrigger}) has any possible
+     * consumer. When false, {@code TriggerEventAdvice} skips the bridge entirely — no event lookup,
+     * no argument copy, no allocation, no reflective dispatch — which matters because the bridge
+     * otherwise runs for every {@code triggerEvent} call including per-frame and per-zombie events.
+     * {@code @OnClientCommand} handlers live outside {@code DISPATCH_REGISTRY} but are fed through
+     * the same bridge (via {@code OnClientCommandEvent}), so they count as interest.
+     */
+    public static boolean isLuaEventBridgeNeeded() {
+        return luaEventInterest || ClientCommandDispatcher.hasHandlers();
+    }
+
+    private static void recomputeLuaEventInterest() {
+        for (Map.Entry<Class<? extends ZomboidEvent>, Set<EventHandlerMethod>> entry :
+                DISPATCH_REGISTRY.entrySet()) {
+            Class<? extends ZomboidEvent> eventClass = entry.getKey();
+            if (eventClass == OnTriggerLuaEvent.class) {
+                for (EventHandlerMethod handlerMethod : entry.getValue()) {
+                    if (handlerMethod.method.getDeclaringClass() != StormEventHandler.class) {
+                        luaEventInterest = true;
+                        return;
+                    }
+                }
+            } else if (LuaEvent.class.isAssignableFrom(eventClass) && !entry.getValue().isEmpty()) {
+                luaEventInterest = true;
+                return;
+            }
+        }
+        luaEventInterest = false;
+    }
+
     public static void dispatchEvent(ZomboidEvent event) {
         String eventName = event.getClass().getSimpleName();
         Set<EventHandlerMethod> handlerMethods = DISPATCH_REGISTRY.get(event.getClass());

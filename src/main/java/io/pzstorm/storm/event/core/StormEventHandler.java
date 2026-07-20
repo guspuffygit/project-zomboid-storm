@@ -43,11 +43,28 @@ public class StormEventHandler {
     @SubscribeEvent
     public static void handleLuaEventTrigger(OnTriggerLuaEvent event) {
         LOGGER.trace("OnTriggerLuaEvent {}", event.getName());
+        Class<? extends LuaEvent> eventClass =
+                LuaEventFactory.getEventClass(event.getLuaEvent().name);
+        if (eventClass == null) {
+            if (!event.getName().equals("onTriggerLuaEvent")) {
+                LOGGER.debug("Skip handling non-registered event '{}'", event.getName());
+            }
+            return;
+        }
+        // Constructing the typed event costs a reflective newInstance per trigger (per-frame and
+        // per-zombie events included) — skip it when nothing can consume the result. Client
+        // command handlers are registered outside the dispatch registry but consume
+        // OnClientCommandEvent through dispatchEvent's instanceof route, so they count.
+        if (!StormEventDispatcher.hasHandlers(eventClass)
+                && !(eventClass == OnClientCommandEvent.class
+                        && ClientCommandDispatcher.hasHandlers())) {
+            return;
+        }
         LuaEvent luaEvent;
         try {
             luaEvent =
                     LuaEventFactory.constructLuaEvent(
-                            event.getLuaEvent().name, event.getArgs().toArray(new Object[0]));
+                            eventClass, event.getArgs().toArray(new Object[0]));
         } catch (IllegalArgumentException | IllegalStateException e) {
             LOGGER.warn(
                     "Failed to construct event '{}' with args {}: {}",
@@ -56,12 +73,8 @@ public class StormEventHandler {
                     e.getMessage());
             return;
         }
-        if (luaEvent != null) {
-            luaEvent.registerCallback();
-            StormEventDispatcher.dispatchEvent(luaEvent);
-        } else if (!event.getName().equals("onTriggerLuaEvent")) {
-            LOGGER.debug("Skip handling non-registered event '{}'", event.getName());
-        }
+        luaEvent.registerCallback();
+        StormEventDispatcher.dispatchEvent(luaEvent);
     }
 
     @SubscribeEvent

@@ -65,11 +65,14 @@ import io.pzstorm.storm.patch.performance.ClimateManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerResolveContactsPatch;
 import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
+import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
 import io.pzstorm.storm.patch.performance.EngineUpdatePatch;
 import io.pzstorm.storm.patch.performance.EngineUpdateSimulationPatch;
 import io.pzstorm.storm.patch.performance.EntitySimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquarePatch;
+import io.pzstorm.storm.patch.performance.EventTriggerFastPathPatch;
+import io.pzstorm.storm.patch.performance.FBORenderLevelsFreeSkipPatch;
 import io.pzstorm.storm.patch.performance.FileSystemUpdateAsyncTransactionsPatch;
 import io.pzstorm.storm.patch.performance.FishSchoolManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerSavePatch;
@@ -272,6 +275,9 @@ public class StormClassTransformers {
             registerTransformer(new IsoGameCharacterRagdollMirrorsPatch());
             registerTransformer(new AnimationPlayerRecorderIsActivePatch());
             registerTransformer(new KahluaTableRawgetPatch());
+            registerTransformer(new EventTriggerFastPathPatch());
+            registerTransformer(new CutawayLevelDataArrayCachePatch());
+            registerTransformer(new FBORenderLevelsFreeSkipPatch());
         }
         // Server-only: IsoGenerator also executes on the client JVM (HARD RULE). The advice
         // gates on GameServer.server, so gating registration is behavior-preserving.

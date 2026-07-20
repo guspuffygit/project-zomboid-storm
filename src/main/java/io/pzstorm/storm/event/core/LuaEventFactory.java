@@ -329,6 +329,14 @@ public class LuaEventFactory {
         return eventClass != null ? constructLuaEvent(eventClass, args) : null;
     }
 
+    /**
+     * Resolve the {@link LuaEvent} implementation class for the given Lua event name, or {@code
+     * null} if the event has no registered implementation class.
+     */
+    public static @Nullable Class<? extends LuaEvent> getEventClass(String eventName) {
+        return EVENT_CLASSES.get(eventName);
+    }
+
     /** Resolve and return name of the event denoted by given {@code Class}. */
     static String getEventName(Class<? extends LuaEvent> eventClass) {
         String className = eventClass.getSimpleName();

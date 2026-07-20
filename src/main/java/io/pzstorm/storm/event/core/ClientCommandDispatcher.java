@@ -30,6 +30,15 @@ public class ClientCommandDispatcher {
     private static final Map<Class<? extends ClientCommandEvent>, Set<HandlerMethod>>
             HANDLER_REGISTRY = new HashMap<>();
 
+    /**
+     * Returns whether any {@code @OnClientCommand} handler is registered. Consulted per {@code
+     * triggerEvent} by {@link StormEventDispatcher#isLuaEventBridgeNeeded()}; registration and
+     * triggers both run on MainThread so the plain read is safe.
+     */
+    static boolean hasHandlers() {
+        return !HANDLER_REGISTRY.isEmpty();
+    }
+
     /** Clear all registries. Intended for use in tests only. */
     public static void reset() {
         EVENT_TYPE_REGISTRY.clear();
