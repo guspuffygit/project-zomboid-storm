@@ -200,7 +200,8 @@ public final class StormStartupAnalytics {
     /**
      * Splits a formatted section into Discord-safe chunks. If a chunk ends mid-code-block, the
      * fence is closed at the end of the chunk and reopened at the start of the next so each chunk
-     * renders independently.
+     * renders independently. Any single line longer than the budget is hard-split so
+     * semicolon-separated values like {@code WorkshopItems} can't produce an oversized chunk.
      */
     static List<String> chunkForDiscord(String section) {
         List<String> out = new ArrayList<>();
@@ -212,21 +213,23 @@ public final class StormStartupAnalytics {
         StringBuilder current = new StringBuilder();
         boolean inCodeBlock = false;
         for (String line : lines) {
-            int prospective = current.length() + line.length() + 1;
-            if (prospective > DISCORD_MESSAGE_CHAR_BUDGET && current.length() > 0) {
-                if (inCodeBlock) {
-                    current.append("\n```");
+            for (String piece : splitLongLine(line, DISCORD_MESSAGE_CHAR_BUDGET)) {
+                int prospective = current.length() + piece.length() + 1;
+                if (prospective > DISCORD_MESSAGE_CHAR_BUDGET && current.length() > 0) {
+                    if (inCodeBlock) {
+                        current.append("\n```");
+                    }
+                    out.add(current.toString());
+                    current = new StringBuilder();
+                    if (inCodeBlock) {
+                        current.append("```");
+                    }
                 }
-                out.add(current.toString());
-                current = new StringBuilder();
-                if (inCodeBlock) {
-                    current.append("```");
+                if (current.length() > 0) {
+                    current.append('\n');
                 }
+                current.append(piece);
             }
-            if (current.length() > 0) {
-                current.append('\n');
-            }
-            current.append(line);
             if (line.equals("```")) {
                 inCodeBlock = !inCodeBlock;
             }
@@ -235,6 +238,26 @@ public final class StormStartupAnalytics {
             out.add(current.toString());
         }
         return out;
+    }
+
+    static List<String> splitLongLine(String line, int maxLen) {
+        if (line.length() <= maxLen) {
+            return List.of(line);
+        }
+        List<String> pieces = new ArrayList<>();
+        int start = 0;
+        while (start < line.length()) {
+            int end = Math.min(start + maxLen, line.length());
+            if (end < line.length()) {
+                int semi = line.lastIndexOf(';', end - 1);
+                if (semi > start) {
+                    end = semi + 1;
+                }
+            }
+            pieces.add(line.substring(start, end));
+            start = end;
+        }
+        return pieces;
     }
 
     private static void postToDiscord(HttpClient client, String content) {
