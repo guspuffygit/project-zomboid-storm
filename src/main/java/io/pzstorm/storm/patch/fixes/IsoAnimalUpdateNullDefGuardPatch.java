@@ -21,10 +21,16 @@ import net.bytebuddy.pool.TypePool;
  *
  * <p>This patch installs an {@code @Advice.OnMethodEnter(skipOn = OnNonDefaultValue.class)} that,
  * on the server only, attempts one re-resolve of {@code adef} via {@code
- * AnimalDefinitions.getDef(type)}; if the type still resolves to {@code null}, it queues the animal
- * into {@code IsoCell.getRemoveList()} (drained at tick end via {@code
- * MovingObjectUpdateScheduler.removeObject}) and returns {@code true} to skip the original body.
- * Healthy animals fall through with {@code false} and the original {@code update()} runs.
+ * AnimalDefinitions.getDef(type)}; if the type still resolves to {@code null}, it immediately
+ * detaches the animal from every per-tick collection ({@code objectList}, {@code addList}, {@code
+ * removeList}, scheduler buckets, square moving-object lists) and returns {@code true} to skip the
+ * original body. Healthy animals fall through with {@code false} and the original {@code update()}
+ * runs.
+ *
+ * <p>Deferring the removal through {@code IsoCell.getRemoveList()} is not enough, and {@code
+ * removeFromWorld()} cannot be used either &mdash; both fail for a half-loaded animal. See {@link
+ * io.pzstorm.storm.advice.animalupdatenulldefguard.IsoAnimalUpdateNullDefGuardAdvice} for the full
+ * failure chain, verified live against a production server stuck in this loop.
  */
 public class IsoAnimalUpdateNullDefGuardPatch extends StormClassTransformer {
 
