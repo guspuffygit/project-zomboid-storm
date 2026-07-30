@@ -56,4 +56,17 @@ public class StormPaths {
     public static Path getLocalWorkshopDirectory() {
         return Path.of(System.getProperty("user.home"), "Zomboid", "Workshop");
     }
+
+    /**
+     * Set by the Storm Launcher on the game JVM it spawns; points at the per-server directory of
+     * mods it synced before launch. Keep the property name in sync with {@code
+     * io.pzstorm.launcher.GameLaunch#MODS_DIR_PROPERTY}.
+     */
+    public static final String LAUNCHER_MODS_PROPERTY = "storm.launcher.mods";
+
+    /** Launcher-synced mods root, or {@code null} when not launched via the launcher. */
+    public static Path getLauncherModsDirectory() {
+        String dir = System.getProperty(LAUNCHER_MODS_PROPERTY);
+        return dir == null || dir.isEmpty() ? null : Path.of(dir);
+    }
 }

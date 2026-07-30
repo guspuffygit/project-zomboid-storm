@@ -114,8 +114,6 @@ public class StormModLoader extends URLClassLoader {
             }
 
             List<ModJar> modJars = new ArrayList<>();
-            collectJarsFromDirectory(versionDir, modJars);
-
             if (versionDir != null) {
                 collectJarsFromDirectory(versionDir, modJars);
             }
@@ -241,7 +239,7 @@ public class StormModLoader extends URLClassLoader {
     }
 
     private static List<Path> listModDirectories(Path path) {
-        if (!path.toFile().exists()) {
+        if (path == null || !path.toFile().exists()) {
             return Collections.emptyList();
         }
 
@@ -293,6 +291,8 @@ public class StormModLoader extends URLClassLoader {
             List<Path> modsDirectories = listModDirectories(StormPaths.getModsDirectory());
             List<Path> localWorkshopDirectories =
                     listWorkshopDirectories(StormPaths.getLocalWorkshopDirectory());
+            List<Path> launcherModDirectories =
+                    listModDirectories(StormPaths.getLauncherModsDirectory());
 
             workshopDirectories.forEach(
                     (dir) -> LOGGER.debug("Workshop directory: {}", dir.toAbsolutePath()));
@@ -300,6 +300,8 @@ public class StormModLoader extends URLClassLoader {
                     (dir) -> LOGGER.debug("Mod directory: {}", dir.toAbsolutePath()));
             localWorkshopDirectories.forEach(
                     (dir) -> LOGGER.debug("Local workshop directory: {}", dir.toAbsolutePath()));
+            launcherModDirectories.forEach(
+                    (dir) -> LOGGER.debug("Launcher mod directory: {}", dir.toAbsolutePath()));
 
             // Snapshot Steam workshop jars before catalog. Only the Steam workshop content dir
             // goes through GameServerWorkshopItems.Install — local workshop / mods dirs are
@@ -308,11 +310,14 @@ public class StormModLoader extends URLClassLoader {
 
             boolean preferLocal = StormEnv.isStormLocal();
 
+            // Launcher-synced mods go last: on id collision the last cataloged dir wins,
+            // and the launcher dir holds the exact versions the target server published.
             catalogModJars(
                     Stream.of(
                                     preferLocal ? workshopDirectories : localWorkshopDirectories,
                                     modsDirectories,
-                                    preferLocal ? localWorkshopDirectories : workshopDirectories)
+                                    preferLocal ? localWorkshopDirectories : workshopDirectories,
+                                    launcherModDirectories)
                             .flatMap(List::stream)
                             .collect(Collectors.toList()));
         } catch (Exception e) {

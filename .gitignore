@@ -99,5 +99,6 @@ docs/*
 !docs/http-api.md
 !docs/mod-author-guide.md
 !docs/metrics.md
+!docs/launcher.md
 
 CLAUDE.local.md

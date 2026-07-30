@@ -77,14 +77,22 @@ Each line below is a vanilla bug Storm patches out, all default-on.
 - **FMOD JNA bindings** — `io.pzstorm.storm.jna.fmod.FmodJNA` exposes the running game's FMOD system handle, 3D listener / channel attributes, cone settings, and custom roll-off curves via JNA, so mods can drive native audio without re-binding the library or shipping their own copy.
 - **LuaLS type-stub dump** — every Java class exposed to Lua is written out as a LuaLS-compatible stub under `lua_stubs/` so IDEs can lint Lua against the live game API.
 
-## Lua shipped to connected clients
+## Client-side behavior
 
-Storm is a server-side framework and does not install onto player game clients.
-A handful of player-facing conveniences are implemented as Lua files that ship
-inside Storm's jar under `media/lua/client/`; they reach connected players
-through the vanilla mod-distribution flow and talk back to the server over
-`sendClientCommand` — no client-side Storm Java, no client launch-option
-changes.
+Player-facing conveniences come in two forms. Most are Lua files shipped inside
+Storm's jar under `media/lua/client/`; they reach connected players through the
+vanilla mod-distribution flow and talk back to the server over
+`sendClientCommand`. Clients started through the [Storm Launcher](launcher.md)
+additionally run Storm itself (the launcher passes the agent flags), which
+enables Storm-core client Java features:
+
+- **Launcher auto-join** — `io.pzstorm.storm.client.LauncherAutoJoin`
+  (registered only when the launcher passes `-Dstorm.autojoin.file=<path>`)
+  reads and immediately deletes the launcher's one-shot credential handoff at
+  the first main menu, then fills and submits the vanilla `ServerConnectPopup`
+  from Java-driven Lua — a zero-click path from launcher to in-game. Without
+  the property the class is never registered, so manual game starts are
+  unaffected.
 
 - **Low-RAM detection popup** — `client/StormRamAllocation.lua` reads the joining player's `-Xmx` value, reports it to the server (populating `GET /storm/ram-allocations`), and pops up a "your game has <4 GiB allocated, consider `-Xmx8g --`" warning with a "don't show again" tickbox (persisted to `StormRamAllocationSettings.txt`). If a player with ≤ 3221 MB allocated complains about lag in chat ("lag", "stutter", "freezing", "fps", …), the server detects it via a server-side patch on `ChatServer.sendMessage` (dispatching `OnServerChatMessageEvent`), broadcasts a reminder to server chat, and re-opens the popup on that player's screen (at most once per 5 minutes per player).
 - **Admin-requested screenshots** — `/screenshot <username>` (see [Built-in Server Commands](mod-author-guide.md#built-in-server-commands)) tells the named player's game client to render a screenshot via `Core.takeScreenshot`, base64-chunk it, and stream it back to the server, which writes it to the player's Lua cache dir as `storm_screenshot_<user>_<id>.png`.

@@ -371,6 +371,14 @@ tasks.register('installStorm', Sync) {
 		into 'bootstrap'
 	}
 
+	from(project(':launcher').tasks.named('jar')) {
+		into 'launcher'
+	}
+
+	from('launcher/dist/StormLauncher.bat') {
+		into 'launcher'
+	}
+
 	from('LICENSE') {
 		into 'common'
 	}
@@ -435,7 +443,7 @@ tasks.register('installStylua') {
 
 spotless {
 	java {
-		target 'src/**/*.java', 'zombie/**/*.java'
+		target 'src/**/*.java', 'zombie/**/*.java', 'launcher/src/**/*.java'
 		cleanthat()
 		googleJavaFormat().aosp().reflowLongStrings(false)
 		removeUnusedImports()

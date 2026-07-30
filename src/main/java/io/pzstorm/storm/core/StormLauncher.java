@@ -96,6 +96,15 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, startupAnalytics);
 
+            // Property name mirrors io.pzstorm.storm.client.LauncherAutoJoin.AUTOJOIN_FILE_PROPERTY
+            if (!StormEnv.isStormServer() && System.getProperty("storm.autojoin.file") != null) {
+                Class<?> launcherAutoJoin =
+                        classLoader.loadClass("io.pzstorm.storm.client.LauncherAutoJoin");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, launcherAutoJoin);
+            }
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());

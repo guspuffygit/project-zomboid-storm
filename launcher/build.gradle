@@ -1,0 +1,63 @@
+plugins {
+	id 'java'
+	id 'application'
+}
+
+application {
+	mainClass = 'io.pzstorm.launcher.LauncherMain'
+}
+
+// The launcher must stay dependency-free: it ships as a single jar that runs
+// on the JRE bundled with the game, before any game or Storm code is loaded.
+dependencies {
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// The WSL-path tests need a real /mnt path, but no developer's home directory
+// belongs in a public repo, so it comes from the gitignored local.properties.
+def localProperties = providers.fileContents(
+		rootProject.layout.projectDirectory.file('local.properties')).asText.map { text ->
+			def props = new Properties()
+			props.load(new StringReader(text))
+			return props
+		}.getOrElse(new Properties())
+
+test {
+	useJUnitPlatform()
+	def zomboidDir = localProperties.getProperty('zomboidDir')
+	if (zomboidDir) {
+		systemProperty 'storm.test.zomboidDir', zomboidDir
+	}
+	testLogging {
+		events "passed", "skipped", "failed"
+		exceptionFormat = "full"
+	}
+}
+
+def generateLauncherProperties = tasks.register('generateLauncherProperties') {
+	def outputDir = layout.buildDirectory.dir('generated/launcher-resources')
+	inputs.property 'version', project.version.toString()
+	inputs.property 'workshopIds', "${workshopIdProd},${workshopIdStage},${workshopIdDev}"
+	outputs.dir outputDir
+
+	doLast {
+		def f = new File(outputDir.get().asFile, 'storm-launcher.properties')
+		f.parentFile.mkdirs()
+		f.text = "version=${inputs.properties['version']}\n" +
+				"workshopIds=${inputs.properties['workshopIds']}\n"
+	}
+}
+
+sourceSets.main.resources.srcDir generateLauncherProperties
+
+jar {
+	archiveFileName = 'storm-launcher.jar'
+	manifest {
+		attributes(
+				'Main-Class': 'io.pzstorm.launcher.LauncherMain',
+				'Implementation-Version': project.version
+				)
+	}
+}

@@ -22,6 +22,8 @@ endpoints are always available. All return JSON unless noted.
 | GET | `/storm/version` | Plain-text Storm version string. |
 | GET | `/storm/server/players` | Currently-connected players (`username`, `steamId`, `ip`). |
 | GET | `/storm/ram-allocations` | Per-player JVM RAM allocations reported by connected players' game clients over `sendClientCommand` from Storm-shipped Lua. |
+| GET | `/storm/client/manifest` | Server JVMs only (`-Dstorm.server=true`). Manifest of the operator-curated client-mods directory (`stormVersion`, `dirs`, `files` with SHA-256 + size, `workshopItems` from server.ini) consumed by the [Storm Launcher](launcher.md). |
+| GET | `/storm/client/file?path=…` | Server JVMs only. Downloads one manifest file (path-validated, read-only). |
 
 Mod authors can register additional endpoints by annotating a handler method
 with `@HttpEndpoint(path = "...", method = "GET"|"POST")` on any class discovered

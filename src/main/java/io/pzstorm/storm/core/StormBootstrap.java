@@ -146,6 +146,16 @@ public class StormBootstrap {
                 .getDeclaredMethod("registerEventHandler", Class.class)
                 .invoke(null, builtinClass);
 
+        // Client mod distribution (manifest + file download) for the Storm Launcher.
+        // Server JVMs only: the client's HTTP server must never publish mod jars.
+        if (Boolean.getBoolean("storm.server")) {
+            Class<?> clientModsClass =
+                    Class.forName("io.pzstorm.storm.http.ClientModsEndpoints", true, CLASS_LOADER);
+            dispatcherClass
+                    .getDeclaredMethod("registerEventHandler", Class.class)
+                    .invoke(null, clientModsClass);
+        }
+
         // Developer hot-reload endpoints (/eval, /reload) — opt-in, off by default.
         if (Boolean.getBoolean("storm.hotreload")) {
             Class<?> hotReloadClass =
