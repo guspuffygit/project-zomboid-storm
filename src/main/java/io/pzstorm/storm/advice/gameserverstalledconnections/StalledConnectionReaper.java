@@ -13,10 +13,10 @@ import zombie.network.LoginQueue;
  * reaching {@code isFullyConnected()}.
  *
  * <p>Vanilla only reaps stalled logins in {@code GameServer.main} when {@code
- * connection.getUserName() == null}. A client that sent its username and then died anywhere later in
- * the connect pipeline (workshop init, mod check, chunk download, character creation) holds its slot
- * forever — nothing else removes it. RakNet's own keepalive does not help either: the peer stays
- * responsive at the RakNet layer while the game-level handshake is dead.
+ * connection.getUserName() == null}. A client that sent its username and then died anywhere later
+ * in the connect pipeline (workshop init, mod check, chunk download, character creation) holds its
+ * slot forever — nothing else removes it. RakNet's own keepalive does not help either: the peer
+ * stays responsive at the RakNet layer while the game-level handshake is dead.
  *
  * <p>That matters because {@code GameServer.main} builds the peer with a hardcoded cap of 101
  * incoming connections regardless of {@code MaxPlayers}, so on a busy server leaked slots quickly
@@ -130,11 +130,11 @@ public class StalledConnectionReaper {
         long timeout = idleTimeoutMs;
 
         for (int i = engine.connections.size() - 1; i >= 0; i--) {
-            UdpConnection connection = engine.connections.get(i);
-            if (connection == null) {
-                continue;
-            }
             try {
+                UdpConnection connection = engine.connections.get(i);
+                if (connection == null) {
+                    continue;
+                }
                 if (!isReapable(connection)) {
                     continue;
                 }

@@ -35,7 +35,9 @@ import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
+import io.pzstorm.storm.patch.networking.GameServerConnectionCapPatch;
 import io.pzstorm.storm.patch.networking.GameServerLockFpsPatch;
+import io.pzstorm.storm.patch.networking.GameServerStalledConnectionReapPatch;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.GameServerWorkshopItemsPatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
@@ -364,6 +366,8 @@ public class StormClassTransformers {
             registerTransformer(new IsoZombieUpdateFixPatch());
             registerTransformer(new UdpConnectionRelevancePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
+            registerTransformer(new GameServerStalledConnectionReapPatch());
+            registerTransformer(new GameServerConnectionCapPatch());
 
             // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
             // called from the server's frame-step block and records elapsed nanos into
