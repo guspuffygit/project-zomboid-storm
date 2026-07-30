@@ -6,6 +6,7 @@ import io.pzstorm.storm.event.zomboid.OnTriggerLuaEvent;
 import net.bytebuddy.asm.Advice;
 import zombie.Lua.Event;
 import zombie.Lua.LuaEventManager;
+import zombie.Lua.LuaManager;
 
 /**
  * Bridges {@code LuaEventManager.triggerEvent} into Storm's typed event system. Runs on every Lua
@@ -22,6 +23,15 @@ import zombie.Lua.LuaEventManager;
  * checkEvent} semantics apply — unknown events are skipped), and {@code LuaEvent.registerCallback}
  * no longer seeds empty events with a dummy closure (so vanilla's empty-callback early return runs
  * instead of invoking an empty chunk).
+ *
+ * <p>Triggers that arrive before the Lua environment exists bail out entirely (e.g. {@code
+ * Core.loadOptions} option-change events during display init, which run before {@code
+ * LuaManager.init}). Vanilla's own {@code LuaManager.env != null} guard makes such triggers
+ * invisible to Lua, and this advice runs ahead of that guard: calling {@code AddEvent(name)} here
+ * would NPE on {@code env.rawget("Events")} after the event was already put into {@code EventMap},
+ * leaving a half-registered entry that makes the later {@code AddEvents()} call early-return
+ * without ever registering the event into the Lua {@code Events} table — {@code Events.<name>} then
+ * stays nil for the whole session (seen as gamepadBinding.lua boot errors on PZ 42.20.0).
  */
 public class TriggerEventAdvice {
 
@@ -30,6 +40,9 @@ public class TriggerEventAdvice {
             @Advice.Argument(0) String name, @Advice.AllArguments Object[] allArgs) {
         TriggeredEvents.add(name);
         if (!StormEventDispatcher.isLuaEventBridgeNeeded()) {
+            return;
+        }
+        if (LuaManager.env == null) {
             return;
         }
         Event event = LuaEventManager.AddEvent(name);

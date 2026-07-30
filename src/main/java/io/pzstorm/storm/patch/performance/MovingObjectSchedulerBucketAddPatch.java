@@ -10,9 +10,9 @@ import net.bytebuddy.pool.TypePool;
 /**
  * Server-only patch that skips warm animals at the per-frame bucket-add chokepoint inside {@code
  * MovingObjectUpdateSchedulerUpdateBucket.add(IsoMovingObject)}. The scheduler's update /
- * postupdate / updateAnimation loops drain the buckets, so suppressing the add fully excludes warm
- * animals from per-tick {@code IsoAnimal.update()} work without removing them from {@code
- * IsoCell.objectList} (which {@code AnimalManagerMain.saveRealAnimals()} relies on).
+ * postupdate loops drain the buckets, so suppressing the add fully excludes warm animals from
+ * per-tick {@code IsoAnimal.update()} work without removing them from {@code IsoCell.objectList}
+ * (which {@code AnimalManagerMain.saveRealAnimals()} relies on).
  *
  * <p>Registration-gated to the dedicated server in {@code StormClassTransformers} alongside the
  * other warming-related patches — must never transform a client JVM.

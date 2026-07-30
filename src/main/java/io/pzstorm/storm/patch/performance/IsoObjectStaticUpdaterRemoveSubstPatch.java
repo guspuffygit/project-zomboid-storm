@@ -23,8 +23,8 @@ import net.bytebuddy.pool.TypePool;
  * <p>Scoping: only the no-arg {@code removeFromWorld()} on {@code IsoObject} is rewritten — the
  * overload {@code removeFromWorld(boolean)} and any other method on the class are left alone. That
  * single method body contains exactly one {@code ArrayList.remove(Object)} call (the {@code
- * cell.getStaticUpdaterObjectList().remove(this)} at decompiled line 4451), so name + signature
- * alone uniquely identifies the substitution target inside the scoped body.
+ * cell.getStaticUpdaterObjectList().remove(this)} at decompiled line 4497 in 42.20.0), so name +
+ * signature alone uniquely identifies the substitution target inside the scoped body.
  */
 public class IsoObjectStaticUpdaterRemoveSubstPatch extends StormClassTransformer {
 

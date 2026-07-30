@@ -189,8 +189,6 @@ import io.pzstorm.storm.patch.performance.WorldMapVisitedServerUpdatePatch;
 import io.pzstorm.storm.patch.performance.WorldSimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ZipBackupOnPeriodPatch;
 import io.pzstorm.storm.patch.performance.ZombieAuthStridePatch;
-import io.pzstorm.storm.patch.performance.ZombieCullDisablePatch;
-import io.pzstorm.storm.patch.performance.ZombieCullThresholdPatch;
 import io.pzstorm.storm.patch.performance.ZombieGroupManagerPreupdatePatch;
 import io.pzstorm.storm.patch.performance.ZombiePopManRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
@@ -294,9 +292,7 @@ public class StormClassTransformers {
         }
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new ServerLOSUpdatePatch());
-        registerTransformer(new ServerLOSFindDataPatch());
         registerTransformer(new ServerLOSIsCouldSeePatch());
-        registerTransformer(new ServerLOSRemovePlayerPatch());
         // Server-only: Stats executes on the client JVM (HARD RULE). Unlike most perf advice,
         // StatsGetAdvice replaces the method body unconditionally (no GameServer.server gate),
         // so this registration gate is the only thing keeping the client on vanilla bytecode.
@@ -335,6 +331,12 @@ public class StormClassTransformers {
         registerTransformer(new KahluaMetatableCachePatch());
 
         if (StormEnv.isStormServer()) {
+            // FindData/RemovePlayer advise different ServerLOS methods than the transformers
+            // registered above, so moving them into this gate does not reorder any shared
+            // advice chain. Their advices already gate on GameServer.server; the registration
+            // gate just makes the server-only intent explicit.
+            registerTransformer(new ServerLOSFindDataPatch());
+            registerTransformer(new ServerLOSRemovePlayerPatch());
             registerTransformer(new ServerLOSRunInnerPatch());
             registerTransformer(new IsoGridSquareLosParallelPatch());
             registerTransformer(new IsoRoomOnSeePatch());
@@ -356,8 +358,6 @@ public class StormClassTransformers {
             registerTransformer(new VehicleManagerServerUpdateOptPatch());
             registerTransformer(new ServerTickPatch());
             registerTransformer(new MainLoopDrainCapPatch());
-            registerTransformer(new ZombieCullDisablePatch());
-            registerTransformer(new ZombieCullThresholdPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
             registerTransformer(new RequestSaveCellSuppressPatch());
             registerTransformer(new ReceiveSandboxOptionsPatch());

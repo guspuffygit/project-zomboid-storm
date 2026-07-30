@@ -8,9 +8,12 @@ import org.jetbrains.annotations.Nullable;
 import zombie.core.raknet.UdpConnection;
 
 /**
- * Base class for all typed packet events. Each packet class in {@link
+ * Base class for all typed packet events. Nearly every packet class in {@link
  * io.pzstorm.storm.event.core.PacketEventDispatcher#SUPPORTED_PACKETS} has a corresponding subclass
- * that provides a typed {@code getPacket()} method.
+ * that provides a typed {@code getPacket()} method. Typed events resolve by the packet's runtime
+ * class simple name, so base packets whose wire types are subclasses (PlayerPacket,
+ * AnimalUpdatePacket, VehiclePhysicsPacket) have none — subscribe to the generic event and filter
+ * by name instead.
  *
  * <p>Handlers use {@link io.pzstorm.storm.event.core.SubscribeEvent @SubscribeEvent} with the
  * specific typed event as the parameter type.

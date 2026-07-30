@@ -6,8 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.IntegrationTest;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.Map;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.Handle;
+import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
@@ -97,6 +103,210 @@ class IsoGeneratorElectricityPatchTest implements IntegrationTest {
                         + before.updateSurroundingReads
                         + " after="
                         + after.updateSurroundingReads);
+    }
+
+    /**
+     * SHA-256 of the normalized instruction stream of the vanilla methods whose logic {@code
+     * SkipServerScanAdvice.onEnter} inlines as a hand-written copy (they are private, so nothing
+     * compile-checks the copy): {@code touchesChunk(IsoChunk)}'s chunk box test and {@code
+     * setGeneratorRange()}'s {@code generatorRadius / 8 + 1} chunk range. If either fingerprint
+     * changes on a game update, the copies must be re-verified line by line against the new source
+     * before updating the constant — a silent divergence leaves edge chunks without {@code
+     * addGeneratorPos} bookkeeping (squares that should have power report none).
+     */
+    private static final String TOUCHES_CHUNK_FINGERPRINT =
+            "4c18636e0fdd3f54678ee9a11495b079732b1d9437ae35da146626d7bb755ffa";
+
+    private static final String SET_GENERATOR_RANGE_FINGERPRINT =
+            "28215c2468118e1537dbe68c37ccb8c7774174f95782bf9197a58d5bdb15385d";
+
+    @Test
+    void copiedVanillaLogicIsByteIdentical() throws Exception {
+        byte[] rawClass = readClass(ISO_GENERATOR);
+        assertEquals(
+                TOUCHES_CHUNK_FINGERPRINT,
+                fingerprintOfMethods(rawClass, "touchesChunk"),
+                "Vanilla IsoGenerator.touchesChunk changed. SkipServerScanAdvice.onEnter inlines"
+                        + " a copy of its chunk box test (the minX/maxX/minY/maxY bounds checks);"
+                        + " re-verify the inlined copy against the new decompiled source, then"
+                        + " update TOUCHES_CHUNK_FINGERPRINT.");
+        assertEquals(
+                SET_GENERATOR_RANGE_FINGERPRINT,
+                fingerprintOfMethods(rawClass, "setGeneratorRange"),
+                "Vanilla IsoGenerator.setGeneratorRange changed. SkipServerScanAdvice.onEnter"
+                        + " inlines its 'generatorRadius / 8 + 1' chunk-range formula; re-verify"
+                        + " the inlined copy against the new decompiled source, then update"
+                        + " SET_GENERATOR_RANGE_FINGERPRINT.");
+    }
+
+    /**
+     * Normalized instruction-stream fingerprint of every method named {@code methodName} (any
+     * descriptor): opcodes with operands, labels numbered by first appearance, no debug info or
+     * frames. Stable across recompiles of unchanged source; changes when the method's logic does.
+     */
+    private static String fingerprintOfMethods(byte[] classBytes, String methodName)
+            throws Exception {
+        StringBuilder stream = new StringBuilder();
+        int[] found = new int[1];
+        new ClassReader(classBytes)
+                .accept(
+                        new ClassVisitor(Opcodes.ASM9) {
+                            @Override
+                            public MethodVisitor visitMethod(
+                                    int access,
+                                    String name,
+                                    String descriptor,
+                                    String signature,
+                                    String[] exceptions) {
+                                if (!methodName.equals(name)) {
+                                    return null;
+                                }
+                                found[0]++;
+                                stream.append(name).append(descriptor).append('\n');
+                                return new InstructionRecorder(stream);
+                            }
+                        },
+                        ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+        assertTrue(
+                found[0] > 0,
+                "IsoGenerator no longer declares a method named '"
+                        + methodName
+                        + "' — the logic copied into SkipServerScanAdvice has no vanilla"
+                        + " counterpart to verify against; re-derive the advice from the new"
+                        + " source.");
+        byte[] digest =
+                MessageDigest.getInstance("SHA-256")
+                        .digest(
+                                stream.toString()
+                                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return HexFormat.of().formatHex(digest);
+    }
+
+    /** Records each instruction as one line; labels get stable ids by first appearance. */
+    private static final class InstructionRecorder extends MethodVisitor {
+
+        private final StringBuilder out;
+        private final Map<Label, Integer> labelIds = new HashMap<>();
+
+        InstructionRecorder(StringBuilder out) {
+            super(Opcodes.ASM9);
+            this.out = out;
+        }
+
+        private String labelId(Label label) {
+            return "L" + labelIds.computeIfAbsent(label, l -> labelIds.size());
+        }
+
+        @Override
+        public void visitInsn(int opcode) {
+            out.append(opcode).append('\n');
+        }
+
+        @Override
+        public void visitIntInsn(int opcode, int operand) {
+            out.append(opcode).append(' ').append(operand).append('\n');
+        }
+
+        @Override
+        public void visitVarInsn(int opcode, int varIndex) {
+            out.append(opcode).append(" v").append(varIndex).append('\n');
+        }
+
+        @Override
+        public void visitTypeInsn(int opcode, String type) {
+            out.append(opcode).append(' ').append(type).append('\n');
+        }
+
+        @Override
+        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+            out.append(opcode)
+                    .append(' ')
+                    .append(owner)
+                    .append('.')
+                    .append(name)
+                    .append(':')
+                    .append(descriptor)
+                    .append('\n');
+        }
+
+        @Override
+        public void visitMethodInsn(
+                int opcode, String owner, String name, String descriptor, boolean isInterface) {
+            out.append(opcode)
+                    .append(' ')
+                    .append(owner)
+                    .append('.')
+                    .append(name)
+                    .append(descriptor)
+                    .append('\n');
+        }
+
+        @Override
+        public void visitInvokeDynamicInsn(
+                String name, String descriptor, Handle handle, Object... args) {
+            out.append("indy ").append(name).append(descriptor).append('\n');
+        }
+
+        @Override
+        public void visitJumpInsn(int opcode, Label label) {
+            out.append(opcode).append(' ').append(labelId(label)).append('\n');
+        }
+
+        @Override
+        public void visitLabel(Label label) {
+            out.append(labelId(label)).append(":\n");
+        }
+
+        @Override
+        public void visitLdcInsn(Object value) {
+            out.append("ldc ").append(value).append('\n');
+        }
+
+        @Override
+        public void visitIincInsn(int varIndex, int increment) {
+            out.append("iinc v").append(varIndex).append(' ').append(increment).append('\n');
+        }
+
+        @Override
+        public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
+            out.append("tableswitch ").append(min).append('-').append(max);
+            out.append(' ').append(labelId(dflt));
+            for (Label label : labels) {
+                out.append(' ').append(labelId(label));
+            }
+            out.append('\n');
+        }
+
+        @Override
+        public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
+            out.append("lookupswitch ").append(labelId(dflt));
+            for (int i = 0; i < keys.length; i++) {
+                out.append(' ').append(keys[i]).append("->").append(labelId(labels[i]));
+            }
+            out.append('\n');
+        }
+
+        @Override
+        public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
+            out.append("multianewarray ")
+                    .append(descriptor)
+                    .append(' ')
+                    .append(numDimensions)
+                    .append('\n');
+        }
+
+        @Override
+        public void visitTryCatchBlock(Label start, Label end, Label handler, String type) {
+            out.append("trycatch ")
+                    .append(labelId(start))
+                    .append(' ')
+                    .append(labelId(end))
+                    .append(' ')
+                    .append(labelId(handler))
+                    .append(' ')
+                    .append(type)
+                    .append('\n');
+        }
     }
 
     private static byte[] readClass(String internalName) throws Exception {

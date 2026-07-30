@@ -174,9 +174,9 @@ public final class StormCellMembership {
      * present in {@code IsoObject.removeFromWorld()}. Returns {@code true} if a removal occurred,
      * for parity with {@link ArrayList#remove(Object)}.
      *
-     * <p>Order is not preserved — verified safe at all four call sites ({@code
-     * IsoCell.ProcessStaticUpdaters}, {@code IsoCell:3500}, {@code FBORenderCell:292}, {@code
-     * ServerGUI:299}, {@code TutorialManager:54}); none depend on insertion order.
+     * <p>Order is not preserved — verified safe at every consumer ({@code
+     * IsoCell.ProcessStaticUpdaters}, {@code IsoCell:3520}, {@code FBORenderCell:308}, {@code
+     * ServerGUI:300}, {@code TutorialManager:54} in 42.20.0); none depend on insertion order.
      *
      * <p>Bypass sites mutate {@code staticUpdaterObjectList} directly without going through the
      * patched add path — {@code IsoDeadBody.setReanimateTime} (direct add and direct remove, both

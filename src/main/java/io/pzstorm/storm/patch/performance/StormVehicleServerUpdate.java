@@ -3,6 +3,7 @@ package io.pzstorm.storm.patch.performance;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
+import io.pzstorm.storm.metrics.VehicleServerUpdateMetrics;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Set;
@@ -96,7 +97,11 @@ public final class StormVehicleServerUpdate {
         }
         // Mark the frame only after success so a throw retries via the vanilla body next call.
         lastRunFrame = frame;
-        MainLoopStepTimings.record("VehicleManager.serverUpdate", System.nanoTime() - start);
+        long elapsed = System.nanoTime() - start;
+        MainLoopStepTimings.record("VehicleManager.serverUpdate", elapsed);
+        // The skipOn bypass means the inner VehicleManagerServerUpdateAdvice never times the
+        // optimized path — record here so the histogram keeps reporting when the opt is active.
+        VehicleServerUpdateMetrics.recordNanos(elapsed);
         return true;
     }
 

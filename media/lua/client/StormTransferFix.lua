@@ -6,9 +6,10 @@ require("TimedActions/ISInventoryTransferAction")
 --   Root Cause #4: Byte ID wraparound causing collisions across players
 --   Root Cause #5: Vacuous truth on ID 0 when createItemTransaction fails
 --
--- Each item still gets its own transaction (no batching), keeping behavior as close
--- to vanilla as possible. Dead body transfers and corpse items without a world object
--- use the vanilla system unchanged.
+-- Each item still gets its own server-side transaction. Since PZ 42.20.0 the client
+-- merges same-type light items into one queued batch (checkQueueList runs client-side),
+-- so a batch fans out into one UUID per member item. Dead body transfers and corpse
+-- items without a world object use the vanilla system unchanged.
 
 local MODULE = "StormTransfer"
 
@@ -237,6 +238,23 @@ local function isStormTransactionTimedOut(uuid)
     return (getTimestampMs() - t.startTime) > STORM_TIMEOUT_MS
 end
 
+-- One UUID per member of the current batch. Floor pickups have per-item source refs;
+-- a later member without a world object cannot be authorized and is skipped (stays
+-- put) rather than failing the whole batch. Member 1 is always sent so an unresolvable
+-- ref surfaces as a server reject, like the pre-batch behavior.
+local function createStormBatch(character, items, srcContainer, destContainer)
+    local transfers = {}
+    for i, item in ipairs(items) do
+        if i == 1 or getSourceRef(srcContainer, character, item) ~= nil then
+            table.insert(transfers, {
+                uuid = createStormTransaction(character, item, srcContainer, destContainer),
+                item = item,
+            })
+        end
+    end
+    return transfers
+end
+
 ---------------------------------------------------------------------------
 -- Override start()
 ---------------------------------------------------------------------------
@@ -320,12 +338,19 @@ function ISInventoryTransferAction:start()
     -- Wait for server to tell us when the transfer is done
     self.action:setWaitForFinished(true)
 
-    self:startActionAnim()
-
-    -- KEY CHANGE: UUID-based transaction instead of vanilla byte ID
+    -- KEY CHANGE: UUID-based transactions instead of the vanilla batched byte-ID
+    -- transaction. checkQueueList mirrors vanilla 42.20.0 start(): it merges queued
+    -- same-type light items into queueList[1] before the batch is authorized.
+    local items = { self.item }
+    self:checkQueueList()
+    if #self.queueList > 0 then
+        items = self.queueList[1].items
+    end
     self._stormTransfer = true
-    self._stormUUID =
-        createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
+    self._stormTransfers =
+        createStormBatch(self.character, items, self.srcContainer, self.destContainer)
+
+    self:startActionAnim()
     self.started = true
 end
 
@@ -394,24 +419,46 @@ function ISInventoryTransferAction:update()
     self.item:setJobDelta(self.action:getJobDelta())
     self.character:setMetabolicTarget(Metabolics.LightWork)
 
-    -- Storm transaction state checks (replaces vanilla byte-ID checks)
-    if isStormTransactionDone(self._stormUUID) then
-        cleanupStormTransaction(self._stormUUID)
+    -- Storm transaction state checks (replaces vanilla byte-ID checks). The action
+    -- completes when every batch member is done; any reject/timeout/vanished item
+    -- stops it, and stop() cancels the batch's outstanding members server-side.
+    local transfers = self._stormTransfers or {}
+    local allDone = true
+    for _, transfer in ipairs(transfers) do
+        if
+            isStormTransactionRejected(transfer.uuid)
+            or isStormTransactionTimedOut(transfer.uuid)
+        then
+            self:forceStop()
+            return
+        end
+        if not isStormTransactionDone(transfer.uuid) then
+            allDone = false
+            if not self.srcContainer:contains(transfer.item) then
+                self:forceStop()
+                return
+            end
+        end
+    end
+    if allDone then
+        for _, transfer in ipairs(transfers) do
+            cleanupStormTransaction(transfer.uuid)
+        end
+        self._stormTransfers = {}
         self:forceComplete()
-    elseif isStormTransactionRejected(self._stormUUID) then
-        cleanupStormTransaction(self._stormUUID)
-        self:forceStop()
-    elseif isStormTransactionTimedOut(self._stormUUID) then
-        cleanupStormTransaction(self._stormUUID)
-        self:forceStop()
-    elseif not self.srcContainer:contains(self.item) then
-        cancelStormTransaction(self.character, self._stormUUID)
-        self:forceStop()
+        return
     end
 
-    -- Duration from server (replaces getItemTransactionDuration)
+    -- Duration from server (replaces getItemTransactionDuration); the slowest batch
+    -- member drives the progress bar
     if self.maxTime == -1 then
-        local duration = getStormTransactionDuration(self._stormUUID)
+        local duration = -1
+        for _, transfer in ipairs(transfers) do
+            local d = getStormTransactionDuration(transfer.uuid)
+            if d > duration then
+                duration = d
+            end
+        end
         if duration > 0 then
             self.maxTime = duration
             self.action:setTime(self.maxTime)
@@ -431,9 +478,11 @@ function ISInventoryTransferAction:perform()
         return
     end
 
-    -- Replicate vanilla perform() logic (lines 452-526)
-    self:checkQueueList()
-
+    -- Replicate vanilla 42.20.0 perform() client path. transferItem() is NOT called:
+    -- 42.20.0 removed its isClient() early-return, so a client call now performs a
+    -- real local move (including transmitRemoveItemFromSquare for floor pickups) for
+    -- items the server never authorized. The server already moved every batch member;
+    -- the client only plays feedback, mirroring vanilla's `if not isClient()` split.
     self.item:setJobDelta(0.0)
     local queuedItem = table.remove(self.queueList, 1)
 
@@ -450,12 +499,20 @@ function ISInventoryTransferAction:perform()
                 self.queueList = {}
                 break
             end
-            -- transferItem() on client: removeItemTransaction(0, false) is no-op, then returns
-            self:transferItem(item)
+            self:playTransferCompleteSound(item)
         end
     end
 
-    -- If we still have items to transfer, reset the action for the next item
+    -- Merge actions queued while this batch was in flight (vanilla 42.20.0 runs
+    -- checkQueueList here on the client, after the item loop)
+    self:checkQueueList()
+
+    for _, transfer in ipairs(self._stormTransfers or {}) do
+        cleanupStormTransaction(transfer.uuid)
+    end
+    self._stormTransfers = {}
+
+    -- If we still have items to transfer, reset the action for the next batch
     if #self.queueList > 0 then
         local nextItem = self.queueList[1]
         self.item = nextItem.items[1]
@@ -467,13 +524,13 @@ function ISInventoryTransferAction:perform()
             time = 0
         end
         self.action:reset()
+        -- KEY CHANGE: UUID-based transactions for the whole next batch
+        self._stormTransfers =
+            createStormBatch(self.character, nextItem.items, self.srcContainer, self.destContainer)
         self.maxTime = time
         self.action:setTime(tonumber(time))
         self:resetJobDelta()
         self:startActionAnim()
-        -- KEY CHANGE: UUID-based transaction for next item
-        self._stormUUID =
-            createStormTransaction(self.character, self.item, self.srcContainer, self.destContainer)
     else
         -- Queue empty — clean up
         self:playSourceContainerCloseSound()
@@ -518,9 +575,11 @@ local _originalStop = ISInventoryTransferAction.stop
 
 function ISInventoryTransferAction:stop()
     if self._stormTransfer then
-        cancelStormTransaction(self.character, self._stormUUID)
+        for _, transfer in ipairs(self._stormTransfers or {}) do
+            cancelStormTransaction(self.character, transfer.uuid)
+        end
         self._stormTransfer = false
-        self._stormUUID = nil
+        self._stormTransfers = nil
     end
 
     _originalStop(self)

@@ -12,10 +12,15 @@ import zombie.network.GameServer;
  * <p>Runs on method exit so the original {@code findData(player)} call inside {@code removePlayer}
  * can still see the cached entry to remove from the underlying list. After the list removal
  * succeeds, the cache entry is now stale and must be evicted.
+ *
+ * <p>{@code onThrowable} makes the eviction run on exceptional exit too: if {@code removePlayer}
+ * throws after {@code playersMain.remove(data)} (e.g. a null {@code thread.notifier}), a skipped
+ * eviction would leave a cache entry for a {@code PlayerData} no longer in the list — and {@code
+ * addPlayer} would then refuse to ever re-add that player.
  */
 public class ServerLOSRemovePlayerAdvice {
 
-    @Advice.OnMethodExit
+    @Advice.OnMethodExit(onThrowable = Throwable.class)
     public static void onExit(@Advice.Argument(0) IsoPlayer player) {
         if (!GameServer.server) {
             return;

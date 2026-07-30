@@ -86,12 +86,15 @@ public final class ZombieAuthTickInterval {
         if (stride <= 1) {
             return false;
         }
-        if (zombie.getOwner() != null) {
-            // Owned: vanilla's 2s lastChangeOwner gate already bounds the scan rate.
+        long frame = MovingObjectUpdateScheduler.instance.getFrameCounter();
+        if (shouldRunForZombie(stride, frame, zombie.getOnlineID())) {
+            // This zombie's phase tick — vanilla runs whether or not it has an owner.
             return false;
         }
-        long frame = MovingObjectUpdateScheduler.instance.getFrameCounter();
-        return !shouldRunForZombie(stride, frame, zombie.getOnlineID());
+        // Probe ownership only on skip-candidate ticks: 42.20.0 turned getOwner() into an
+        // ECS HashMap lookup (getOnlineID() is still a field read). Owned zombies never
+        // skip — vanilla's 2s lastChangeOwner gate already bounds their scan rate.
+        return zombie.getOwner() == null;
     }
 
     private static int clamp(int requested) {

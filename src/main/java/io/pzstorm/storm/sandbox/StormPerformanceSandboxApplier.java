@@ -16,6 +16,7 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.screenshot.StormScreenshotConfig;
+import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import zombie.SandboxOptions;
 import zombie.network.GameServer;
 
@@ -23,8 +24,9 @@ import zombie.network.GameServer;
  * Reads Storm's performance sandbox options at {@code OnServerStarted} and pushes them through the
  * existing live setters. {@code Storm.ServerFps} feeds {@link ServerFpsConfig#applyUnifiedFps(int)}
  * (which sets tick interval, lockFps, and IsoPhysicsObject fps); the remaining options ({@link
- * AnimalLOSTickInterval}, {@link StormZombieCullConfig}, {@link StormServerLosConfig}) are each 1:1
- * with a sandbox option.
+ * AnimalLOSTickInterval}, {@link StormServerLosConfig}, ...) are each 1:1 with a sandbox option.
+ * {@link StormZombieCullConfig} is the exception — it owns no option and is only republished to its
+ * gauge here.
  *
  * <p>This runs only on the dedicated server — the event also fires on the client when a hosted coop
  * server starts, but the sandbox knobs here only make sense for the authoritative server JVM.
@@ -37,7 +39,7 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ZOMBIE_AUTH_TICK_INTERVAL = "Storm.ZombieAuthTickInterval";
     public static final String OPT_INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
             "Storm.InventoryItemSweepTickInterval";
-    public static final String OPT_ZOMBIE_CULL_THRESHOLD = "Storm.ZombieCullThreshold";
+    public static final String OPT_MAX_TOTAL_ZOMBIES = "Storm.MaxTotalZombies";
     public static final String OPT_SERVER_LOS_THREADS = "Storm.ServerLosThreads";
     public static final String OPT_NETDATA_CAP_MS = "Storm.NetDataCapMs";
     public static final String OPT_PEER_SEND_BUFFER_KICK_MB = "Storm.PeerSendBufferKickMb";
@@ -47,6 +49,9 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_SCREENSHOT_UPLOAD_KB_PER_SEC = "Storm.ScreenshotUploadKbPerSec";
     public static final String OPT_SCREENSHOT_ENCODE_KB_PER_TICK =
             "Storm.ScreenshotEncodeKbPerTick";
+
+    /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
+    private static boolean serverFpsSkippedOnce;
 
     private StormPerformanceSandboxApplier() {}
 
@@ -75,7 +80,8 @@ public final class StormPerformanceSandboxApplier {
         applyVirtualAnimalTickInterval();
         applyZombieAuthTickInterval();
         applyInventoryItemSweepTickInterval();
-        applyZombieCullThreshold();
+        refreshZombieCullThreshold();
+        applyMaxTotalZombies();
         applyServerLosThreads();
         applyNetDataCapMs();
         applyPeerSendBufferKickMb();
@@ -93,10 +99,12 @@ public final class StormPerformanceSandboxApplier {
      * 823, which runs immediately after {@link UpdateLimitFactory#create(long)} installs the tick
      * limiter at line 822.
      *
-     * <p>{@code OnServerStartedEvent} fires inside {@code GameServer.startServer()} at line 1513,
+     * <p>{@code OnServerStartedEvent} fires inside {@code GameServer.startServer()} at line 1514,
      * before the patched {@code new UpdateLimit(100L)} at {@code GameServer.main()} line 822. The
      * first call from {@link #applyAll()} therefore arrives with no limiter installed; it returns
-     * silently and waits for the {@code applyServerLockFps} boot seam to re-invoke this method.
+     * silently and waits for the {@code applyServerLockFps} boot seam to re-invoke this method. A
+     * <em>second</em> not-ready call can only mean the {@code UpdateLimit} constructor substitution
+     * never matched (a silent MemberSubstitution no-op), so it escalates to an error.
      */
     public static void applyServerFps() {
         Integer value = readIntOption(OPT_SERVER_FPS);
@@ -104,6 +112,14 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         if (!UpdateLimitFactory.isLimiterReady()) {
+            if (serverFpsSkippedOnce) {
+                LOGGER.error(
+                        "Storm: Storm.ServerFps still cannot apply — the server tick limiter was"
+                                + " never installed. GameServerTickRatePatch's UpdateLimit substitution"
+                                + " likely did not match this game version; the server runs at vanilla"
+                                + " 10 TPS");
+            }
+            serverFpsSkippedOnce = true;
             return;
         }
         ServerFpsConfig.applyUnifiedFps(value);
@@ -141,12 +157,21 @@ public final class StormPerformanceSandboxApplier {
         InventoryItemSweepTickInterval.setTickInterval(value);
     }
 
-    private static void applyZombieCullThreshold() {
-        Integer value = readIntOption(OPT_ZOMBIE_CULL_THRESHOLD);
+    /**
+     * Zombie culling has no Storm option — since 42.20.0 operators drive vanilla's {@code
+     * ZombieConfig.ZombiesCountBeforeDelete} directly. Only the gauge is republished so it tracks
+     * admin pushes.
+     */
+    private static void refreshZombieCullThreshold() {
+        StormZombieCullConfig.refreshMetric();
+    }
+
+    private static void applyMaxTotalZombies() {
+        Integer value = readIntOption(OPT_MAX_TOTAL_ZOMBIES);
         if (value == null) {
             return;
         }
-        StormZombieCullConfig.setThreshold(value);
+        StormZombieTotalCap.setMaxTotal(value);
     }
 
     private static void applyServerLosThreads() {

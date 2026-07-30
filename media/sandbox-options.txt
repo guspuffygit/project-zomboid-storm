@@ -15,8 +15,8 @@ option Storm.ZombieAuthTickInterval
 option Storm.InventoryItemSweepTickInterval
 {type = integer, min = 1, max = 64, default = 1, page = Storm, translation = Storm_InventoryItemSweepTickInterval,}
 
-option Storm.ZombieCullThreshold
-{type = integer, min = 0, max = 99999, default = 500, page = Storm, translation = Storm_ZombieCullThreshold,}
+option Storm.MaxTotalZombies
+{type = integer, min = 0, max = 32000, default = 7000, page = Storm, translation = Storm_MaxTotalZombies,}
 
 option Storm.ServerLosThreads
 {type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ServerLosThreads,}

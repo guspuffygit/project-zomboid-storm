@@ -8,10 +8,12 @@ import io.pzstorm.storm.event.zomboid.OnContainerLootedEvent;
 import io.pzstorm.storm.event.zomboid.OnItemTransferCompletedEvent;
 import io.pzstorm.storm.metrics.TransferMetrics;
 import io.pzstorm.storm.transfer.commands.CancelTransferCommand;
+import io.pzstorm.storm.transfer.commands.PlaceItemCommand;
 import io.pzstorm.storm.transfer.commands.TransferItemCommand;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.GameTime;
 import zombie.Lua.LuaEventManager;
@@ -20,6 +22,7 @@ import zombie.core.Core;
 import zombie.core.random.Rand;
 import zombie.inventory.InventoryItem;
 import zombie.inventory.ItemContainer;
+import zombie.inventory.types.AnimalInventoryItem;
 import zombie.inventory.types.Clothing;
 import zombie.inventory.types.DrainableComboItem;
 import zombie.inventory.types.Food;
@@ -67,8 +70,22 @@ public class StormTransferHandler {
      */
     private static final float VEHICLE_MAX_DISTANCE = 5.0F;
 
+    /**
+     * How long a placement request keeps retrying its inventory lookup. The client sends {@code
+     * placeItem} on its own timeline, so the item may still be in flight in an {@code
+     * AddItemToContainer} packet on a different ordering channel (the lit-candle / lit-lantern swap
+     * in {@code ISDropWorldItemAction:complete()} does exactly that).
+     */
+    private static final long PLACEMENT_RETRY_WINDOW_MS = 3000;
+
+    /** Maximum weight of items allowed on one square, matching {@code ISDropWorldItemAction}. */
+    private static final float FLOOR_WEIGHT_LIMIT = 50.0F;
+
     private static final ConcurrentHashMap<String, PendingTransfer> pendingTransfers =
             new ConcurrentHashMap<>();
+
+    private static final ConcurrentLinkedQueue<PendingPlacement> pendingPlacements =
+            new ConcurrentLinkedQueue<>();
 
     private static final ConcurrentHashMap<IsoPlayer, LightweightPickupData> lightweightPickups =
             new ConcurrentHashMap<>();
@@ -95,6 +112,23 @@ public class StormTransferHandler {
      * square at packet-parse time and drops there unconditionally when the timer elapses).
      */
     record FloorDropLeg(IsoGridSquare square) implements Leg {}
+
+    /**
+     * A "Place Item" request awaiting execution. Placements carry no server-side timer (the client
+     * already ran the action's progress bar) &mdash; {@code deadline} only bounds how long the
+     * inventory lookup is retried.
+     */
+    private record PendingPlacement(
+            IsoPlayer player,
+            int itemId,
+            int x,
+            int y,
+            int z,
+            float xOffset,
+            float yOffset,
+            float zOffset,
+            float rotation,
+            long deadline) {}
 
     private record PendingTransfer(
             IsoPlayer player,
@@ -285,6 +319,47 @@ public class StormTransferHandler {
         sendAccepted(player, uuid, duration);
     }
 
+    /**
+     * Handles a "Place Item" request. Vanilla's {@code ISDropWorldItemAction:complete()} builds the
+     * {@code IsoWorldInventoryObject} on the client with {@code transmit=false} and only tells the
+     * server to delete the item from the player's inventory, so the placed item exists on the
+     * placing client and nowhere else. Since 42.20.0 removed {@code
+     * IsoObject.transmitCompleteItemToServer()} (and {@code AddItemToMapPacket.processServer} with
+     * it) there is no longer any way for a client-built ground object to reach the server at all,
+     * so such an item can never be picked up again through the server-authoritative transfer path.
+     *
+     * <p>{@code StormPlaceItemFix.lua} therefore sends the placement here instead and leaves the
+     * world untouched client-side; this method performs the move on the server and broadcasts
+     * {@code AddItemToMap} to every relevant client, the placer included.
+     */
+    @OnClientCommand
+    public static void onPlaceItem(PlaceItemCommand event) {
+        PendingPlacement placement =
+                new PendingPlacement(
+                        event.getPlayer(),
+                        event.getItemId(),
+                        event.getX(),
+                        event.getY(),
+                        event.getZ(),
+                        event.getXOffset(),
+                        event.getYOffset(),
+                        event.getZOffset(),
+                        event.getRotation(),
+                        GameTime.getServerTimeMills() + PLACEMENT_RETRY_WINDOW_MS);
+
+        LOGGER.debug(
+                "placeItem: player={} itemId={} square={},{},{}",
+                placement.player.getUsername(),
+                placement.itemId,
+                placement.x,
+                placement.y,
+                placement.z);
+
+        if (!executePlacement(placement)) {
+            pendingPlacements.add(placement);
+        }
+    }
+
     @OnClientCommand
     public static void onCancelTransfer(CancelTransferCommand event) {
         String uuid = event.getUuid();
@@ -300,11 +375,15 @@ public class StormTransferHandler {
     }
 
     /**
-     * Processes pending transfers whose timers have elapsed. Called every server tick from {@link
+     * Processes pending transfers whose timers have elapsed, and retries placements whose item was
+     * not in the player's inventory yet. Called every server tick from {@link
      * io.pzstorm.storm.patch.fixes.TransactionManagerPatch.UpdateAdvice}.
      */
     public static void processPending() {
         if (!GameServer.server) return;
+
+        processPendingPlacements();
+
         if (pendingTransfers.isEmpty()) return;
 
         long now = GameTime.getServerTimeMills();
@@ -504,6 +583,135 @@ public class StormTransferHandler {
         complete(uuid, p, item);
     }
 
+    private static void processPendingPlacements() {
+        if (pendingPlacements.isEmpty()) return;
+
+        long now = GameTime.getServerTimeMills();
+        Iterator<PendingPlacement> it = pendingPlacements.iterator();
+        while (it.hasNext()) {
+            PendingPlacement placement = it.next();
+            if (executePlacement(placement)) {
+                it.remove();
+            } else if (placement.deadline <= now) {
+                it.remove();
+                LOGGER.warn(
+                        "placeItem: item {} never appeared in {}'s inventory, placement dropped",
+                        placement.itemId,
+                        placement.player.getUsername());
+            }
+        }
+    }
+
+    /**
+     * Removes the item from the player's inventory and adds it to the map as an {@code
+     * IsoWorldInventoryObject}, mirroring vanilla {@code ISDropWorldItemAction:complete()} but on
+     * the authoritative side. Offsets and rotation are applied before the broadcast so remote
+     * clients deserialize the object already in its final pose.
+     *
+     * @return {@code false} when the item is not (yet) in the player's inventory, so the caller can
+     *     retry on a later tick; {@code true} once the request has been settled either way.
+     */
+    private static boolean executePlacement(PendingPlacement placement) {
+        IsoPlayer player = placement.player;
+        InventoryItem item = player.getInventory().getItemWithIDRecursiv(placement.itemId);
+        if (item == null) {
+            return false;
+        }
+
+        ItemContainer src =
+                item.getContainer() != null ? item.getContainer() : player.getInventory();
+        if (src != player.getInventory() && !src.isInCharacterInventory(player)) {
+            LOGGER.warn(
+                    "placeItem: item {} is not in {}'s inventory tree, rejecting",
+                    placement.itemId,
+                    player.getUsername());
+            return true;
+        }
+
+        if (!isNearSquare(player, placement.x, placement.y, placement.z)) {
+            LOGGER.debug(
+                    "placeItem: player {} too far from {},{},{}, rejecting",
+                    player.getUsername(),
+                    placement.x,
+                    placement.y,
+                    placement.z);
+            return true;
+        }
+
+        IsoGridSquare square = getSquare(placement.x, placement.y, placement.z);
+        if (square == null) {
+            LOGGER.debug(
+                    "placeItem: no square at {},{},{} for {}, rejecting",
+                    placement.x,
+                    placement.y,
+                    placement.z,
+                    player.getUsername());
+            return true;
+        }
+
+        IsoGridSquare current = player.getCurrentSquare();
+        if (current != null && square != current && current.isBlockedTo(square)) {
+            LOGGER.debug(
+                    "placeItem: square {},{},{} blocked from {}, rejecting",
+                    placement.x,
+                    placement.y,
+                    placement.z,
+                    player.getUsername());
+            return true;
+        }
+
+        if (square.getTotalWeightOfItemsOnFloor() + item.getUnequippedWeight()
+                > FLOOR_WEIGHT_LIMIT) {
+            LOGGER.debug(
+                    "placeItem: square {},{},{} full, rejecting placement for {}",
+                    placement.x,
+                    placement.y,
+                    placement.z,
+                    player.getUsername());
+            return true;
+        }
+
+        unequipIfCarried(player, src, item);
+        src.Remove(item);
+        GameServer.sendRemoveItemFromContainer(src, item);
+
+        // An animal item becomes an IsoAnimal, whose only broadcast happens inside
+        // AddWorldInventoryItem; every other item becomes an IsoWorldInventoryObject that is
+        // broadcast below instead, once the rotation is applied, so remote clients deserialize it
+        // already in its final pose. Broadcasting an object twice duplicates it on the client —
+        // AddItemToMapPacket.parse() builds a fresh instance for every packet.
+        boolean transmitInline = item instanceof AnimalInventoryItem;
+        InventoryItem placed =
+                square.AddWorldInventoryItem(
+                        item,
+                        placement.xOffset,
+                        placement.yOffset,
+                        placement.zOffset,
+                        transmitInline);
+
+        placed.setWorldZRotation(placement.rotation);
+        IsoWorldInventoryObject worldObj = placed.getWorldItem();
+        if (worldObj != null) {
+            // Placed items are exempt from the WorldItemRemovalList sandbox sweep, like vanilla
+            worldObj.setIgnoreRemoveSandbox(true);
+            worldObj.setExtendedPlacement(false);
+            worldObj.transmitCompleteItemToClients();
+        }
+
+        if (placed instanceof Radio radio) {
+            spawnPairedRadioObject(radio, square);
+        }
+
+        LOGGER.debug(
+                "placeItem: placed {} at {},{},{} for {}",
+                placed.getFullType(),
+                placement.x,
+                placement.y,
+                placement.z,
+                player.getUsername());
+        return true;
+    }
+
     private static void complete(String uuid, PendingTransfer p, InventoryItem item) {
         TransferMetrics.recordDone(p.acceptedAt);
         sendResult(p.player, uuid, "done", 1);
@@ -566,6 +774,7 @@ public class StormTransferHandler {
         }
         radioObj.getModData().rawset("RadioItemID", (double) radioItem.getID());
         dropSquare.AddSpecialObject(radioObj, dropSquare.getObjects().size());
+        radioObj.transmitCompleteItemToClients();
         radioObj.transmitModData();
         LuaEventManager.triggerEvent("OnObjectAdded", radioObj);
         dropSquare.RecalcProperties();
@@ -578,6 +787,7 @@ public class StormTransferHandler {
      */
     public static void cancelAllForPlayer(IsoPlayer player) {
         lightweightPickups.remove(player);
+        pendingPlacements.removeIf(placement -> placement.player == player);
         pendingTransfers
                 .entrySet()
                 .removeIf(

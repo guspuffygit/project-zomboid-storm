@@ -12,10 +12,10 @@ import net.bytebuddy.pool.TypePool;
  * deliberate, user-approved exception to the no-client-patches rule — do not use it as precedent,
  * and do not register it outside the experimental gate.
  *
- * <p>Forces {@code LightingJNI.preUpdate()} to always fork {@code checkLights} to {@link
- * zombie.PZForkJoinPool} regardless of the {@code DebugOptions.threadLighting} flag. See {@link
- * io.pzstorm.storm.advice.lightingpreupdatefork.LightingPreUpdateForkAdvice} for the mechanism and
- * profiling data.
+ * <p>Forces {@code LightingJNI.preUpdate()} to always fork {@code checkLights} to {@code
+ * zombie.core.PZForkJoinPool} regardless of the {@code DebugOptions.threadLighting} flag. See
+ * {@link io.pzstorm.storm.advice.lightingpreupdatefork.LightingPreUpdateForkAdvice} for the
+ * mechanism and profiling data.
  */
 public class LightingPreUpdateForkPatch extends StormClassTransformer {
 

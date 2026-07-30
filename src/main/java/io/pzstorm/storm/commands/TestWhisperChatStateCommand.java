@@ -17,7 +17,7 @@ import zombie.network.chat.ChatServer;
 /**
  * Inspects {@link ChatServer#chats} server-side and returns either the count of {@link WhisperChat}
  * instances or the {@code player1}/{@code player2} field values of the most-recently-created one.
- * Used by {@link io.pzstorm.storm.liveserver.WhisperChatCaseInsensitiveLiveTest} to assert that
+ * Used by {@code io.pzstorm.storm.liveserver.WhisperChatCaseInsensitiveLiveTest} to assert that
  * {@link io.pzstorm.storm.advice.whisperchatfix.ChatServerWhisperAdvice} stored canonical (case-
  * correct) usernames after the bug-bare wire packet was processed.
  *

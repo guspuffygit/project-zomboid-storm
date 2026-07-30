@@ -14,15 +14,23 @@ import org.junit.jupiter.api.TestMethodOrder;
  * depends on. No server is spawned and no socket is opened; this is the smallest possible probe for
  * the JNI + static-init path that a real two-client collision test will sit on top of.
  *
- * <p>The server install dir (containing {@code natives/libRakNet64.so} and {@code
- * natives/libZNetNoSteam64.so}) is supplied via {@code storm.server.path}. The test relies on
- * {@code LD_LIBRARY_PATH} being set to the server's {@code natives/} and {@code linux64/} dirs by
- * the Gradle {@code test} task — {@link System#loadLibrary(String)} resolves against that.
+ * <p>The server install dir (containing {@code libRakNet64.so} and {@code libZNetNoSteam64.so}
+ * under {@code natives/} before 42.20.0, {@code linux64/} since) is supplied via {@code
+ * storm.server.path}. The test relies on {@code LD_LIBRARY_PATH} being set to the server's {@code
+ * natives/} and {@code linux64/} dirs by the Gradle {@code test} task — {@link
+ * System#loadLibrary(String)} resolves against that.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PzClientNativeInitTest implements IntegrationTest {
 
     private static final String SERVER_PATH_PROPERTY = "storm.server.path";
+
+    /** The dedicated server shipped PZ natives in natives/ before 42.20.0, in linux64/ since. */
+    private static File nativesDir() {
+        File serverDir = new File(System.getProperty(SERVER_PATH_PROPERTY));
+        File natives = new File(serverDir, "natives");
+        return natives.isDirectory() ? natives : new File(serverDir, "linux64");
+    }
 
     @Test
     @Order(1)
@@ -30,7 +38,7 @@ class PzClientNativeInitTest implements IntegrationTest {
         String serverPath = System.getProperty(SERVER_PATH_PROPERTY);
         Assertions.assertNotNull(serverPath, SERVER_PATH_PROPERTY + " must be set");
 
-        File nativesDir = new File(serverPath, "natives");
+        File nativesDir = nativesDir();
         Assertions.assertTrue(nativesDir.isDirectory(), "missing natives dir: " + nativesDir);
 
         Assertions.assertTrue(
@@ -48,8 +56,7 @@ class PzClientNativeInitTest implements IntegrationTest {
         Assertions.assertNotNull(
                 ldPath, "LD_LIBRARY_PATH must be set by the Gradle test task for JNI to resolve.");
 
-        String serverPath = System.getProperty(SERVER_PATH_PROPERTY);
-        String nativesDir = new File(serverPath, "natives").getAbsolutePath();
+        String nativesDir = nativesDir().getAbsolutePath();
         Assertions.assertTrue(
                 ldPath.contains(nativesDir),
                 "LD_LIBRARY_PATH does not include " + nativesDir + " (was: " + ldPath + ")");

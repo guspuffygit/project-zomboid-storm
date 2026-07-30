@@ -56,10 +56,14 @@ instance) — Storm rejects a mix on the same handler.
 
 ## Typed packet events
 
-In addition to the raw `OnPacketReceivedEvent`, every patched packet has a
-typed subclass under `io.pzstorm.storm.event.packet.*` (e.g.
+In addition to the raw `OnPacketReceivedEvent`, nearly every patched packet has
+a typed subclass under `io.pzstorm.storm.event.packet.*` (e.g.
 `ItemTransactionPacketEvent`, `EquipPacketEvent`, `NetTimedActionPacketEvent`,
-`HitCharacterEvent`, `PlaySoundPacketEvent`, ~125 in total). Subscribe with
+`HitCharacterEvent`, `PlaySoundPacketEvent`, ~134 in total). Typed events
+resolve by the packet's *runtime* class simple name, so the movement-rate base
+packets (`PlayerPacket`, `AnimalUpdatePacket`, `VehiclePhysicsPacket`) have no
+typed event — their wire types are the Reliable/Unreliable subclasses; use
+`@OnPacketReceived("PlayerPacketReliable")` etc. to observe those. Subscribe with
 `@SubscribeEvent` on the typed class to get a strongly-typed `getPacket()`,
 field-cache helpers, and a `capturePreState()` hook for snapshotting state
 before the packet's `processServer` mutates it:

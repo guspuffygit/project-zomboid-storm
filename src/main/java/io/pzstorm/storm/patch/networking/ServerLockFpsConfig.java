@@ -41,7 +41,7 @@ public final class ServerLockFpsConfig {
      * vanilla baseline.
      *
      * <p>This is the boot-time apply seam for fps controllers. {@code OnServerStartedEvent} fires
-     * inside {@code GameServer.startServer()} at line 1513, BEFORE the patched {@code new
+     * inside {@code GameServer.startServer()} at line 1514, BEFORE the patched {@code new
      * UpdateLimit(100L)} at {@code GameServer.main()} line 822 installs the tick limiter and BEFORE
      * the patched {@code PerformanceSettings.setLockFPS(10)} at line 823 records the vanilla
      * baseline. By the time this method runs, both vanilla setups are complete, so the sandbox
@@ -54,6 +54,17 @@ public final class ServerLockFpsConfig {
         PerformanceSettings.setLockFPS(applied);
         StormPerformanceSandboxMetrics.setServerLockFps(applied);
         if (GameServer.server) {
+            if (!GameServerTickRatePatch.UpdateLimitFactory.isLimiterReady()) {
+                // This seam runs at GameServer.main():823, one line after the substituted
+                // new UpdateLimit(100L) — if the limiter is missing here, that constructor
+                // substitution silently failed to match and Storm.ServerFps can never apply.
+                // MemberSubstitution reports nothing at build time, so this is the tripwire.
+                LOGGER.error(
+                        "Storm: setLockFPS seam ran but the server tick limiter is not installed"
+                                + " — GameServerTickRatePatch's UpdateLimit substitution did not match"
+                                + " this game version; Storm.ServerFps cannot take effect and the"
+                                + " server stays at vanilla 10 TPS");
+            }
             StormPerformanceSandboxApplier.applyServerFps();
         }
     }

@@ -8,8 +8,8 @@ import net.bytebuddy.asm.Advice;
  * Skips the {@code MovingObjectUpdateSchedulerUpdateBucket.add(IsoMovingObject)} body when warming
  * is enabled and the argument is an animal sitting inside a warmed cell. Returning {@code true}
  * suppresses the body; returning {@code false} runs vanilla. The downstream {@code update} / {@code
- * postupdate} / {@code updateAnimation} loops iterate the buckets, so a warm animal that's never
- * bucketed is fully excluded from per-tick {@code IsoAnimal.update()} work.
+ * postupdate} loops iterate the buckets, so a warm animal that's never bucketed is fully excluded
+ * from per-tick {@code IsoAnimal.update()} work.
  */
 public class MovingObjectSchedulerBucketAddAdvice {
 

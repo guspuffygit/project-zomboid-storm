@@ -21,10 +21,10 @@ import zombie.core.raknet.UdpConnection;
  * names via {@link OnPacketReceived}.
  *
  * <p>This is the packet equivalent of {@link ClientCommandDispatcher}. When a patched packet's
- * {@code processServer} method is called, {@link #dispatchPacket(Object, UdpConnection)} creates an
- * {@link OnPacketReceivedEvent} and dispatches it through {@link StormEventDispatcher} (for {@link
- * SubscribeEvent} handlers) and then through this dispatcher (for {@link OnPacketReceived}
- * handlers).
+ * {@code processServer} method is called, {@link #dispatchPacket(Object, UdpConnection, Object)}
+ * creates an {@link OnPacketReceivedEvent} and dispatches it through {@link StormEventDispatcher}
+ * (for {@link SubscribeEvent} handlers) and then through this dispatcher (for {@link
+ * OnPacketReceived} handlers).
  */
 public class PacketEventDispatcher {
 
@@ -48,8 +48,6 @@ public class PacketEventDispatcher {
             List.of(
                     "zombie.network.packets.AddBrokenGlassPacket",
                     "zombie.network.packets.AddExplosiveTrapPacket",
-                    "zombie.network.packets.AddInventoryItemToContainerPacket",
-                    "zombie.network.packets.AddItemToMapPacket",
                     "zombie.network.packets.AddTicketPacket",
                     "zombie.network.packets.AddUserlogPacket",
                     "zombie.network.packets.AddWarningPointPacket",
@@ -62,6 +60,7 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.GameCharacterAttachedItemPacket",
                     "zombie.network.packets.GeneralActionPacket",
                     "zombie.network.packets.GetModDataPacket",
+                    "zombie.network.packets.HiddenAuthorsPacket",
                     "zombie.network.packets.HumanVisualPacket",
                     "zombie.network.packets.ItemStatsPacket",
                     "zombie.network.packets.ItemTransactionPacket",
@@ -79,6 +78,7 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.RequestDataPacket",
                     "zombie.network.packets.RequestItemsForContainerPacket",
                     "zombie.network.packets.RequestLargeAreaZipPacket",
+                    "zombie.network.packets.RequestMedicalCheckPacket",
                     "zombie.network.packets.RequestNetworkUsersPacket",
                     "zombie.network.packets.RequestRolesPacket",
                     "zombie.network.packets.RequestTradingPacket",
@@ -117,7 +117,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.actions.EatFoodPacket",
                     "zombie.network.packets.actions.RemoveBloodPacket",
                     "zombie.network.packets.actions.SmashWindowPacket",
-                    "zombie.network.packets.actions.SneezeCoughPacket",
                     "zombie.network.packets.actions.StatePacket",
                     "zombie.network.packets.actions.WakeUpPlayerPacket",
                     "zombie.network.packets.character.AnimalCommandPacket",
@@ -127,7 +126,9 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.character.ForageItemFoundPacket",
                     "zombie.network.packets.character.PlayerDataRequestPacket",
                     "zombie.network.packets.character.PlayerDropHeldItemsPacket",
+                    "zombie.network.packets.character.PlayerEmptyShotPacket",
                     "zombie.network.packets.character.PlayerPacket",
+                    "zombie.network.packets.character.PlayerVisitedPacket",
                     "zombie.network.packets.character.RemoveCorpseFromMapPacket",
                     "zombie.network.packets.character.ThumpPacket",
                     "zombie.network.packets.connection.GoogleAuthKeyPacket",
@@ -136,6 +137,17 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.connection.LoginPacket",
                     "zombie.network.packets.connection.LoginQueueDonePacket",
                     "zombie.network.packets.connection.QueuePacket",
+                    "zombie.network.packets.faction.FactionAcceptPacket",
+                    "zombie.network.packets.faction.FactionChangeOwnerPacket",
+                    "zombie.network.packets.faction.FactionChangeTagPacket",
+                    "zombie.network.packets.faction.FactionChangeTitlePacket",
+                    "zombie.network.packets.faction.FactionCreatePacket",
+                    "zombie.network.packets.faction.FactionDisbandPacket",
+                    "zombie.network.packets.faction.FactionInvitePacket",
+                    "zombie.network.packets.faction.FactionRemoveMemberPacket",
+                    "zombie.network.packets.faction.FactionStatsPacket",
+                    "zombie.network.packets.foraging.ForageRequestZonePacket",
+                    "zombie.network.packets.foraging.ForageSpotPacket",
                     "zombie.network.packets.hit.AttackCollisionCheckPacket",
                     "zombie.network.packets.hit.HitCharacter",
                     "zombie.network.packets.safehouse.SafehouseAcceptPacket",
@@ -151,13 +163,15 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.service.PopmanDebugCommandPacket",
                     "zombie.network.packets.service.ReceiveContainerModDataPacket",
                     "zombie.network.packets.service.ReceiveModDataPacket",
-                    "zombie.network.packets.service.RecipePacket",
                     "zombie.network.packets.service.RequestUserLogPacket",
                     "zombie.network.packets.service.ScoreboardUpdatePacket",
                     "zombie.network.packets.service.ServerLOSPacket",
+                    "zombie.network.packets.service.StatisticsPacket",
                     "zombie.network.packets.service.TimeSyncPacket",
+                    "zombie.network.packets.sound.LoopedRangedWeaponSoundPacket",
                     "zombie.network.packets.sound.PlaySoundPacket",
                     "zombie.network.packets.sound.PlayWorldSoundPacket",
+                    "zombie.network.packets.sound.RangedWeaponSoundPacket",
                     "zombie.network.packets.sound.StopSoundPacket",
                     "zombie.network.packets.sound.WorldSoundPacket",
                     "zombie.network.packets.vehicle.VehicleCollidePacket",
@@ -166,7 +180,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.vehicle.VehiclePassengerPositionPacket",
                     "zombie.network.packets.vehicle.VehiclePassengerRequestPacket",
                     "zombie.network.packets.vehicle.VehiclePhysicsPacket",
-                    "zombie.network.packets.vehicle.VehicleRequestPacket",
                     "zombie.network.packets.vehicle.VehicleSwitchSeatPacket",
                     "zombie.network.packets.world.DebugStoryPacket");
 

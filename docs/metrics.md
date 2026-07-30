@@ -292,6 +292,25 @@ storm_peer_congestion_limited == 1
 increase(storm_peer_kicked_send_buffer_total[1h])
 ```
 
+#### World-wide zombie ceiling
+
+`StormZombieTotalCap.onServerTick()` runs from `ServerTickAdvice` (server-only). When the live zombie count exceeds `Storm.MaxTotalZombies` it sweeps once per second and deletes up to 200 surplus zombies, restricted to zombies nobody can see. Vanilla has no global cap — see [Server Configuration](server-configuration.md#there-is-no-vanilla-cap-on-the-world-wide-zombie-total) for why the world total matters and which levers to reach for first.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_max_total_zombies` | Gauge | — | Configured ceiling. `0` = disabled. |
+| `storm_zombies_total_cap_culled_total` | Counter | — | Cumulative zombies deleted by the cap. |
+
+The counter is only meaningful against the ceiling and the live total (`storm_zombie_id_pool_size`, backed by `ServerMap.instance.zombieMap`). A burst after a population spike is the cap working; a rate that never returns to zero means the population settings want more zombies than the cap permits and the two are fighting — lower `ZombieConfig.PopulationMultiplier` rather than raising the cap.
+
+```promql
+# is the cap actively fighting the population manager?
+rate(storm_zombies_total_cap_culled_total[15m]) > 0
+
+# headroom: live zombies as a fraction of the ceiling (ignores the disabled case)
+storm_zombie_id_pool_size / (storm_max_total_zombies > 0)
+```
+
 #### HTTP endpoint
 
 `HttpEndpointDispatcher` activity. `path` is the matched route — requests to unregistered paths are bucketed under `path="unknown"` to keep cardinality bounded. `status` is the HTTP status code as a string (e.g. `"200"`, `"404"`, `"500"`).

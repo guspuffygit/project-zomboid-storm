@@ -130,7 +130,7 @@ public class ServerExtension
         // observable in /metrics. PZ's SandboxOptions.loadServerLuaFile only writes the keys it
         // finds in the file; unspecified options keep the compiled-in defaults from
         // sandbox-options.txt. After loading, PZ immediately rewrites the file with the full merged
-        // state (see GameServer.java:1467), so the next boot still sees ServerFps=20.
+        // state (see GameServer.java:1468 in 42.20.0), so the next boot still sees ServerFps=20.
         Path sandboxVars = serverIniDir.resolve(TEST_SERVER_NAME + "_SandboxVars.lua");
         writeSandboxVarsFile(sandboxVars, TEST_SERVER_FPS);
 

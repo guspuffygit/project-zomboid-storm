@@ -6,6 +6,7 @@ import io.pzstorm.storm.event.packet.PacketEvent;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import zombie.core.raknet.UdpConnection;
@@ -18,11 +19,25 @@ class PacketEventTypesTest implements UnitTest {
 
     private static final String EVENT_PACKAGE = "io.pzstorm.storm.event.packet.";
 
+    /**
+     * Base packet classes patched only so their {@code processServer} advice fires for the subclass
+     * wire types (PlayerPacketReliable/Unreliable etc.). Typed events resolve by runtime class
+     * simple name, so a base-named event class could never fire and none exists.
+     */
+    private static final Set<String> BASE_PACKETS_WITHOUT_TYPED_EVENT =
+            Set.of(
+                    "zombie.network.packets.character.AnimalUpdatePacket",
+                    "zombie.network.packets.character.PlayerPacket",
+                    "zombie.network.packets.vehicle.VehiclePhysicsPacket");
+
     @Test
     void allSupportedPacketsShouldHaveTypedEventClass() {
         List<String> missing = new ArrayList<>();
 
         for (String fqcn : PacketEventDispatcher.SUPPORTED_PACKETS) {
+            if (BASE_PACKETS_WITHOUT_TYPED_EVENT.contains(fqcn)) {
+                continue;
+            }
             String simpleName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
             String eventClassName = EVENT_PACKAGE + simpleName + "Event";
 

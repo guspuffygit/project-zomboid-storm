@@ -1,6 +1,7 @@
 package io.pzstorm.storm.advice.isogeneratorelectricity;
 
 import io.pzstorm.storm.logging.StormLogger;
+import io.pzstorm.storm.patch.performance.IsoGeneratorScanRefresh;
 import net.bytebuddy.asm.Advice;
 import zombie.SandboxOptions;
 import zombie.iso.IsoChunk;
@@ -29,8 +30,11 @@ import zombie.network.ServerMap;
  *   <li>{@code totalPowerUsing} is only consumed by the hourly fuel-consumption loop in {@code
  *       update()}. The other callers of {@code setSurroundingElectricity} ({@code setActivated},
  *       {@code syncIsoObjectReceive}) are not patched, so the value is still refreshed whenever the
- *       generator is turned on/off. It may drift between activations as items in range change state
- *       &mdash; an accepted approximation, addressed by S2.
+ *       generator is turned on/off. It drifts between activations as items in range change state
+ *       &mdash; since 42.20.0 light switches register as generator loads and toggle at dusk/dawn
+ *       with no activation change, so the drift is bounded by re-arming the vanilla scan at most
+ *       once per in-game hour per activated generator ({@link
+ *       io.pzstorm.storm.patch.performance.IsoGeneratorScanRefresh}).
  *   <li>The chunk-position bookkeeping ({@code chunk.addGeneratorPos / removeGeneratorPos}) drives
  *       {@code IsoGridSquare.haveElectricity()} via {@code IsoChunk.isGeneratorPoweringSquare} and
  *       is preserved exactly by re-implementing it here.
@@ -67,9 +71,18 @@ public class SkipServerScanAdvice {
             return;
         }
         if (!updateSurrounding) {
+            // Steady state. Re-arm the vanilla scan once per in-game hour so totalPowerUsing
+            // (fuel drain) tracks load changes between activations — e.g. 42.20.0's light
+            // switches toggling at dusk/dawn. The tail block runs the full scan and clears
+            // the flag itself.
+            if (IsoGeneratorScanRefresh.shouldRefreshHourly(self)) {
+                updateSurrounding = true;
+            }
             return;
         }
         if (totalPowerUsing <= 0.0F) {
+            // Cold start — fall through so the vanilla tail initializes the fuel baseline.
+            IsoGeneratorScanRefresh.markScanned(self);
             return;
         }
         IsoGridSquare square = self.getSquare();
@@ -130,17 +143,21 @@ public class SkipServerScanAdvice {
             }
         }
 
-        StormLogger.LOGGER.trace(
-                "IsoGeneratorElectricityPatch: gen at ({},{},{}) activated={} radius={}"
-                        + " chunkRange={} chunksTouched={} chunksUpdated={}",
-                sx,
-                sy,
-                sz,
-                activated,
-                generatorRadius,
-                generatorChunkRange,
-                chunksTouched,
-                chunksUpdated);
+        // SLF4J varargs allocate an Object[] and box every primitive even when trace is off —
+        // this runs per generator per requested scan, so gate it.
+        if (StormLogger.LOGGER.isTraceEnabled()) {
+            StormLogger.LOGGER.trace(
+                    "IsoGeneratorElectricityPatch: gen at ({},{},{}) activated={} radius={}"
+                            + " chunkRange={} chunksTouched={} chunksUpdated={}",
+                    sx,
+                    sy,
+                    sz,
+                    activated,
+                    generatorRadius,
+                    generatorChunkRange,
+                    chunksTouched,
+                    chunksUpdated);
+        }
 
         updateSurrounding = false;
     }

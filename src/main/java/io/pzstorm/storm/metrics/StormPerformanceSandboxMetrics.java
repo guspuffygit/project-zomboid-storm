@@ -12,6 +12,7 @@ import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.screenshot.StormScreenshotConfig;
+import io.pzstorm.storm.zombie.StormZombieTotalCap;
 
 /**
  * Live gauges reflecting Storm's performance knobs.
@@ -30,8 +31,12 @@ import io.pzstorm.storm.screenshot.StormScreenshotConfig;
  *       IsoPhysicsObject.update()} on the server. Vanilla 10.
  *   <li>{@code storm_animal_los_tick_interval} — per-animal stride for {@code
  *       IsoAnimal.updateLOS()} on the server. Vanilla 1 (every tick); 0 = LOS disabled.
- *   <li>{@code storm_zombie_cull_threshold} — Storm-controlled cull threshold. Default 500 (matches
- *       vanilla cap); 0 disables culling entirely.
+ *   <li>{@code storm_zombie_cull_threshold} — live value of vanilla's {@code
+ *       ZombieConfig.ZombiesCountBeforeDelete}: zombies streamed to one connection before the
+ *       surplus is culled. Vanilla default 300; 0 disables culling entirely. Read-only — Storm has
+ *       no option of its own for this.
+ *   <li>{@code storm_max_total_zombies} — world-wide ceiling on real zombies. Default 0 = disabled;
+ *       vanilla has no global cap of any kind.
  *   <li>{@code storm_server_los_threads} — concurrent ServerLOS worker count. Default 1
  *       (single-threaded baseline); max 16. Pool always pre-allocates 15 helper threads regardless.
  *   <li>{@code storm_netdata_cap_ms} — per-spin wall-clock cap on {@code
@@ -114,9 +119,24 @@ public final class StormPerformanceSandboxMetrics {
             Gauge.builder()
                     .name("storm_zombie_cull_threshold")
                     .help(
-                            "Storm-controlled zombie cull threshold. Sourced from the"
-                                    + " Storm.ZombieCullThreshold sandbox option. Default 500 (matches"
-                                    + " vanilla cap); 0 disables culling entirely.")
+                            "Live value of the vanilla ZombieConfig.ZombiesCountBeforeDelete"
+                                    + " option: zombies streamed to one connection before the"
+                                    + " server culls the surplus. Vanilla default 300; 0 disables"
+                                    + " culling entirely. Storm does not override this — set it"
+                                    + " through the world setup UI or SandboxVars.lua.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge MAX_TOTAL_ZOMBIES =
+            Gauge.builder()
+                    .name("storm_max_total_zombies")
+                    .help(
+                            "Configured world-wide ceiling on real zombies. Sourced from the"
+                                    + " Storm.MaxTotalZombies sandbox option. Default 0 = disabled"
+                                    + " (vanilla has no global cap at all). When non-zero and"
+                                    + " storm_zombie_id_pool_size exceeds it, Storm deletes the"
+                                    + " surplus — counted by"
+                                    + " storm_zombies_total_cap_culled_total — restricted to"
+                                    + " zombies no player can see.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge SERVER_LOS_THREADS =
@@ -215,7 +235,8 @@ public final class StormPerformanceSandboxMetrics {
         ZOMBIE_AUTH_TICK_INTERVAL.set(ZombieAuthTickInterval.DEFAULT_TICK_INTERVAL);
         INVENTORY_ITEM_SWEEP_TICK_INTERVAL.set(
                 InventoryItemSweepTickInterval.DEFAULT_TICK_INTERVAL);
-        ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.DEFAULT_THRESHOLD);
+        ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.VANILLA_DEFAULT);
+        MAX_TOTAL_ZOMBIES.set(StormZombieTotalCap.DEFAULT_MAX_TOTAL);
         SERVER_LOS_THREADS.set(StormServerLosConfig.DEFAULT_THREADS);
         NETDATA_CAP_MS.set(0);
         PEER_SEND_BUFFER_KICK_MB.set(PeerSendBufferKickConfig.DEFAULT_MB);
@@ -257,6 +278,10 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setZombieCullThreshold(int threshold) {
         ZOMBIE_CULL_THRESHOLD.set(threshold);
+    }
+
+    public static void setMaxTotalZombies(int max) {
+        MAX_TOTAL_ZOMBIES.set(max);
     }
 
     public static void setServerLosThreads(int threads) {

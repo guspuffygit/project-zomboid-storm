@@ -35,12 +35,12 @@ the world setup UI. Edit them through the admin UI before world creation, or han
 
 | Sandbox option | Default | Range | Effect |
 |---|---|---|---|
-| `Storm.ServerFps` | `10` | `1..240` | Server FPS. Sets the main-loop tick gate (`intervalMs = round(1000 / fps)`), `PerformanceSettings.getLockFPS()` on the server, and the `IsoPhysicsObject.update()` FPS scalar. `10` = vanilla 10 TPS. Practical ceiling is ~200 real TPS: the vanilla idle path in `GameServer.main` sleeps up to 5 ms between gate checks and `UpdateLimit` has 1 ms granularity, so values above ~200 are quantized down. Random per-tick events routed through `Rand.AdjustForFramerate` (fire spread, wound infection, footstep noise, drunk stumbles) are covered: Storm rescales the vanilla hardcoded 10-TPS server scalar to the live tick rate (`RandAdjustForFrameratePatch`), keeping per-second event rates constant at any value. |
+| `Storm.ServerFps` | `10` | `1..240` | Server FPS. Sets the main-loop tick gate (`intervalMs = round(1000 / fps)`), `PerformanceSettings.getLockFPS()` on the server, and the `IsoPhysicsObject.update()` FPS scalar. `10` = vanilla 10 TPS. Practical ceiling is ~200 real TPS: the vanilla idle path in `GameServer.main` sleeps up to 5 ms between gate checks and `UpdateLimit` has 1 ms granularity, so values above ~200 are quantized down. Random per-tick events routed through `Rand.AdjustForFramerate` (fire spread, wound infection, footstep noise, drunk stumbles, vehicle engine auto-stall since 42.20.0) are covered: Storm rescales the vanilla hardcoded 10-TPS server scalar to the live tick rate (`RandAdjustForFrameratePatch`), keeping per-second event rates constant at any value. |
 | `Storm.AnimalLOSTickInterval` | `1` | `0..64` | Per-animal stride for `IsoAnimal.updateLOS()`. `1` = vanilla every tick. Larger = each animal scans LOS every Nth tick (cheaper). `0` disables animal LOS entirely. |
 | `Storm.VirtualAnimalTickInterval` | `1` | `0..16` | Stride for the whole `AnimalZones.updateVirtualAnimals()` pass (off-screen animal movement, eat/sleep, track expiry). `1` = vanilla every tick. Larger = the pass runs every Nth tick with `GameTime.perObjectMultiplier` raised to N for the call, so time-delta-driven logic advances the skipped ticks' worth of time in one step — same ground covered, coarser steps (the world-map track overlay looks jumpier at high values). `0` freezes virtual-animal simulation and track expiry entirely; debug/emergency use only. Typical busy-server value `4`. |
 | `Storm.ZombieAuthTickInterval` | `1` | `1..16` | Per-zombie stride for the ownership rescan of *unowned* zombies in `NetworkZombieManager.updateAuth()`. Vanilla re-runs the full O(connections × players) relevance scan for every unowned zombie every tick (the 2 s `lastChangeOwner` gate only stamps on actual change, so it never engages while a zombie stays unowned). With N > 1 each unowned zombie rescans every Nth tick, phase-spread by online ID. Owned zombies keep vanilla's 2 s gate untouched. Worst case a newly relevant zombie waits N-1 extra ticks for owner assignment (1.5 s at the ceiling on a 10 TPS server). Typical busy-server value `4`. |
 | `Storm.InventoryItemSweepTickInterval` | `1` | `1..64` | Stride for the orphaned-item GC sweep in `InventoryItemSystem.update()` (unregisters item entities whose equip parent is gone or dead). The sweep is idempotent garbage collection, so striding only delays entity cleanup by up to N-1 ticks with no gameplay effect. Typical busy-server value `10`. |
-| `Storm.ZombieCullThreshold` | `500` | `0..99999` | Storm-controlled cull target. `500` = vanilla cap (default); the threshold patch also fixes vanilla's over-cull bug so the count converges instead of being mass-deleted ~10%/frame on overshoot. Larger = allow more live zombies before culling. `0` disables culling entirely (no zombies ever queued for deletion). Supersedes the vanilla `ZombieConfig.ZombiesCountBeforeDelete` sandbox option in every case (positive threshold overrides it; `0` turns culling off), so that vanilla option has no effect under Storm. |
+| `Storm.MaxTotalZombies` | `0` | `0..32000` | World-wide ceiling on real zombies. `0` = disabled (vanilla behaviour — vanilla has **no** global cap of any kind; see [below](#zombie-culling-is-a-vanilla-option)). When the live zombie count exceeds the cap, Storm sweeps once per second and deletes up to 200 surplus zombies per sweep, restricted to zombies that satisfy vanilla's own cull predicate widened to every connection: not a reanimated player, no target, outside (no room, no roof), and beyond `(relevantRange - 2) * 10` tiles of *every* player on *every* connection. If too few zombies qualify the world stays over the cap — the sweep never deletes a zombie someone could be looking at. This is a backstop against the per-tick costs that scale with the world total (chiefly `NetworkZombiePacker.updateAuth()`), not a population control: deleted zombies re-enter the native respawn schedule, so a cap below what the population settings want shows up as a permanently non-zero `storm_zombies_total_cap_culled_total` rate — lower `ZombieConfig.PopulationMultiplier` rather than raising the cap. Sweep cadence and per-sweep budget are tunable with `-Dstorm.zombieTotalCap.sweepMs` / `-Dstorm.zombieTotalCap.perSweep`. |
 | `Storm.ServerLosThreads` | `1` | `1..16` | Concurrent ServerLOS worker count. `1` = vanilla single-threaded baseline. The helper pool always pre-allocates 15 threads regardless; this only controls how many receive work each tick. Typical busy-server value `4..12`. |
 | `Storm.NetDataCapMs` | `90` | `0..200` | Per-outer-loop-spin wall-clock cap on `GameServer.mainLoopDealWithNetData` (HIGH-priority + player-update + vehicle inbound drain combined). When a spin exceeds the cap, subsequent packets in that spin are dropped at the application level (already ACKed — RakNet does not retransmit them; the periodic update streams regenerate the state); the next spin starts fresh. Protects world-tick scheduling and the RakNet outbound send buffer during reconnect storms. `0` disables (vanilla behaviour, no cap). Deferrals counted by `pz_netdata_deferred_total`. |
 | `Storm.PeerSendBufferKickMb` | `20` | `0..1000` | Per-peer HIGH-priority RakNet send-buffer threshold (MB) above which Storm force-disconnects the peer after `Storm.PeerSendBufferKickHoldTicks` consecutive ticks. Protects the server from OOM when a peer on a saturated/lossy uplink accumulates the server's broadcast firehose (PZ has no backpressure in the HIGH send paths). `0` disables the watchdog (per-peer telemetry still populates). |
@@ -52,11 +52,54 @@ the world setup UI. Edit them through the admin UI before world creation, or han
 The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_server_lock_fps`, `storm_iso_physics_server_fps`, `storm_animal_los_tick_interval`,
 `storm_virtual_animal_tick_interval`, `storm_zombie_auth_tick_interval`,
-`storm_inventory_item_sweep_tick_interval`,
-`storm_zombie_cull_threshold`, `storm_server_los_threads`, `storm_netdata_cap_ms`,
+`storm_inventory_item_sweep_tick_interval`, `storm_max_total_zombies`,
+`storm_server_los_threads`, `storm_netdata_cap_ms`,
 `storm_peer_send_buffer_kick_mb`, `storm_peer_send_buffer_kick_hold_ticks`,
 `storm_screenshot_pieces_per_packet`, `storm_screenshot_upload_kb_per_sec`,
 `storm_screenshot_encode_kb_per_tick`) reflect the currently-applied value.
+
+### Zombie culling is a vanilla option
+
+Storm used to ship `Storm.ZombieCullThreshold`. It is **gone** as of the 42.20.0 update — set
+vanilla's `ZombieConfig.ZombiesCountBeforeDelete` directly (world setup UI → Zombies, or
+`<SaveName>_SandboxVars.lua`). Through 42.19.1 the vanilla option was unusable (whole-map budget,
+capped at 500, minimum 10 so culling could not be turned off, and a missing decrement that
+mass-deleted ~10% of the population per frame on overshoot), which is why Storm patched around it.
+42.20.0 fixed all of that: the budget is the per-connection surplus of the zombie list actually
+streamed to each client, the range is now `0..5000`, and `0` means "never cull".
+
+Upgrading from a Storm build that had the option: any `Storm.ZombieCullThreshold` line left in
+`<SaveName>_SandboxVars.lua` is inert (unregistered options are never read and are dropped on the
+next save) and the server silently reverts to vanilla's default of `300` per connection. If you had
+set `0` to disable culling, set `ZombieConfig.ZombiesCountBeforeDelete = 0` to keep that behaviour.
+Note the units changed: `500` under 42.19.1 meant 500 zombies **map-wide**, `500` now means 500 per
+connection, so a carried-over number is far more permissive than it looks. The
+`storm_zombie_cull_threshold` gauge still exists and now reports vanilla's live value.
+
+### There is no vanilla cap on the world-wide zombie total
+
+Every ceiling vanilla ships is local. `ZombieConfig.ZombiesCountBeforeDelete` counts only the zombies
+streamed to a **single connection**, and even then only deletes ones that are outside, have no
+target, and are beyond `(relevantRange - 2) * 10` tiles from every player on that connection.
+`MaxZombiesPerChunk` (255) bounds one 8×8 chunk. The `300` in `NetworkZombiePacker.getZombieData` is
+packet framing. Nothing looks at the world total, which is just "loaded chunks around every player ×
+population density" and grows without bound as players spread out.
+
+That total is what drives the per-tick costs that scale linearly with it — chiefly
+`NetworkZombiePacker.updateAuth()`, which walks the entire zombie list every tick and re-scans every
+connection's players for each unowned zombie. Servers typically start degrading somewhere in the
+thousands.
+
+Storm's `Storm.MaxTotalZombies` (default `0`, disabled) is the backstop for this. See the table
+above. The complementary levers, in the order worth reaching for them:
+
+1. `ZombieConfig.PopulationMultiplier` — fewer zombies generated in the first place. Always the right
+   first move if the server is consistently over budget.
+2. `Storm.ZombieAuthTickInterval = 4` — divides the dominant per-tick scan cost by 4 without changing
+   the population at all.
+3. `ZombieConfig.ZombiesCountBeforeDelete` — tightens the per-connection ceiling, which indirectly
+   caps the total.
+4. `Storm.MaxTotalZombies` — the hard ceiling, for when the above still leaves headroom spikes.
 
 ## Production launcher example (Linux)
 
