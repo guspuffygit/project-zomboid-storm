@@ -63,6 +63,7 @@ Updated to 42.20.0
 
 Fixed TIS TileManager placement bug.
 Fixed placed items not able to be placed or picked up bug.
+Added headroom cap above hard coded 101 for incoming connections to fix "Getting Server Info..." dropped connections.
 
 [url=https://github.com/guspuffygit/project-zomboid-storm]Installation and Configuration Documentation[/url]
 
