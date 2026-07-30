@@ -131,6 +131,39 @@ public final class LiveServerClient implements AutoCloseable {
     }
 
     /**
+     * Connects at the RakNet layer and sends only the {@code Login} packet, then goes silent — the
+     * exact shape of a client that died mid-handshake. Because the username reached the server,
+     * vanilla's {@code getUserName() == null} reap never fires for it; only Storm's wall-clock
+     * {@code StalledConnectionReaper} frees the slot.
+     */
+    public void connectStalled(String host, int serverPort, String serverPassword, Duration timeout)
+            throws Exception {
+        SharedEngine engine = ensureSharedEngine();
+
+        CountDownLatch gotConnection = new CountDownLatch(1);
+        engine.registerPendingConnect(
+                conn -> {
+                    this.connection = conn;
+                    sendLogin(conn, username, password, authType);
+                    gotConnection.countDown();
+                });
+
+        System.out.println(
+                "[client:"
+                        + username
+                        + "] calling Connect (stalled) to "
+                        + host
+                        + ":"
+                        + serverPort);
+        engine.Connect(host, serverPort, serverPassword, false);
+
+        Assertions.assertTrue(
+                gotConnection.await(timeout.toMillis(), TimeUnit.MILLISECONDS),
+                "[client:" + username + "] RakNet handshake did not complete within " + timeout);
+        System.out.println("[client:" + username + "] connected and going silent");
+    }
+
+    /**
      * Processes server response packets and sends the required follow-up packets to complete the
      * login flow. Follows the FakeClientManager pattern: QueueResponse → LoginQueueDone →
      * PlayerConnect → ConnectedPlayer.

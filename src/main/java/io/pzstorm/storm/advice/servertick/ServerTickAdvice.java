@@ -2,6 +2,7 @@ package io.pzstorm.storm.advice.servertick;
 
 import io.pzstorm.storm.metrics.ServerTickMetrics;
 import io.pzstorm.storm.metrics.StormConnectionMetrics;
+import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -15,6 +16,7 @@ public class ServerTickAdvice {
         }
         ServerTickMetrics.recordTick(tickMillis);
         StormConnectionMetrics.recordAll();
+        StormConnectionStageMetrics.recordAll();
         StormZombieTotalCap.onServerTick();
     }
 }

@@ -41,6 +41,11 @@ public class ServerExtension
     public static final int TEST_PROMETHEUS_PORT = 41900;
     public static final String TEST_SERVER_PASSWORD = "";
 
+    /** Wall-clock login budget the test server boots with (see boot args below). */
+    public static final long TEST_REAP_CONNECT_BUDGET_MS = 30000L;
+
+    public static final long TEST_REAP_SWEEP_INTERVAL_MS = 5000L;
+
     /**
      * Non-default value pre-loaded into {@code Storm.ServerFps} via {@code
      * stormtest_SandboxVars.lua} before the server boots. Picked so it differs from the vanilla
@@ -144,6 +149,11 @@ public class ServerExtension
                                 "-DprometheusPort=" + TEST_PROMETHEUS_PORT,
                                 "-Dstorm.hotreload=true",
                                 "-Dstorm.server=true",
+                                // Shrunk so StalledConnectionReapLiveTest observes a reap in
+                                // seconds instead of the 7-minute production default. Every
+                                // fully-connecting suite client completes login well under 30 s.
+                                "-Dstorm.reapStalledConnectionMs=" + TEST_REAP_CONNECT_BUDGET_MS,
+                                "-Dstorm.reapSweepIntervalMs=" + TEST_REAP_SWEEP_INTERVAL_MS,
                                 "-javaagent:" + STORM_BOOTSTRAP_JAR,
                                 "--",
                                 "-servername",
@@ -325,12 +335,16 @@ public class ServerExtension
 
     private static void ensureModsLine(Path serverIni, String modId) throws IOException {
         if (!Files.exists(serverIni)) {
+            // MaxPlayers=100 mirrors a full-size production server so the RakNet
+            // connection-cap raise path (101 -> 164) is exercised on every clean boot.
             Files.writeString(
                     serverIni,
                     "Mods="
                             + modId
                             + System.lineSeparator()
                             + "WorkshopItems="
+                            + System.lineSeparator()
+                            + "MaxPlayers=100"
                             + System.lineSeparator(),
                     StandardCharsets.UTF_8);
             return;

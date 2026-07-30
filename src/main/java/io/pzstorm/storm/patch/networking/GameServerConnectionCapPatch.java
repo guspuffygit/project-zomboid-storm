@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.connection.RakNetConnectionCapConfig;
 import io.pzstorm.storm.core.StormClassTransformer;
+import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
 import java.net.ConnectException;
 import net.bytebuddy.asm.MemberSubstitution;
 import net.bytebuddy.dynamic.ClassFileLocator;
@@ -28,8 +29,9 @@ import zombie.network.ServerOptions;
  * MaxPlayers}, and the {@code SlotToConnection[512]} ceiling.
  *
  * <p>Raising the cap alone does not stop half-open connections leaking slots — {@link
- * io.pzstorm.storm.connection.StormStalledConnectionReaper} is the fix for the leak itself. This
- * patch buys the login pipeline enough room that a leak has to be much larger before it bites.
+ * io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper} is the fix for the
+ * leak itself. This patch buys the login pipeline enough room that a leak has to be much larger
+ * before it bites.
  */
 public class GameServerConnectionCapPatch extends StormClassTransformer {
 
@@ -81,26 +83,74 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
                 int port, int udpPort, int maxConnections, String serverPassword, boolean bListen)
                 throws ConnectException {
 
-            int maxPlayers = readMaxPlayers();
-            int cap = RakNetConnectionCapConfig.resolveCap(maxConnections, maxPlayers);
-            appliedCap = cap;
-
-            if (cap != maxConnections) {
-                LOGGER.info(
-                        "Storm: RakNet incoming-connection cap raised {} -> {} (MaxPlayers={},"
-                                + " login-pipeline headroom={}). Extra slots cannot become players"
-                                + " — MaxPlayers is still enforced by LoginPacket.",
+            int cap;
+            int maxPlayers;
+            try {
+                maxPlayers = readMaxPlayers();
+                cap = RakNetConnectionCapConfig.resolveCap(maxConnections, maxPlayers);
+            } catch (Throwable t) {
+                LOGGER.error(
+                        "Storm: RakNet cap resolution failed; using the vanilla cap {}",
                         maxConnections,
-                        cap,
-                        maxPlayers,
-                        cap - maxPlayers);
-            } else {
+                        t);
+                applyCap(maxConnections, true);
+                return new UdpEngine(port, udpPort, maxConnections, serverPassword, bListen);
+            }
+            applyCap(cap, false);
+
+            if (cap == maxConnections) {
                 LOGGER.info(
                         "Storm: RakNet incoming-connection cap left at vanilla {} (MaxPlayers={})",
                         cap,
                         maxPlayers);
+                return new UdpEngine(port, udpPort, cap, serverPassword, bListen);
             }
-            return new UdpEngine(port, udpPort, cap, serverPassword, bListen);
+
+            LOGGER.info(
+                    "Storm: RakNet incoming-connection cap raised {} -> {} (MaxPlayers={},"
+                            + " login-pipeline headroom={}). Extra slots cannot become players"
+                            + " — MaxPlayers is still enforced by LoginPacket.",
+                    maxConnections,
+                    cap,
+                    maxPlayers,
+                    cap - maxPlayers);
+            try {
+                return new UdpEngine(port, udpPort, cap, serverPassword, bListen);
+            } catch (ConnectException e) {
+                // Never let the raised cap keep the server down: RakNet refused to start with
+                // the bigger pool (native limit, whatever), so fall back to the exact vanilla
+                // construction. If that fails too we are where vanilla would have been.
+                LOGGER.error(
+                        "Storm: RakNet failed to start with raised cap {} — retrying with the"
+                                + " vanilla cap {}. Set -Dstorm.raknet.connectionHeadroom=0 to"
+                                + " silence this.",
+                        cap,
+                        maxConnections,
+                        e);
+                applyCap(maxConnections, true);
+                UdpEngine engine =
+                        new UdpEngine(port, udpPort, maxConnections, serverPassword, bListen);
+                LOGGER.warn(
+                        "Storm: RakNet started with the vanilla cap {} after the raised-cap"
+                                + " failure",
+                        maxConnections);
+                return engine;
+            }
+        }
+
+        /**
+         * Records the cap for {@link #getAppliedCap()} and publishes it, so {@code
+         * storm_connection_slots_max} and {@code storm_connection_cap_fallback} are right from boot
+         * rather than from the first server tick.
+         */
+        private static void applyCap(int cap, boolean fellBackToVanilla) {
+            appliedCap = cap;
+            try {
+                StormConnectionStageMetrics.setResolvedCap(cap);
+                StormConnectionStageMetrics.setCapFallback(fellBackToVanilla);
+            } catch (Throwable t) {
+                LOGGER.warn("Storm: could not publish the RakNet cap metrics", t);
+            }
         }
 
         private static int readMaxPlayers() {

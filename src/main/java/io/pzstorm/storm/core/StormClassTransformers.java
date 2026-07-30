@@ -34,6 +34,7 @@ import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
+import io.pzstorm.storm.patch.networking.ConnectionManagerLogPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
 import io.pzstorm.storm.patch.networking.GameServerConnectionCapPatch;
 import io.pzstorm.storm.patch.networking.GameServerLockFpsPatch;
@@ -368,6 +369,7 @@ public class StormClassTransformers {
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
             registerTransformer(new GameServerConnectionCapPatch());
+            registerTransformer(new ConnectionManagerLogPatch());
 
             // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
             // called from the server's frame-step block and records elapsed nanos into

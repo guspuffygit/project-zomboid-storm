@@ -292,6 +292,93 @@ storm_peer_congestion_limited == 1
 increase(storm_peer_kicked_send_buffer_total[1h])
 ```
 
+#### Connection lifecycle / login funnel
+
+`StormConnectionStageMetrics.recordAll()` is called every server tick from `ServerTickAdvice` (server-only), alongside the per-peer telemetry above. Where `storm_peer_*` describes peers that are already players, this describes **every connection holding a RakNet slot**, at whatever stage of the login pipeline it occupies.
+
+That gap is what took a production server offline: `GameServer.startServer` builds the RakNet peer with a hard-coded cap of 101 incoming connections regardless of `MaxPlayers`, and connections that never finish logging in hold their slot indefinitely. Vanilla exports spawned-player counts and per-parameter network aggregates — nothing that counts the pre-spawn population — so a peer filling with half-open connections was invisible until every new joiner silently wedged on "Getting Server Info..." (RakNet answers a full peer with `ID_NO_FREE_INCOMING_CONNECTIONS`, which the vanilla client never handles: no error, no timeout). See [`StalledConnectionReaper`](what-storm-changes.md) for the fix and `storm.raknet.connectionHeadroom` in [Server Configuration](server-configuration.md) for the cap.
+
+Everything is sampled on the main thread and pushed into plain `Gauge`s rather than read from scrape-time callbacks. `UdpEngine.connections`, `LoginQueue`'s monitor and the RakNet peer are all main-thread state; reading them from an HTTP scrape thread inverts `ChatBase.memberLock` against `UdpConnection.bufferLock`, which has frozen this server before.
+
+**Stages** (`io.pzstorm.storm.connection.ConnectionStage`) are mutually exclusive and evaluated in pipeline order, so the per-stage counts always sum to `storm_connection_slots_used`:
+
+| `stage` | Meaning | Reaped? |
+|---------|---------|---------|
+| `handshake` | RakNet accepted the socket, no `Login` packet yet — no username. The one stage vanilla's own reap in `GameServer.main` can free. | yes |
+| `google_auth` | Logged in, waiting on Google second-factor auth. | exempt until timeout |
+| `google_auth_timeout` | Second factor never completed within the vanilla 60s window. Vanilla never frees these. | yes |
+| `coop_approve` | Co-op slave waiting for the host to approve. | exempt |
+| `queued` | Waiting in `LoginQueue` behind other joiners. | exempt |
+| `loading` | The login queue's current occupant: told to proceed, not yet spawned. | exempt |
+| `checksum` | Logged in, Lua/script/anim checksum not yet verified (`ChecksumState.Init`). | yes |
+| `checksum_mismatch` | Failed the checksum comparison (`ChecksumState.Different`) — mod mismatch or tampered scripts. | yes |
+| `awaiting_spawn` | Authenticated and past the queue, character not spawned: downloading chunks, on the character screen, or a "Click Start" camper. `setFullyConnected()` only fires in `receivePlayerConnect`. | yes |
+| `fully_connected` | Character is in the world. The only stage that counts against `MaxPlayers`. | never |
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_connections` | Gauge | `stage` | Connections holding a RakNet slot per pipeline stage. Sums to `storm_connection_slots_used`. All ten series are written every tick, including empty ones, so a stage emptying reads as a step down to `0`. |
+| `storm_connection_stage_age_seconds_max` | Gauge | `stage` | Age of the oldest connection currently in each stage, from the first tick Storm sampled it (a lower bound for connections predating startup). `0` when the stage is empty. |
+| `storm_connection_slots_used` | Gauge | — | Slots in use (`GameServer.udpEngine.connections` size) — every connection at any stage, not just players. |
+| `storm_connection_slots_max` | Gauge | — | The cap actually in force (`UdpEngine.getMaxConnections()`). Published from `GameServerConnectionCapPatch` at boot, then re-read off the live engine each tick. |
+| `storm_connection_raknet_peers` | Gauge | — | RakNet's own count (`RakNetPeerInterface.GetConnectionsNumber()`). Exceeds `storm_connection_slots_used` while RakNet holds peers `UdpEngine` has not wrapped in a `UdpConnection` yet — slot occupancy invisible to every other series here. Stays at `0` with a WARN in `storm/main.log` if the native is unavailable. |
+| `storm_connection_cap_vanilla` | Gauge | — | The cap vanilla hard-codes (101). Constant baseline, so a dashboard can show Storm's headroom as `storm_connection_slots_max - this`. |
+| `storm_connection_cap_fallback` | Gauge | — | `1` when RakNet refused to start with the raised cap and the peer was built with the vanilla cap instead — the headroom is *not* in place. |
+| `storm_connection_reap_age_seconds_max` | Gauge | — | Largest time-on-the-reap-clock across all non-fully-connected connections. Distinct from `stage_age`: the reaper restamps this clock while a connection is exempt, so this is the number compared against the timeout. |
+| `storm_connection_reap_timeout_seconds` | Gauge | — | Wall-clock budget to finish logging in and spawn. Default `420` (7 min), `-Dstorm.reapStalledConnectionMs`. |
+| `storm_connection_reap_sweep_interval_seconds` | Gauge | — | Sweep period — also the granularity of `reap_age` and the worst-case overshoot past the timeout. Default `30`, `-Dstorm.reapSweepIntervalMs`. |
+| `storm_connection_reaped_total` | Counter | `stage` | Slots freed by the reaper, attributed to the stage the connection was stuck in. Every reap is also logged at WARN with the connection id. |
+| `storm_connection_login_duration_seconds` | Histogram (native) | — | First sample → character spawned. Observed once per connection, and only for connections Storm saw in a pre-spawn stage first (already-spawned-at-first-sample is skipped rather than reported as instant). |
+
+Separately, `ConnectionManagerLogPatch` turns PZ's `connections` log into counters. `ConnectionManager.log` is the single choke point every connection-lifecycle event already passes through — RakNet accepts and drops, each handshake packet in both directions, the spawn itself — so one patch covers ~27 event types.
+
+**The labels invert PZ's own field names.** PZ writes `event="RakNet" message="new-incoming-connection"`, where its `event` field is really the channel. So PZ's first argument becomes `source` and its second becomes `event`, which is the order that makes `sum by (event)` useful.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_connection_events_total` | Counter | `source`, `event` | One per `ConnectionManager.log` call on the server. `source` ∈ `{RakNet, receive-packet, send-packet, fully-connected, Storm}`; `event` is PZ's message (`new-incoming-connection`, `login`, `login-queue-request`, `player-connect`, `invalid-password`, `connection-banned`, `connection-lost`, `stalled-connection-reap`, …). Cardinality is capped at 64 pairs; overflow lands in `source="other"`, and PZ's empty message on `fully-connected` becomes `event="none"`. |
+
+Note `event="no-free-incoming-connections"` never appears on a server: RakNet's `ID_NO_FREE_INCOMING_CONNECTIONS` is only ever *received*, and only by clients. Exhaustion has to be inferred from `slots_used` / `slots_max` / `raknet_peers`, which is exactly why those three exist.
+
+Useful PromQL:
+
+```promql
+# the funnel, stacked — pre-spawn stages vs players
+sum by (stage) (storm_connections)
+
+# how full is the peer? alert well before 1.0 — a full peer is a silent outage
+storm_connection_slots_used / storm_connection_slots_max > 0.8
+
+# slots RakNet holds that the Java side cannot see
+storm_connection_raknet_peers - storm_connection_slots_used > 0
+
+# headroom Storm added over vanilla; 0 means the raise did not take
+storm_connection_slots_max - storm_connection_cap_vanilla
+
+# connections stuck pre-spawn (the leak shape) — everything but the terminal stage
+sum(storm_connections) - storm_connections{stage="fully_connected"}
+
+# closest connection to being reaped, as a fraction of its budget
+storm_connection_reap_age_seconds_max / storm_connection_reap_timeout_seconds
+
+# where connections are dying
+sum by (stage) (rate(storm_connection_reaped_total[1h]))
+
+# accepts that never became logins (funnel drop-off, per second)
+  rate(storm_connection_events_total{source="RakNet",event="new-incoming-connection"}[15m])
+- rate(storm_connection_events_total{source="receive-packet",event="login"}[15m])
+
+# logins that never became spawns
+  rate(storm_connection_events_total{source="receive-packet",event="login"}[15m])
+- rate(storm_connection_events_total{source="receive-packet",event="player-connect"}[15m])
+
+# rejections by reason
+sum by (event) (rate(storm_connection_events_total{source="RakNet"}[15m]))
+
+# median login time
+histogram_quantile(0.5, rate(storm_connection_login_duration_seconds[15m]))
+```
+
 #### World-wide zombie ceiling
 
 `StormZombieTotalCap.onServerTick()` runs from `ServerTickAdvice` (server-only). When the live zombie count exceeds `Storm.MaxTotalZombies` it sweeps once per second and deletes up to 200 surplus zombies, restricted to zombies nobody can see. Vanilla has no global cap — see [Server Configuration](server-configuration.md#there-is-no-vanilla-cap-on-the-world-wide-zombie-total) for why the world total matters and which levers to reach for first.
