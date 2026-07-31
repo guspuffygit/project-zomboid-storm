@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.servertick;
 
+import io.pzstorm.storm.connection.SteamPlayerListReconciler;
 import io.pzstorm.storm.metrics.ServerTickMetrics;
 import io.pzstorm.storm.metrics.StormConnectionMetrics;
 import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
@@ -17,6 +18,7 @@ public class ServerTickAdvice {
         ServerTickMetrics.recordTick(tickMillis);
         StormConnectionMetrics.recordAll();
         StormConnectionStageMetrics.recordAll();
+        SteamPlayerListReconciler.sweep();
         StormZombieTotalCap.onServerTick();
     }
 }

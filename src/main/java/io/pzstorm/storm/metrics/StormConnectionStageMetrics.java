@@ -178,6 +178,20 @@ public final class StormConnectionStageMetrics {
                     .labelNames("stage")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge STEAM_ADVERTISED_PLAYERS =
+            Gauge.builder()
+                    .name("storm_steam_advertised_players")
+                    .help(
+                            "Entries Storm's SteamPlayerListReconciler currently registers with the"
+                                    + " Steam game server: spawned players first, then pre-spawn"
+                                    + " login-pipeline connections, clamped at MaxPlayers. This is"
+                                    + " the player count the server browser / A2S / BattleMetrics"
+                                    + " see. 0 when the reconciler is off"
+                                    + " (-Dstorm.steam.advertisePipelinePlayers=false), broken, or"
+                                    + " the server is not in Steam mode — vanilla then advertises"
+                                    + " spawned players only.")
+                    .register(StormPrometheus.registry());
+
     private static final Histogram LOGIN_DURATION_SECONDS =
             Histogram.builder()
                     .name("storm_connection_login_duration_seconds")
@@ -342,5 +356,13 @@ public final class StormConnectionStageMetrics {
     /** Flags that the raised cap failed and the peer was built with the vanilla cap instead. */
     public static void setCapFallback(boolean fellBack) {
         CAP_FALLBACK.set(fellBack ? 1 : 0);
+    }
+
+    /**
+     * Publishes the Steam user-list size {@code SteamPlayerListReconciler} maintains — the player
+     * count every Steam query consumer sees.
+     */
+    public static void setSteamAdvertisedPlayers(int count) {
+        STEAM_ADVERTISED_PLAYERS.set(count);
     }
 }

@@ -44,6 +44,7 @@ import io.pzstorm.storm.patch.networking.GameServerWorkshopItemsPatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.ReceiveSandboxOptionsPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
+import io.pzstorm.storm.patch.networking.SteamGameServerPlayerListPatch;
 import io.pzstorm.storm.patch.networking.UdpConnectionRelevancePatch;
 import io.pzstorm.storm.patch.performance.AnimalControllerUpdatePatch;
 import io.pzstorm.storm.patch.performance.AnimalPopManRemoveChunkPatch;
@@ -370,6 +371,7 @@ public class StormClassTransformers {
             registerTransformer(new GameServerStalledConnectionReapPatch());
             registerTransformer(new GameServerConnectionCapPatch());
             registerTransformer(new ConnectionManagerLogPatch());
+            registerTransformer(new SteamGameServerPlayerListPatch());
 
             // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
             // called from the server's frame-step block and records elapsed nanos into
