@@ -15,7 +15,11 @@ workshop updates.
 
 1. **Server list** — add/edit/remove saved servers (`host`, game port, optional
    Storm HTTP port, server access password, in-game account credentials).
-2. **Steam workshop pre-update** — the server publishes its required workshop
+2. **Workshop query over the game port** — when the manifest is unavailable or
+   lists no items (the usual case: almost nobody exposes the Storm HTTP port to
+   players), the launcher asks the server directly over the port it is already
+   joining. See [Workshop query over UDP](#workshop-query-over-udp).
+3. **Steam workshop pre-update** — the server publishes its required workshop
    item ids in the manifest (`workshopItems`, from `server.ini`). Before
    launching, the launcher asks the running Steam client to subscribe + update
    each item via Steam's own UGC API (`steam_api64.dll` bound through
@@ -26,11 +30,11 @@ workshop updates.
    locked files. Runs in a child JVM with cwd = game dir (where
    `steam_appid.txt` lives); Steam not running degrades gracefully to the
    vanilla in-game flow.
-3. **Java mod sync** — fetches `GET /storm/client/manifest` and mirrors the
+4. **Java mod sync** — fetches `GET /storm/client/manifest` and mirrors the
    published mod tree into `<home>/Zomboid/storm/launcher/mods/<host_port>/`.
    Every file is SHA-256 verified; files that drop out of the manifest are
    deleted. A Storm version skew between client and server logs a warning.
-4. **Full auto-join (optional)** — with a username (and optionally a saved
+5. **Full auto-join (optional)** — with a username (and optionally a saved
    account password) on the profile and *Auto-connect* ticked, the launcher
    writes a one-shot credential handoff
    (`<home>/Zomboid/storm/launcher/autojoin.properties`, `java.util.Properties`
@@ -45,7 +49,7 @@ workshop updates.
    auto-join a manually started game; the launcher also deletes handoffs older
    than ten minutes on startup. Any missing prerequisite falls back to the
    pre-filled popup flow.
-5. **Game launch** — builds the client java command from the game's own
+6. **Game launch** — builds the client java command from the game's own
    `ProjectZomboid64.json` (mainClass, classpath, vmArgs, windows overlays),
    appends the Storm agent flags, `-Dstorm.launcher.mods=<synced dir>`, any
    user JVM args, and — unless the auto-join handoff is armed — the vanilla
@@ -78,6 +82,46 @@ Vanilla PZ behavior notes:
   items, and required by the game's join gate, which checks for exactly
   `Subscribed|Installed`. Bonus: Steam then keeps those items updated by
   itself whenever the game isn't running.
+
+## Workshop query over UDP
+
+The mod manifest is only reachable where the Storm HTTP port is, and on real
+servers it usually isn't — it is an operator port, not a player port. So the
+launcher has a second source for the workshop list that needs no extra port
+open: it asks over the game's own UDP transport, before anything logs in.
+
+- **Wire format** — a Storm-only packet pair carried inside PZ's normal user
+  packet framing (`byte 134`, then a `short` id). Ids `0x7A17` (query) and
+  `0x7A18` (reply) sit far above the vanilla `PacketType` ordinal range, and
+  the payload starts with the magic `"STMQ"` plus a protocol version. Constants
+  live in `io.pzstorm.storm.query.StormQueryProtocol`.
+- **Server side** — `ServerQueryPatch` puts `StormQueryResponder` at the top of
+  `GameServer.addIncoming`. That is deliberately *ahead* of vanilla's login
+  gate, which force-disconnects any not-yet-logged-in connection that sends
+  anything outside a five-packet allowlist; it also sidesteps vanilla's
+  unknown-id path, which leaks the pooled `ZomboidNetData` it allocated. The
+  reply carries the workshop item ids, the server mod ids, the Storm and game
+  versions, the server name, and the player counts — all of it already visible
+  to anyone who can join. Replies are capped per connection and the whole
+  handler fails soft.
+- **Client side** — the launcher may not touch PZ classes, and RakNet's
+  connected layer (MTU, reliability, split-packet reassembly) plus PZ's BCrypt
+  password hashing are not worth reimplementing. So the query runs in a child
+  JVM on the game's own classpath: `io.pzstorm.storm.query.StormQueryClient`
+  (in Storm core), which drives PZ's own `UdpEngine` and prints `key=value`
+  lines that `io.pzstorm.launcher.ServerQuery` parses. It never logs in, so it
+  never occupies a player slot.
+- **Which port** — a Steam-mode server holds `DefaultPort` with its Steam
+  socket and answers raw RakNet on `UDPPort` (conventionally `DefaultPort + 1`);
+  a `-nosteam` server answers on `DefaultPort` itself. The child tries both, so
+  the profile only needs the port players already type.
+- **Degradation** — no Storm on the server, an older Storm, or a blocked port
+  all end as "no reply", and the game's own in-game workshop flow still runs.
+
+The result feeds the workshop pre-update only. It deliberately does **not**
+become a `ModManifest`: that object also drives java-mod sync, whose deletion
+pass would wipe the local mirror if handed a file list this query cannot
+produce.
 
 ## Player setup
 

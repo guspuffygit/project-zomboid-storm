@@ -45,6 +45,7 @@ import io.pzstorm.storm.patch.networking.GameServerWorkshopItemsPatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.PlayerDownloadServerChunkActivityPatch;
 import io.pzstorm.storm.patch.networking.ReceiveSandboxOptionsPatch;
+import io.pzstorm.storm.patch.networking.ServerQueryPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.networking.SteamGameServerPlayerListPatch;
 import io.pzstorm.storm.patch.networking.UdpConnectionRelevancePatch;
@@ -403,6 +404,12 @@ public class StormClassTransformers {
             registerTransformer(new GameServerConnectionCapPatch());
             registerTransformer(new ConnectionManagerLogPatch());
             registerTransformer(new SteamGameServerPlayerListPatch());
+
+            // Answers the Storm Launcher's pre-login workshop/mod query over the game's own
+            // UDP port, so players can pre-update mods without the Storm HTTP port being
+            // reachable. Server-only: addIncoming exists on the client too, but the client
+            // must never serve queries.
+            registerTransformer(new ServerQueryPatch());
 
             // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
             // called from the server's frame-step block and records elapsed nanos into

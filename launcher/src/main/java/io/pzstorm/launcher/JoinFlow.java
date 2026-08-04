@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -15,6 +17,7 @@ import java.util.Properties;
  *
  * <ol>
  *   <li>fetch the server's manifest (java mods + required workshop items)
+ *   <li>failing that, ask the server for its workshop items over its game UDP port
  *   <li>have Steam update the workshop items (child process, Steam's own dirs)
  *   <li>mirror the server-published java mods (SHA-256 verified)
  *   <li>write the credential handoff for Storm's client Java (optional)
@@ -60,18 +63,36 @@ public final class JoinFlow {
         if (!profile.updateWorkshopMods || profile.noSteam) {
             return;
         }
-        if (manifest == null || manifest.workshopItems.isEmpty()) {
+        List<String> items = manifest == null ? Collections.emptyList() : manifest.workshopItems;
+        if (items.isEmpty()) {
+            items = queryWorkshopItems(config, profile);
+        }
+        if (items.isEmpty()) {
             Log.info("Server did not publish workshop items to pre-update.");
             return;
         }
         try {
-            WorkshopUpdate.run(config, manifest.workshopItems);
+            WorkshopUpdate.run(config, items);
         } catch (IOException e) {
             Log.warn(
                     "Workshop pre-update failed: "
                             + e.getMessage()
                             + " — the game's own join flow will handle items.");
         }
+    }
+
+    /**
+     * Second source for the workshop list, over the game's own UDP port. Most servers never expose
+     * Storm's HTTP port to players, so this is the path that actually fires in the field.
+     *
+     * <p>The result deliberately stops here rather than being folded into a {@link ModManifest}: a
+     * manifest also drives {@link #syncMods}, whose deletion pass would wipe the local java-mod
+     * mirror if handed a file list this query cannot produce.
+     */
+    static List<String> queryWorkshopItems(LauncherConfig config, ServerProfile profile)
+            throws InterruptedException {
+        ServerQuery.Result result = ServerQuery.run(config, profile);
+        return result == null ? Collections.emptyList() : result.workshopItems;
     }
 
     /** Sync (if enabled) and return the mods dir to pass to the game, or null. */
