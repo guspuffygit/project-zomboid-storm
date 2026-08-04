@@ -7,21 +7,10 @@ import zombie.network.GameServer;
 public class TestZombieSpotPlayerAdvice {
 
     @Advice.OnMethodEnter
-    public static long onEnter() {
-        if (!GameServer.server) {
-            return 0L;
-        }
-        return System.nanoTime();
-    }
-
-    @Advice.OnMethodExit(onThrowable = Throwable.class)
-    public static void onExit(@Advice.Enter long startNanos) {
+    public static void onEnter() {
         if (!GameServer.server) {
             return;
         }
-        if (startNanos == 0L) {
-            return;
-        }
-        ZombieSpotPlayerMetrics.recordNanos(System.nanoTime() - startNanos);
+        ZombieSpotPlayerMetrics.recordCall();
     }
 }

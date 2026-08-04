@@ -41,3 +41,6 @@ option Storm.ScreenshotEncodeKbPerTick
 
 option Storm.ReapStalledConnectionSeconds
 {type = integer, min = 60, max = 7200, default = 600, page = Storm, translation = Storm_ReapStalledConnectionSeconds,}
+
+option Storm.ZombieSightVehicleFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_ZombieSightVehicleFastPath,}

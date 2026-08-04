@@ -196,6 +196,7 @@ import io.pzstorm.storm.patch.performance.ZipBackupOnPeriodPatch;
 import io.pzstorm.storm.patch.performance.ZombieAuthStridePatch;
 import io.pzstorm.storm.patch.performance.ZombieGroupManagerPreupdatePatch;
 import io.pzstorm.storm.patch.performance.ZombiePopManRemoveChunkPatch;
+import io.pzstorm.storm.patch.performance.ZombieVehicleOcclusionPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
@@ -307,6 +308,7 @@ public class StormClassTransformers {
             registerTransformer(new IsoPlayerUpdateLOSPatch());
             registerTransformer(new IsoAnimalUpdateLOSPatch());
             registerTransformer(new TestZombieSpotPlayerPatch());
+            registerTransformer(new ZombieVehicleOcclusionPatch());
             registerTransformer(new VehicleManagerServerUpdatePatch());
             registerTransformer(new VehicleManagerSendVehiclesPatch());
             registerTransformer(new BaseVehicleUpdatePatch());

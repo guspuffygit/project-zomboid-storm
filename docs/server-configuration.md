@@ -54,6 +54,7 @@ the world setup UI. Edit them through the admin UI before world creation, or han
 | `Storm.ScreenshotUploadKbPerSec` | `128` | `8..4096` | Wall-clock throughput cap (KiB/s of base64 wire bytes) on a client's `/screenshot` upload. **The disconnect fix.** Keeps the upload well under the player's uplink so RakNet ACK/keepalive traffic keeps flowing; without it a large-resolution screenshot builds a reliable-ordered send backlog longer than RakNet's ~10 s connection timeout (never overridden from its native default) and the player is dropped with "Connection Lost" — the backlog scaling with resolution is why large monitors broke. `128` (~1 Mbit) is safe on virtually any home uplink; raise on low-latency wired networks. A 4K capture may take a minute or more at the default, invisibly in the background. |
 | `Storm.ScreenshotEncodeKbPerTick` | `4` | `1..64` | Ceiling on source KiB base64-encoded per client tick during a `/screenshot` upload. **The client-lag fix.** Base64 runs on the single Lua main thread, so encoding a whole 24 KB piece per frame stalled rendering for the entire upload; encoding is also demand-driven (pauses once packets are buffered ahead of the throttled sender), so most ticks do little work. Lower = smoother frames; higher = faster encode but larger per-frame hitches. |
 | `Storm.ReapStalledConnectionSeconds` | `600` | `60..7200` | Wall-clock budget a connection gets to finish logging in **and spawn** before the stalled-connection reaper drops it and frees its RakNet slot — the sandbox mirror of `-Dstorm.reapStalledConnectionMs` (see [JVM flags](#jvm-flags) for the full exemption list: login queue, co-op approval, Google auth, active chunk download). Live-appliable: an admin sandbox push takes effect on the next sweep, no restart. **Precedence:** when `-Dstorm.reapStalledConnectionMs` is set on the server JVM, the flag always wins and this option is ignored (logged at INFO on every apply). |
+| `Storm.ZombieSightVehicleFastPath` | `true` | boolean | Chunk-windowed fast path for the zombie-sight vehicle-occlusion test (`IsoZombie.isVehicleBetween`). Vanilla scans every loaded vehicle (two matrix inversions each) per zombie sight roll; the fast path tests only vehicles near the ≤20-tile sight segment and skips entirely when the result is provably unused. Behavior-preserving; ~14% of main-thread CPU on vehicle-heavy servers. Set `false` to restore the vanilla scan (live-appliable via admin sandbox push). |
 
 The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_server_lock_fps`, `storm_iso_physics_server_fps`, `storm_animal_los_tick_interval`,
@@ -62,8 +63,8 @@ The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_server_los_threads`, `storm_netdata_cap_ms`,
 `storm_peer_send_buffer_kick_mb`, `storm_peer_send_buffer_kick_hold_ticks`,
 `storm_screenshot_pieces_per_packet`, `storm_screenshot_upload_kb_per_sec`,
-`storm_screenshot_encode_kb_per_tick`, `storm_connection_reap_timeout_seconds`) reflect the
-currently-applied value.
+`storm_screenshot_encode_kb_per_tick`, `storm_connection_reap_timeout_seconds`,
+`storm_zombie_sight_vehicle_fast_path`) reflect the currently-applied value.
 
 ### Zombie culling is a vanilla option
 

@@ -9,6 +9,7 @@ import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnServerStartedEvent;
 import io.pzstorm.storm.event.zomboid.OnSandboxOptionsUpdateEvent;
 import io.pzstorm.storm.los.StormServerLosConfig;
+import io.pzstorm.storm.los.ZombieVehicleOcclusion;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -52,6 +53,8 @@ public final class StormPerformanceSandboxApplier {
             "Storm.ScreenshotEncodeKbPerTick";
     public static final String OPT_REAP_STALLED_CONNECTION_SECONDS =
             "Storm.ReapStalledConnectionSeconds";
+    public static final String OPT_ZOMBIE_SIGHT_VEHICLE_FAST_PATH =
+            "Storm.ZombieSightVehicleFastPath";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -93,6 +96,20 @@ public final class StormPerformanceSandboxApplier {
         applyScreenshotUploadKbPerSec();
         applyScreenshotEncodeKbPerTick();
         applyReapStalledConnectionSeconds();
+        applyZombieSightVehicleFastPath();
+    }
+
+    /**
+     * Pushes {@link #OPT_ZOMBIE_SIGHT_VEHICLE_FAST_PATH} through {@link
+     * ZombieVehicleOcclusion#setEnabled(boolean)} — the kill switch for the chunk-windowed
+     * zombie-sight vehicle-occlusion fast path.
+     */
+    private static void applyZombieSightVehicleFastPath() {
+        Boolean value = readBooleanOption(OPT_ZOMBIE_SIGHT_VEHICLE_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        ZombieVehicleOcclusion.setEnabled(value);
     }
 
     /**
@@ -245,6 +262,25 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormScreenshotConfig.setEncodeKbPerTick(value);
+    }
+
+    private static Boolean readBooleanOption(String name) {
+        SandboxOptions.SandboxOption option;
+        try {
+            option = SandboxOptions.instance.getOptionByName(name);
+        } catch (Exception e) {
+            LOGGER.warn("Storm: sandbox option {} lookup failed", name, e);
+            return null;
+        }
+        if (option == null) {
+            LOGGER.warn("Storm: sandbox option {} not found; skipping", name);
+            return null;
+        }
+        if (!(option instanceof SandboxOptions.BooleanSandboxOption booleanOption)) {
+            LOGGER.warn("Storm: sandbox option {} is not a boolean option; skipping", name);
+            return null;
+        }
+        return booleanOption.getValue();
     }
 
     private static Integer readIntOption(String name) {

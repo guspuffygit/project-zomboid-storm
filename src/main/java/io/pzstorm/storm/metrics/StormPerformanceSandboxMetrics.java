@@ -3,6 +3,7 @@ package io.pzstorm.storm.metrics;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
 import io.pzstorm.storm.los.StormServerLosConfig;
+import io.pzstorm.storm.los.ZombieVehicleOcclusion;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -215,6 +216,16 @@ public final class StormPerformanceSandboxMetrics {
                                     + " Storm.ScreenshotUploadKbPerSec sandbox option. Default 128.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge ZOMBIE_SIGHT_VEHICLE_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_zombie_sight_vehicle_fast_path")
+                    .help(
+                            "Whether the chunk-windowed fast path for IsoZombie.isVehicleBetween"
+                                    + " (zombie-sight vehicle occlusion) is active. Sourced from the"
+                                    + " Storm.ZombieSightVehicleFastPath sandbox option. 1 = fast"
+                                    + " path (default); 0 = vanilla whole-cell vehicle scan.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge SCREENSHOT_ENCODE_KB_PER_TICK =
             Gauge.builder()
                     .name("storm_screenshot_encode_kb_per_tick")
@@ -244,6 +255,7 @@ public final class StormPerformanceSandboxMetrics {
         SCREENSHOT_PIECES_PER_PACKET.set(StormScreenshotConfig.DEFAULT_PIECES_PER_PACKET);
         SCREENSHOT_UPLOAD_KB_PER_SEC.set(StormScreenshotConfig.DEFAULT_UPLOAD_KB_PER_SEC);
         SCREENSHOT_ENCODE_KB_PER_TICK.set(StormScreenshotConfig.DEFAULT_ENCODE_KB_PER_TICK);
+        ZOMBIE_SIGHT_VEHICLE_FAST_PATH.set(ZombieVehicleOcclusion.DEFAULT_ENABLED ? 1 : 0);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -310,5 +322,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setScreenshotEncodeKbPerTick(int n) {
         SCREENSHOT_ENCODE_KB_PER_TICK.set(n);
+    }
+
+    public static void setZombieSightVehicleFastPath(boolean enabled) {
+        ZOMBIE_SIGHT_VEHICLE_FAST_PATH.set(enabled ? 1 : 0);
     }
 }
