@@ -312,7 +312,7 @@ Everything is sampled on the main thread and pushed into plain `Gauge`s rather t
 | `loading` | The login queue's current occupant: told to proceed, not yet spawned. | exempt |
 | `checksum` | Logged in, Lua/script/anim checksum not yet verified (`ChecksumState.Init`). | yes |
 | `checksum_mismatch` | Failed the checksum comparison (`ChecksumState.Different`) — mod mismatch or tampered scripts. | yes |
-| `awaiting_spawn` | Authenticated and past the queue, character not spawned: downloading chunks, on the character screen, or a "Click Start" camper. `setFullyConnected()` only fires in `receivePlayerConnect`. | yes |
+| `awaiting_spawn` | Authenticated and past the queue, character not spawned: downloading chunks, on the character screen, or a "Click Start" camper. `setFullyConnected()` only fires in `receivePlayerConnect`. | yes, unless actively downloading chunks (each request wave re-stamps the reap clock) |
 | `fully_connected` | Character is in the world. The only stage that counts against `MaxPlayers`. | never |
 
 | Name | Type | Labels | What |
@@ -325,7 +325,7 @@ Everything is sampled on the main thread and pushed into plain `Gauge`s rather t
 | `storm_connection_cap_vanilla` | Gauge | — | The cap vanilla hard-codes (101). Constant baseline, so a dashboard can show Storm's headroom as `storm_connection_slots_max - this`. |
 | `storm_connection_cap_fallback` | Gauge | — | `1` when RakNet refused to start with the raised cap and the peer was built with the vanilla cap instead — the headroom is *not* in place. |
 | `storm_connection_reap_age_seconds_max` | Gauge | — | Largest time-on-the-reap-clock across all non-fully-connected connections. Distinct from `stage_age`: the reaper restamps this clock while a connection is exempt, so this is the number compared against the timeout. |
-| `storm_connection_reap_timeout_seconds` | Gauge | — | Wall-clock budget to finish logging in and spawn. Default `420` (7 min), `-Dstorm.reapStalledConnectionMs`. |
+| `storm_connection_reap_timeout_seconds` | Gauge | — | Wall-clock budget to finish logging in and spawn. Default `600` (10 min), `-Dstorm.reapStalledConnectionMs`. Time spent actively downloading chunks re-stamps the clock and does not count. |
 | `storm_connection_reap_sweep_interval_seconds` | Gauge | — | Sweep period — also the granularity of `reap_age` and the worst-case overshoot past the timeout. Default `30`, `-Dstorm.reapSweepIntervalMs`. |
 | `storm_connection_reaped_total` | Counter | `stage` | Slots freed by the reaper, attributed to the stage the connection was stuck in. Every reap is also logged at WARN with the connection id. |
 | `storm_connection_login_duration_seconds` | Histogram (native) | — | First sample → character spawned. Observed once per connection, and only for connections Storm saw in a pre-spawn stage first (already-spawned-at-first-sample is skipped rather than reported as instant). |

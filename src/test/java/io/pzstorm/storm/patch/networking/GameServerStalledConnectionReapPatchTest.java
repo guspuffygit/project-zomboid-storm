@@ -1,6 +1,7 @@
 package io.pzstorm.storm.patch.networking;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -70,8 +71,8 @@ class GameServerStalledConnectionReapPatchTest implements UnitTest {
     }
 
     @Test
-    void connectBudgetDefaultsToSevenMinutes() {
-        assertEquals(7L * 60L * 1000L, StalledConnectionReaper.DEFAULT_CONNECT_TIMEOUT_MS);
+    void connectBudgetDefaultsToTenMinutes() {
+        assertEquals(10L * 60L * 1000L, StalledConnectionReaper.DEFAULT_CONNECT_TIMEOUT_MS);
         assertEquals(
                 StalledConnectionReaper.DEFAULT_CONNECT_TIMEOUT_MS,
                 StalledConnectionReaper.getConnectTimeoutMs(),
@@ -82,6 +83,49 @@ class GameServerStalledConnectionReapPatchTest implements UnitTest {
     void sweepIsANoOpBeforeTheServerPeerExists() {
         // GameServer.udpEngine is null outside a running server; the sweep must not throw.
         StalledConnectionReaper.sweep();
+    }
+
+    @Test
+    void sandboxSetterClampsToDeclaredBoundsAndApplies() {
+        long original = StalledConnectionReaper.getConnectTimeoutMs();
+        try {
+            assertEquals(
+                    StalledConnectionReaper.MIN_SANDBOX_CONNECT_TIMEOUT_SECONDS * 1000L,
+                    StalledConnectionReaper.setConnectTimeoutSecondsFromSandbox(1, false),
+                    "Below-min sandbox value must clamp to the declared minimum");
+            assertEquals(
+                    StalledConnectionReaper.MAX_SANDBOX_CONNECT_TIMEOUT_SECONDS * 1000L,
+                    StalledConnectionReaper.setConnectTimeoutSecondsFromSandbox(999999, false),
+                    "Above-max sandbox value must clamp to the declared maximum");
+            assertEquals(
+                    900_000L,
+                    StalledConnectionReaper.setConnectTimeoutSecondsFromSandbox(900, false),
+                    "In-range sandbox value must apply verbatim");
+            assertEquals(900_000L, StalledConnectionReaper.getConnectTimeoutMs());
+        } finally {
+            StalledConnectionReaper.setConnectTimeoutMs(original);
+        }
+    }
+
+    @Test
+    void launchFlagAlwaysWinsOverSandboxValue() {
+        long original = StalledConnectionReaper.getConnectTimeoutMs();
+        try {
+            StalledConnectionReaper.setConnectTimeoutMs(123_000L);
+            assertEquals(
+                    123_000L,
+                    StalledConnectionReaper.setConnectTimeoutSecondsFromSandbox(900, true),
+                    "With the -D property forcing the budget, the sandbox value must be ignored");
+            assertEquals(123_000L, StalledConnectionReaper.getConnectTimeoutMs());
+        } finally {
+            StalledConnectionReaper.setConnectTimeoutMs(original);
+        }
+    }
+
+    @Test
+    void connectTimeoutIsNotForcedWithoutTheProperty() {
+        // The test JVM sets no -Dstorm.reapStalledConnectionMs, so sandbox values must apply.
+        assertFalse(StalledConnectionReaper.isConnectTimeoutForcedByProperty());
     }
 
     private byte[] readClassBytes(String resourcePath) throws Exception {

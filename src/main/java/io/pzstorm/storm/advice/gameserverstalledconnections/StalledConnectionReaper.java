@@ -4,6 +4,8 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.connection.ConnectionStage;
 import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
+import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.raknet.UdpEngine;
 import zombie.network.ConnectionManager;
@@ -35,25 +37,42 @@ import zombie.network.LoginQueue;
  * ID_NO_FREE_INCOMING_CONNECTIONS}, which the client never handles — it sits on "Getting Server
  * Info..." forever with no error and no timeout.
  *
- * <p>Exempt states get their clock re-stamped every sweep, so their 7-minute budget starts when the
+ * <p>Exempt states get their clock re-stamped every sweep, so their connect budget starts when the
  * exemption ends, not when they connected:
  *
  * <ul>
  *   <li>waiting in the login queue (queue wait is not the client's fault; the queue has its own
  *       {@code loginQueueConnectTimeout} and hands stale entries back to us),
  *   <li>awaiting co-op approval,
- *   <li>pending Google auth that has not itself timed out.
+ *   <li>pending Google auth that has not itself timed out,
+ *   <li>actively downloading chunks — {@code PlayerDownloadServerChunkActivityPatch} stamps every
+ *       chunk-request wave via {@link #recordChunkActivity}, and a stamp within the trailing {@link
+ *       #getChunkActivityWindowMs()} counts as active. Reaping a client mid-download does not
+ *       merely waste its progress: the vanilla loading thread races {@code GameClient.client} in
+ *       {@code IsoCell.LoadPlayer}, so any mid-load disconnect walks the client into the
+ *       singleplayer branch where {@code PlayerDB.getInstance()} is null and hard-crashes it with
+ *       an NPE instead of "connection lost". A client that stops requesting (pre-spawn "Click
+ *       Start" camper, dead peer) runs its budget down normally — chunk requests go quiet the
+ *       moment loading stalls, so this exemption cannot be held open by keepalive traffic.
  * </ul>
  *
- * <p>Fully-connected players are never candidates. All tracking state is written only from the
- * server main thread inside {@link #sweep()}, which {@code GameServer.launchCommandHandler} exit
- * advice calls once per tick — {@code GameServer.disconnect} touches chat and connection buffers
- * whose locks invert against the network thread, so the sweep must never run anywhere else.
+ * <p>Fully-connected players are never candidates. {@link #FIRST_SEEN_MS} and {@link #SLOT_GUID}
+ * are written only from the server main thread inside {@link #sweep()}, which {@code
+ * GameServer.launchCommandHandler} exit advice calls once per tick — {@code GameServer.disconnect}
+ * touches chat and connection buffers whose locks invert against the network thread, so the sweep
+ * must never run anywhere else. Chunk-activity stamps are the one exception: they arrive from
+ * whichever thread processes the request packet (plus the download worker's retry path), so they
+ * live in a {@link ConcurrentHashMap} that the sweep only reads and prunes.
  */
 public class StalledConnectionReaper {
 
     /** Wall-clock budget for completing login + spawning in, once past any exempt state. */
-    public static final long DEFAULT_CONNECT_TIMEOUT_MS = 7L * 60L * 1000L;
+    public static final long DEFAULT_CONNECT_TIMEOUT_MS = 10L * 60L * 1000L;
+
+    /** Bounds for {@code Storm.ReapStalledConnectionSeconds}, matching sandbox-options.txt. */
+    public static final int MIN_SANDBOX_CONNECT_TIMEOUT_SECONDS = 60;
+
+    public static final int MAX_SANDBOX_CONNECT_TIMEOUT_SECONDS = 7200;
 
     public static final long DEFAULT_SWEEP_INTERVAL_MS = 30000L;
 
@@ -66,8 +85,25 @@ public class StalledConnectionReaper {
     /** GUID owning each slot's {@link #FIRST_SEEN_MS} entry; slots are reused across clients. */
     private static final long[] SLOT_GUID = new long[MAX_SLOTS];
 
+    /**
+     * Last chunk-request wave per connection GUID, stamped by {@link #recordChunkActivity} from
+     * whichever thread processes the request. Pruned to live connections at the end of each sweep;
+     * fully-connected players keep stamping while they stream chunks in play, which is harmless.
+     */
+    private static final ConcurrentHashMap<Long, Long> CHUNK_ACTIVITY_MS =
+            new ConcurrentHashMap<>();
+
     private static volatile long connectTimeoutMs =
             resolvePositiveMsProperty("storm.reapStalledConnectionMs", DEFAULT_CONNECT_TIMEOUT_MS);
+
+    /**
+     * True when {@code -Dstorm.reapStalledConnectionMs} supplied a valid value at JVM start. The
+     * launch flag always wins over the {@code Storm.ReapStalledConnectionSeconds} sandbox option —
+     * {@link #setConnectTimeoutSecondsFromSandbox} no-ops while this is set. An invalid property
+     * value does not count as forcing (it already warned and fell back to the default).
+     */
+    private static final boolean CONNECT_TIMEOUT_FORCED_BY_PROPERTY =
+            hasValidPositiveMsProperty("storm.reapStalledConnectionMs");
 
     private static final long SWEEP_INTERVAL_MS =
             resolvePositiveMsProperty("storm.reapSweepIntervalMs", DEFAULT_SWEEP_INTERVAL_MS);
@@ -77,6 +113,18 @@ public class StalledConnectionReaper {
     private static long reapedCount;
 
     private StalledConnectionReaper() {}
+
+    private static boolean hasValidPositiveMsProperty(String key) {
+        String property = System.getProperty(key);
+        if (property == null || property.isEmpty()) {
+            return false;
+        }
+        try {
+            return Long.parseLong(property.trim()) > 0L;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
 
     private static long resolvePositiveMsProperty(String key, long fallback) {
         String property = System.getProperty(key);
@@ -107,6 +155,46 @@ public class StalledConnectionReaper {
         connectTimeoutMs = millis;
         LOGGER.info("Storm: stalled-connection connect budget set to {}ms", millis);
         return millis;
+    }
+
+    /** Whether {@code -Dstorm.reapStalledConnectionMs} pins the budget against sandbox changes. */
+    public static boolean isConnectTimeoutForcedByProperty() {
+        return CONNECT_TIMEOUT_FORCED_BY_PROPERTY;
+    }
+
+    /**
+     * Applies the {@code Storm.ReapStalledConnectionSeconds} sandbox option: clamps to the option's
+     * declared bounds and stores, unless {@code -Dstorm.reapStalledConnectionMs} was set at JVM
+     * start — the launch flag always wins, so this then leaves the budget untouched. Returns the
+     * budget in effect afterwards, in millis.
+     */
+    public static long setConnectTimeoutSecondsFromSandbox(int seconds) {
+        return setConnectTimeoutSecondsFromSandbox(seconds, CONNECT_TIMEOUT_FORCED_BY_PROPERTY);
+    }
+
+    /** Visible for tests — in production {@code forcedByProperty} is fixed at class init. */
+    public static long setConnectTimeoutSecondsFromSandbox(int seconds, boolean forcedByProperty) {
+        if (forcedByProperty) {
+            LOGGER.info(
+                    "Storm: ignoring sandbox Storm.ReapStalledConnectionSeconds={} —"
+                            + " -Dstorm.reapStalledConnectionMs takes precedence ({}ms in effect)",
+                    seconds,
+                    connectTimeoutMs);
+            return connectTimeoutMs;
+        }
+        int clamped =
+                Math.max(
+                        MIN_SANDBOX_CONNECT_TIMEOUT_SECONDS,
+                        Math.min(MAX_SANDBOX_CONNECT_TIMEOUT_SECONDS, seconds));
+        if (clamped != seconds) {
+            LOGGER.warn(
+                    "Storm: Storm.ReapStalledConnectionSeconds={} outside [{}, {}], clamping to {}",
+                    seconds,
+                    MIN_SANDBOX_CONNECT_TIMEOUT_SECONDS,
+                    MAX_SANDBOX_CONNECT_TIMEOUT_SECONDS,
+                    clamped);
+        }
+        return setConnectTimeoutMs(clamped * 1000L);
     }
 
     public static long getSweepIntervalMs() {
@@ -140,6 +228,41 @@ public class StalledConnectionReaper {
     }
 
     /**
+     * Marks {@code connection} as actively downloading chunks. Called from the inlined {@code
+     * PlayerDownloadServerChunkActivityAdvice}, so it must stay public and must tolerate any
+     * calling thread.
+     */
+    public static void recordChunkActivity(UdpConnection connection) {
+        recordChunkActivity(connection.getConnectedGUID());
+    }
+
+    /** GUID-keyed variant of {@link #recordChunkActivity(UdpConnection)}. */
+    public static void recordChunkActivity(long connectionGuid) {
+        CHUNK_ACTIVITY_MS.put(connectionGuid, System.currentTimeMillis());
+    }
+
+    /**
+     * How recent a chunk-request stamp must be to count as an active download. Two sweep intervals
+     * (with a one-minute floor) so a single delayed sweep cannot misread a live download as idle;
+     * generosity is harmless because every hit merely re-stamps the clock — the full connect budget
+     * still applies from the last observed activity.
+     */
+    public static long getChunkActivityWindowMs() {
+        return Math.max(2L * SWEEP_INTERVAL_MS, 60_000L);
+    }
+
+    /** Whether {@code connection} requested chunks within {@link #getChunkActivityWindowMs()}. */
+    public static boolean hasRecentChunkActivity(UdpConnection connection, long nowMs) {
+        return hasRecentChunkActivity(connection.getConnectedGUID(), nowMs);
+    }
+
+    /** GUID-keyed variant of {@link #hasRecentChunkActivity(UdpConnection, long)}. */
+    public static boolean hasRecentChunkActivity(long connectionGuid, long nowMs) {
+        Long stampMs = CHUNK_ACTIVITY_MS.get(connectionGuid);
+        return stampMs != null && nowMs - stampMs <= getChunkActivityWindowMs();
+    }
+
+    /**
      * Drops connections that outstayed their connect budget. Must run on the server main thread —
      * see the class comment for the lock-inversion constraint.
      */
@@ -155,12 +278,14 @@ public class StalledConnectionReaper {
         nextSweepMs = now + SWEEP_INTERVAL_MS;
         long timeout = connectTimeoutMs;
 
+        HashSet<Long> liveGuids = new HashSet<>();
         for (int i = engine.connections.size() - 1; i >= 0; i--) {
             try {
                 UdpConnection connection = engine.connections.get(i);
                 if (connection == null) {
                     continue;
                 }
+                liveGuids.add(connection.getConnectedGUID());
                 int slot = connection.getIndex();
                 if (slot < 0 || slot >= MAX_SLOTS) {
                     continue;
@@ -177,7 +302,7 @@ public class StalledConnectionReaper {
                     FIRST_SEEN_MS[slot] = now;
                     continue;
                 }
-                if (isExempt(connection)) {
+                if (isExempt(connection, now)) {
                     // Slide the clock while exempt so the budget starts when the exemption ends.
                     FIRST_SEEN_MS[slot] = now;
                     continue;
@@ -206,15 +331,19 @@ public class StalledConnectionReaper {
                 LOGGER.error("Storm: failed to reap stalled connection", t);
             }
         }
+        CHUNK_ACTIVITY_MS.keySet().retainAll(liveGuids);
     }
 
-    private static boolean isExempt(UdpConnection connection) {
+    private static boolean isExempt(UdpConnection connection, long nowMs) {
         if (connection.awaitingCoopApprove) {
             return true;
         }
         if (LoginQueue.isInTheQueue(connection)) {
             return true;
         }
-        return connection.googleAuth && !connection.isGoogleAuthTimeout();
+        if (connection.googleAuth && !connection.isGoogleAuthTimeout()) {
+            return true;
+        }
+        return hasRecentChunkActivity(connection, nowMs);
     }
 }

@@ -2,6 +2,7 @@ package io.pzstorm.storm.sandbox;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper;
 import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
 import io.pzstorm.storm.event.core.SubscribeEvent;
@@ -49,6 +50,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_SCREENSHOT_UPLOAD_KB_PER_SEC = "Storm.ScreenshotUploadKbPerSec";
     public static final String OPT_SCREENSHOT_ENCODE_KB_PER_TICK =
             "Storm.ScreenshotEncodeKbPerTick";
+    public static final String OPT_REAP_STALLED_CONNECTION_SECONDS =
+            "Storm.ReapStalledConnectionSeconds";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -89,6 +92,20 @@ public final class StormPerformanceSandboxApplier {
         applyScreenshotPiecesPerPacket();
         applyScreenshotUploadKbPerSec();
         applyScreenshotEncodeKbPerTick();
+        applyReapStalledConnectionSeconds();
+    }
+
+    /**
+     * Pushes {@link #OPT_REAP_STALLED_CONNECTION_SECONDS} through {@link
+     * StalledConnectionReaper#setConnectTimeoutSecondsFromSandbox(int)}, which itself defers to
+     * {@code -Dstorm.reapStalledConnectionMs} when that launch flag is set.
+     */
+    private static void applyReapStalledConnectionSeconds() {
+        Integer value = readIntOption(OPT_REAP_STALLED_CONNECTION_SECONDS);
+        if (value == null) {
+            return;
+        }
+        StalledConnectionReaper.setConnectTimeoutSecondsFromSandbox(value);
     }
 
     /**

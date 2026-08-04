@@ -130,8 +130,10 @@ public final class StormConnectionStageMetrics {
                     .name("storm_connection_reap_timeout_seconds")
                     .help(
                             "Wall-clock budget a connection gets to finish logging in and spawn"
-                                    + " before Storm frees its RakNet slot. Default 420s (7 min),"
-                                    + " overridden by -Dstorm.reapStalledConnectionMs.")
+                                    + " before Storm frees its RakNet slot. Default 600s (10 min),"
+                                    + " overridden by -Dstorm.reapStalledConnectionMs. Time spent"
+                                    + " actively downloading chunks re-stamps the clock and does"
+                                    + " not count.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge REAP_SWEEP_INTERVAL_SECONDS =
