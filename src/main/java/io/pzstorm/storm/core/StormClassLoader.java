@@ -78,6 +78,19 @@ public class StormClassLoader extends ClassLoader {
     }
 
     /**
+     * Returns {@code true} if the class with the given binary name is part of the JDK runtime
+     * image. JDK classes must be delegated to the parent loader: defining them here would create a
+     * second class identity in this loader's unnamed module, detached from {@code java.base}. SPI
+     * lookups then fail because JDK provider implementations extend the {@code java.base} types
+     * (e.g. {@code javax.net.ssl.TrustManagerFactory} rejecting the JDK's own {@code
+     * TrustManagerFactoryImpl}, which broke all TLS including the game's Discord bot).
+     */
+    static boolean isJdkRuntimeClass(String name) {
+        return ClassLoader.getPlatformClassLoader().getResource(name.replace('.', '/') + ".class")
+                != null;
+    }
+
+    /**
      * Reinitialize mod resource loader instance. This method should be called after new mods have
      * been loaded by {@link StormModLoader} since new {@code URL}s have to be added to loader
      * classpath.
@@ -151,7 +164,7 @@ public class StormClassLoader extends ClassLoader {
         Class<?> clazz = findLoadedClass(name);
         if (clazz == null) {
             LOGGER.trace("Preparing to load class {}", name);
-            if (!isBlacklistedClass(name)) {
+            if (!isBlacklistedClass(name) && !isJdkRuntimeClass(name)) {
                 LOGGER.trace("Loading {} with StormClassLoader", name);
                 try {
                     byte[] input = getRawClassByteArray(name);

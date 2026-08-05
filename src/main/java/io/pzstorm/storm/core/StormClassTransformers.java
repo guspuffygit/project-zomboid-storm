@@ -582,7 +582,8 @@ public class StormClassTransformers {
      */
     public static void applyAgentTransformers(Instrumentation instrumentation) {
         for (String className : TRANSFORMERS.keySet()) {
-            if (!StormClassLoader.isBlacklistedClass(className)) {
+            if (!StormClassLoader.isBlacklistedClass(className)
+                    && !StormClassLoader.isJdkRuntimeClass(className)) {
                 continue;
             }
 
