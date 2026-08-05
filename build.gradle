@@ -599,6 +599,10 @@ tasks.register('uploadWorkshop', Exec) {
 
 	dependsOn 'writeWorkshopVdf', 'installStorm'
 
+	// Lets steamcmd's password/Steam Guard prompt reach the terminal when no cached token exists yet;
+	// answering it interactively is what makes steamcmd persist the token for subsequent runs.
+	standardInput = System.in
+
 	doFirst {
 		def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
 		commandLine([steamcmdPath, '+login'] + steamLoginArgs() + [
@@ -667,6 +671,8 @@ tasks.register('runProjectZomboid') {
 
 tasks.register('downloadWorkshop', Exec) {
 	dependsOn 'uploadWorkshop'
+
+	standardInput = System.in
 
 	doFirst {
 		def dir = getLocalProperty('serverPath').get()

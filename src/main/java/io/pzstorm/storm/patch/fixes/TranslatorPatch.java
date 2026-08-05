@@ -34,13 +34,23 @@ public class TranslatorPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(GetTextAdvice.class)
-                        .on(
-                                ElementMatchers.named("getText")
-                                        .and(
-                                                ElementMatchers.takesArguments(
-                                                        String.class, Object[].class))
-                                        .and(ElementMatchers.isStatic())));
+                        Advice.to(GetTextAdvice.class)
+                                .on(
+                                        ElementMatchers.named("getText")
+                                                .and(
+                                                        ElementMatchers.takesArguments(
+                                                                String.class, Object[].class))
+                                                .and(ElementMatchers.isStatic())))
+                .visit(
+                        Advice.to(FormatFailureAdvice.class)
+                                .on(
+                                        ElementMatchers.named("reportMissingArgumentsFromPastAbuse")
+                                                .and(
+                                                        ElementMatchers.takesArguments(
+                                                                String.class,
+                                                                Object[].class,
+                                                                String.class))
+                                                .and(ElementMatchers.isStatic())));
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
@@ -91,6 +101,56 @@ public class TranslatorPatch extends StormClassTransformer {
                 @Advice.Enter String earlyReturn, @Advice.Return(readOnly = false) String result) {
             if (earlyReturn != null) {
                 result = earlyReturn;
+            }
+        }
+    }
+
+    /**
+     * Keeps a malformed translation string from killing the Lua chunk that asked for it.
+     *
+     * <p>{@code Translator.reportMissingArgumentsFromPastAbuse} runs every translation through
+     * {@code String.formatted()}. At load time PZ only rewrites {@code %%} and {@code %1}-{@code
+     * %9} (see {@code Translator.FORMAT_TOKEN}); any other {@code %} sequence survives into the
+     * formatter, which then throws. Vanilla catches only {@link
+     * java.util.MissingFormatArgumentException}, so an {@code UnknownFormatConversionException} —
+     * e.g. from a mod writing {@code "Full Recovery (100%)"} instead of {@code (100%%)} — escapes
+     * into Lua.
+     *
+     * <p>Kahlua swallows exceptions from exposed Java calls and returns no values, so the caller
+     * silently gets nil. Where the result feeds something that requires an argument, such as {@code
+     * table.insert(setting.values, option:getValueTranslationByIndex(k))} in {@code
+     * ServerSettingsScreen.lua}, that becomes a hard "Not enough arguments" Lua error which aborts
+     * the whole file. An aborted chunk leaves its closures' upvalues dangling, so unrelated
+     * functions defined in that file start reading null — which is how a single bad {@code %} in
+     * one mod's sandbox translation takes down the main menu on connect.
+     *
+     * <p>This advice returns the unformatted text instead, matching what vanilla already does for
+     * the missing-argument case.
+     */
+    public static class FormatFailureAdvice {
+
+        public static final java.util.Set<String> REPORTED =
+                java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        public static void report(String desc) {
+            if (REPORTED.add(desc)) {
+                io.pzstorm.storm.logging.StormLogger.LOGGER.warn(
+                        "Translation \"{}\" is not a valid format string; a literal '%' must be"
+                                + " written '%%'. Returning it unformatted.",
+                        desc);
+            }
+        }
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        public static void onExit(
+                @Advice.Argument(0) String desc,
+                @Advice.Argument(2) String text,
+                @Advice.Thrown(readOnly = false) Throwable thrown,
+                @Advice.Return(readOnly = false) String result) {
+            if (thrown != null) {
+                thrown = null;
+                report(desc);
+                result = text;
             }
         }
     }
