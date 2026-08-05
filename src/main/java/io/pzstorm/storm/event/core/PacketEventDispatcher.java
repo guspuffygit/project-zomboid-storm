@@ -180,6 +180,7 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.vehicle.VehiclePassengerPositionPacket",
                     "zombie.network.packets.vehicle.VehiclePassengerRequestPacket",
                     "zombie.network.packets.vehicle.VehiclePhysicsPacket",
+                    "zombie.network.packets.vehicle.VehicleRequestPacket",
                     "zombie.network.packets.vehicle.VehicleSwitchSeatPacket",
                     "zombie.network.packets.world.DebugStoryPacket");
 

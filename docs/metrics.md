@@ -265,30 +265,6 @@ caught it, and the fast path latched itself off permanently — grep the server 
 | `pz_entity_array_removes_total` | CounterWithCallback | `path={fast,scan,mismatch,vanilla}` | Removals from the global entity array: `fast` = indexed O(1) swap-with-last; `scan` = Storm's inline linear scan (index miss around a kill-switch toggle, or an equals-based call); `mismatch` = self-check failure (latches the fast path off); `vanilla` = fell through to the vanilla scan (kill switch off or failure latch). |
 | `storm_entity_index_size` | GaugeWithCallback | — | Entities currently tracked by the removal index — mirrors the global entity array size while the fast path is active. |
 
-### Comparative timing (CellObjectAdd / CellObjectRemove)
-
-Both classes patch `IsoCell` add/remove paths and time a "fast" path (every call) alongside a "vanilla simulated" path (sampled 1-in-1024 via `VANILLA_SAMPLE_MASK = 1023`). The "speedup ratio" comparison lives in PromQL (see below).
-
-| Name | Type | What |
-|------|------|------|
-| `pz_cell_object_add_fast_duration_seconds` | Histogram (native) | Fast-path duration for IsoCell add operations |
-| `pz_cell_object_add_vanilla_simulated_duration_seconds` | Histogram (native) | Simulated vanilla-path duration. Sampled 1-in-1024. |
-| `pz_cell_object_add_ticks_total` | Counter | Scheduler ticks observed |
-| `pz_cell_object_remove_fast_duration_seconds` | Histogram (native) | Fast-path duration for IsoCell remove operations |
-| `pz_cell_object_remove_vanilla_simulated_duration_seconds` | Histogram (native) | Simulated vanilla-path duration. Sampled 1-in-1024. |
-| `pz_cell_object_remove_ticks_total` | Counter | Scheduler ticks observed |
-
-Useful PromQL:
-
-```promql
-# speedup ratio: simulated vanilla average / fast average
-( rate(pz_cell_object_add_vanilla_simulated_duration_seconds_sum[1m])
-  / rate(pz_cell_object_add_vanilla_simulated_duration_seconds_count[1m]) )
-/
-( rate(pz_cell_object_add_fast_duration_seconds_sum[1m])
-  / rate(pz_cell_object_add_fast_duration_seconds_count[1m]) )
-```
-
 ### BitHeader pool
 
 Volume counters for `zombie.util.io.BitHeader` pool operations.

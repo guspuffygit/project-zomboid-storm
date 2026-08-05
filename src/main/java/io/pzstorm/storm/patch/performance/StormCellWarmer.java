@@ -21,7 +21,6 @@ import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoMovingObject;
-import zombie.iso.IsoObject;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.IsoDeadBody;
 import zombie.network.GameServer;
@@ -102,11 +101,15 @@ public final class StormCellWarmer {
 
     private static final class WarmAnimal {
         final IsoAnimal animal;
-        final IsoGridSquare originalSquare;
+        final int x;
+        final int y;
+        final int z;
 
         WarmAnimal(IsoAnimal animal, IsoGridSquare originalSquare) {
             this.animal = animal;
-            this.originalSquare = originalSquare;
+            this.x = originalSquare.getX();
+            this.y = originalSquare.getY();
+            this.z = originalSquare.getZ();
         }
     }
 
@@ -519,12 +522,14 @@ public final class StormCellWarmer {
     }
 
     private static void restoreAnimals(List<WarmAnimal> animals) {
+        IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
         for (WarmAnimal stash : animals) {
             IsoAnimal animal = stash.animal;
             // Clear the warm marker unconditionally — once we've decided to restore, the animal
             // must tick on the next frame even if reattaching to its original square fails.
             WARMED_ANIMALS.remove(animal);
-            IsoGridSquare sq = stash.originalSquare;
+            IsoGridSquare sq =
+                    isoCell == null ? null : isoCell.getGridSquare(stash.x, stash.y, stash.z);
             if (sq == null) {
                 continue;
             }
@@ -541,8 +546,6 @@ public final class StormCellWarmer {
     // network sync stays valid.
     private static void drainDeadBodies(ServerMap.ServerCell cell, List<IsoDeadBody> sink) {
         IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
-        ArrayList<IsoObject> updaters =
-                isoCell == null ? null : isoCell.getStaticUpdaterObjectList();
 
         // Snapshot the registry view before mutating it — ObjectIDType.DeadBody.getObjects()
         // returns a live values() collection backed by the underlying HashMap.
@@ -560,8 +563,8 @@ public final class StormCellWarmer {
             }
             sink.add(body);
             ObjectIDManager.getInstance().remove(body.getObjectID());
-            if (updaters != null) {
-                updaters.remove(body);
+            if (isoCell != null) {
+                isoCell.removeFromStaticUpdaterObjectList(body);
             }
         }
     }

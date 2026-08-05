@@ -20,9 +20,9 @@ import net.bytebuddy.pool.TypePool;
  * Since it doesn't match any known prefix, {@code getTextInternal} logs a "Missing translation"
  * error.
  *
- * <p>This patch intercepts {@code getText(String)} and short-circuits the call when the input
- * string doesn't match any known translation key prefix, returning the string as-is without
- * triggering the error log.
+ * <p>This patch intercepts {@code getText(String, Object...)} (the only overload since 42.20.1) and
+ * short-circuits the call when the input string doesn't match any known translation key prefix,
+ * returning the string as-is without triggering the error log.
  */
 public class TranslatorPatch extends StormClassTransformer {
 
@@ -37,7 +37,9 @@ public class TranslatorPatch extends StormClassTransformer {
                 Advice.to(GetTextAdvice.class)
                         .on(
                                 ElementMatchers.named("getText")
-                                        .and(ElementMatchers.takesArguments(String.class))
+                                        .and(
+                                                ElementMatchers.takesArguments(
+                                                        String.class, Object[].class))
                                         .and(ElementMatchers.isStatic())));
     }
 
@@ -75,7 +77,8 @@ public class TranslatorPatch extends StormClassTransformer {
                     || desc.startsWith("EC_")
                     || desc.startsWith("RD_")
                     || desc.startsWith("BODYPART_")
-                    || desc.startsWith("MapLabel_")) {
+                    || desc.startsWith("MapLabel_")
+                    || desc.startsWith("AEBS_")) {
                 // Known prefix — let the original getText handle it
                 return null;
             }

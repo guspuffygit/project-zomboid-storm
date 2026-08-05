@@ -108,10 +108,11 @@ public class StormTransferHandler {
 
     /**
      * Destination leg for dropping an item on the ground. The drop square is chosen server-side at
-     * accept time from the player's authoritative position (matching vanilla, which picks the
-     * square at packet-parse time and drops there unconditionally when the timer elapses).
+     * accept time from the player's authoritative position, but only its coordinates are kept and
+     * the square is re-resolved at execution time &mdash; the chunk can unload mid-timer, and since
+     * 42.20.1 unloading discards its squares, so a held reference would go stale.
      */
-    record FloorDropLeg(IsoGridSquare square) implements Leg {}
+    record FloorDropLeg(int x, int y, int z) implements Leg {}
 
     /**
      * A "Place Item" request awaiting execution. Placements carry no server-side timer (the client
@@ -291,7 +292,9 @@ public class StormTransferHandler {
 
         // Drops record the resolved square so event consumers see where the item landed.
         String resolvedDestRef =
-                dest instanceof FloorDropLeg drop ? floorRef(drop.square()) : destRef;
+                dest instanceof FloorDropLeg drop
+                        ? floorRef(drop.x(), drop.y(), drop.z())
+                        : destRef;
 
         long duration = calculateDuration(item, src, dest, player);
         long endTime = GameTime.getServerTimeMills() + duration;
@@ -539,7 +542,12 @@ public class StormTransferHandler {
             ItemContainer src,
             InventoryItem item,
             FloorDropLeg drop) {
-        IsoGridSquare dropSquare = drop.square();
+        IsoGridSquare dropSquare = getSquare(drop.x(), drop.y(), drop.z());
+        if (dropSquare == null) {
+            LOGGER.debug("processPending: drop square unloaded, rejecting uuid={}", uuid);
+            reject(p.player, uuid);
+            return;
+        }
 
         unequipIfCarried(p.player, src, item);
 
@@ -839,7 +847,7 @@ public class StormTransferHandler {
                         "resolveDestLeg: no floor square with room near {}", player.getUsername());
                 return null;
             }
-            return new FloorDropLeg(dropSquare);
+            return new FloorDropLeg(dropSquare.getX(), dropSquare.getY(), dropSquare.getZ());
         }
 
         ItemContainer container = resolveContainer(ref, player);
@@ -956,7 +964,12 @@ public class StormTransferHandler {
 
     private static boolean hasPendingDropOn(IsoGridSquare square) {
         return pendingTransfers.values().stream()
-                .anyMatch(pt -> pt.dest instanceof FloorDropLeg drop && drop.square() == square);
+                .anyMatch(
+                        pt ->
+                                pt.dest instanceof FloorDropLeg drop
+                                        && drop.x() == square.getX()
+                                        && drop.y() == square.getY()
+                                        && drop.z() == square.getZ());
     }
 
     // ------------------------------------------------------------------
@@ -992,7 +1005,11 @@ public class StormTransferHandler {
     }
 
     private static String floorRef(IsoGridSquare square) {
-        return "floor:" + square.getX() + ":" + square.getY() + ":" + square.getZ();
+        return floorRef(square.getX(), square.getY(), square.getZ());
+    }
+
+    private static String floorRef(int x, int y, int z) {
+        return "floor:" + x + ":" + y + ":" + z;
     }
 
     // ------------------------------------------------------------------

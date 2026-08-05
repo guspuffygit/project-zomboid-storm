@@ -77,24 +77,24 @@ class StormTransferHandlerTest implements UnitTest {
         }
 
         @Test
-        void floorDropLegHoldsSquareReference() throws Exception {
-            IsoGridSquare square = newSquare(10, 20, 0);
+        void floorDropLegHoldsCoordinates() {
+            StormTransferHandler.FloorDropLeg leg =
+                    new StormTransferHandler.FloorDropLeg(10, 20, 0);
 
-            StormTransferHandler.FloorDropLeg leg = new StormTransferHandler.FloorDropLeg(square);
-
-            assertSame(square, leg.square());
+            assertEquals(10, leg.x());
+            assertEquals(20, leg.y());
+            assertEquals(0, leg.z());
         }
 
         @Test
         void patternMatchingDispatchesByLegSubtype() throws Exception {
             ItemContainer container = newContainer("player");
-            IsoGridSquare square = newSquare(0, 0, 0);
 
             StormTransferHandler.Leg containerLeg =
                     new StormTransferHandler.ContainerLeg(container);
             StormTransferHandler.Leg pickupLeg =
                     new StormTransferHandler.FloorPickupLeg(1, 2, 3, 4);
-            StormTransferHandler.Leg dropLeg = new StormTransferHandler.FloorDropLeg(square);
+            StormTransferHandler.Leg dropLeg = new StormTransferHandler.FloorDropLeg(0, 0, 0);
 
             assertEquals("container", classify(containerLeg));
             assertEquals("pickup", classify(pickupLeg));
@@ -233,14 +233,13 @@ class StormTransferHandlerTest implements UnitTest {
         void playerInventoryToFloorMultipliesBy0_1() throws Exception {
             ItemContainer playerInv = newContainer("player");
             IsoPlayer player = newPlayer(playerInv);
-            IsoGridSquare square = newSquare(0, 0, 0);
             InventoryItem item = newItem("Base.Foo", 1.0f);
 
             long millis =
                     StormTransferHandler.calculateDuration(
                             item,
                             new StormTransferHandler.ContainerLeg(playerInv),
-                            new StormTransferHandler.FloorDropLeg(square),
+                            new StormTransferHandler.FloorDropLeg(0, 0, 0),
                             player);
 
             // 50 (player inv -> floor base) * 1.0 (weight) * 1.0 (capacity) * 0.1 (floor mult)
@@ -253,14 +252,13 @@ class StormTransferHandlerTest implements UnitTest {
             ItemContainer playerInv = newContainer("player");
             IsoPlayer player = newPlayer(playerInv);
             ItemContainer crate = newContainer("crate");
-            IsoGridSquare square = newSquare(0, 0, 0);
             InventoryItem item = newItem("Base.Foo", 1.0f);
 
             long millis =
                     StormTransferHandler.calculateDuration(
                             item,
                             new StormTransferHandler.ContainerLeg(crate),
-                            new StormTransferHandler.FloorDropLeg(square),
+                            new StormTransferHandler.FloorDropLeg(0, 0, 0),
                             player);
 
             // External src to floor keeps the 120f base, then 0.2f multiplier
@@ -274,14 +272,13 @@ class StormTransferHandlerTest implements UnitTest {
             // destination container whose fill ratio we could scale on.
             ItemContainer playerInv = newContainer("player");
             IsoPlayer player = newPlayer(playerInv);
-            IsoGridSquare square = newSquare(0, 0, 0);
             InventoryItem item = newItem("Base.Foo", 2.0f); // heavier item
 
             long millis =
                     StormTransferHandler.calculateDuration(
                             item,
                             new StormTransferHandler.ContainerLeg(playerInv),
-                            new StormTransferHandler.FloorDropLeg(square),
+                            new StormTransferHandler.FloorDropLeg(0, 0, 0),
                             player);
 
             // 50 * 2.0 * 1.0 * 0.1 = 10f Lua-scale -> *20 = 200 millis
@@ -292,14 +289,13 @@ class StormTransferHandlerTest implements UnitTest {
         void weightIsClampedAtThreeForFloorDrop() throws Exception {
             ItemContainer playerInv = newContainer("player");
             IsoPlayer player = newPlayer(playerInv);
-            IsoGridSquare square = newSquare(0, 0, 0);
             InventoryItem item = newItem("Base.Heavy", 99.0f);
 
             long millis =
                     StormTransferHandler.calculateDuration(
                             item,
                             new StormTransferHandler.ContainerLeg(playerInv),
-                            new StormTransferHandler.FloorDropLeg(square),
+                            new StormTransferHandler.FloorDropLeg(0, 0, 0),
                             player);
 
             // Weight clamped to 3.0: 50 * 3.0 * 1.0 * 0.1 = 15f Lua-scale -> *20 = 300 millis
