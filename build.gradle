@@ -53,6 +53,30 @@ def getWorkshopVisibility = {
 	}
 }
 
+// steamcmd only persists its refresh token to config.vdf's ConnectCache when the password is NOT on
+// the command line. Supplying it makes every invocation a fresh credential auth, which trips Steam's
+// login rate limiter (EResult 84) after a handful of runs. Seed the cache once with an interactive
+// `~/Steam/steamcmd.sh +login <user>`; these tasks then reuse it until the token expires.
+def steamLoginArgs = {
+	def username = System.getenv('STEAM_USERNAME')
+
+	if (!username) {
+		throw new GradleException('STEAM_USERNAME environment variable must be set')
+	}
+
+	if (project.hasProperty('steamPasswordLogin')) {
+		def password = System.getenv('STEAM_PASSWORD')
+
+		if (!password) {
+			throw new GradleException('-PsteamPasswordLogin requires the STEAM_PASSWORD environment variable')
+		}
+
+		return [username, password]
+	}
+
+	return [username]
+}
+
 String workshopDescription = '''[b]Storm[/b] is a [b]Java mod loader and modding framework[/b] for [i]Project Zomboid[/i] (Build 42+) that uses [b]Byte Buddy[/b] bytecode instrumentation to extend the game without touching its source.
 
 Vanilla client compatibility is maintained so that players don't have to hook up any modding frameworks. The extensibility of Java modding on the server side allows you to create feature rich mods without having to modify Java on the client side.
@@ -576,19 +600,13 @@ tasks.register('uploadWorkshop', Exec) {
 	dependsOn 'writeWorkshopVdf', 'installStorm'
 
 	doFirst {
-		def username = System.getenv('STEAM_USERNAME')
-		def password = System.getenv('STEAM_PASSWORD')
-
-		if (!username || !password) {
-			throw new GradleException('STEAM_USERNAME and STEAM_PASSWORD environment variables must be set')
-		}
-	}
-
-	def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
-	commandLine steamcmdPath,
-			'+login', System.getenv('STEAM_USERNAME'), System.getenv('STEAM_PASSWORD'),
-			'+workshop_build_item', layout.buildDirectory.file('workshop.vdf').get().asFile.absolutePath,
+		def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
+		commandLine([steamcmdPath, '+login'] + steamLoginArgs() + [
+			'+workshop_build_item',
+			layout.buildDirectory.file('workshop.vdf').get().asFile.absolutePath,
 			'+quit'
+		])
+	}
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -651,24 +669,22 @@ tasks.register('downloadWorkshop', Exec) {
 	dependsOn 'uploadWorkshop'
 
 	doFirst {
-		def username = System.getenv('STEAM_USERNAME')
-		def password = System.getenv('STEAM_PASSWORD')
-
-		if (!username || !password) {
-			throw new GradleException('STEAM_USERNAME and STEAM_PASSWORD environment variables must be set')
-		}
-
 		def dir = getLocalProperty('serverPath').get()
 		workingDir dir
 
 		def steamcmdPath = "${System.getProperty('user.home')}/Steam/steamcmd.sh"
-		commandLine steamcmdPath,
-				'+force_install_dir', dir,
-				'+login', username, password,
-				'+workshop_download_item',
-				'108600',
-				getWorkshopId(), 'validate',
-				'+quit'
+		commandLine([
+			steamcmdPath,
+			'+force_install_dir',
+			dir,
+			'+login'
+		] + steamLoginArgs() + [
+			'+workshop_download_item',
+			'108600',
+			getWorkshopId(),
+			'validate',
+			'+quit'
+		])
 	}
 }
 
