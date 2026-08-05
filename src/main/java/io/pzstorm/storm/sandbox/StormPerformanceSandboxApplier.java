@@ -5,11 +5,17 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper;
 import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
+import io.pzstorm.storm.entity.EcsClassCache;
+import io.pzstorm.storm.entity.StormEntityIndex;
+import io.pzstorm.storm.entity.StormFluidContainerUpdate;
+import io.pzstorm.storm.entity.UsingPlayerRegistry;
 import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnServerStartedEvent;
 import io.pzstorm.storm.event.zomboid.OnSandboxOptionsUpdateEvent;
+import io.pzstorm.storm.los.StormPlayerLos;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.los.ZombieVehicleOcclusion;
+import io.pzstorm.storm.map.StormCellUnloadBudget;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -55,6 +61,13 @@ public final class StormPerformanceSandboxApplier {
             "Storm.ReapStalledConnectionSeconds";
     public static final String OPT_ZOMBIE_SIGHT_VEHICLE_FAST_PATH =
             "Storm.ZombieSightVehicleFastPath";
+    public static final String OPT_PLAYER_LOS_FAST_PATH = "Storm.PlayerLosFastPath";
+    public static final String OPT_USING_PLAYER_SWEEP_FAST_PATH = "Storm.UsingPlayerSweepFastPath";
+    public static final String OPT_FLUID_CONTAINER_UPDATE_FAST_PATH =
+            "Storm.FluidContainerUpdateFastPath";
+    public static final String OPT_ECS_CLASS_CACHE = "Storm.EcsClassCache";
+    public static final String OPT_CELL_UNLOAD_BUDGET_PER_TICK = "Storm.CellUnloadBudgetPerTick";
+    public static final String OPT_ENTITY_REMOVE_FAST_PATH = "Storm.EntityRemoveFastPath";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -97,6 +110,39 @@ public final class StormPerformanceSandboxApplier {
         applyScreenshotEncodeKbPerTick();
         applyReapStalledConnectionSeconds();
         applyZombieSightVehicleFastPath();
+        applyPlayerLosFastPath();
+        applyUsingPlayerSweepFastPath();
+        applyFluidContainerUpdateFastPath();
+        applyEcsClassCache();
+        applyCellUnloadBudgetPerTick();
+        applyEntityRemoveFastPath();
+    }
+
+    /**
+     * Pushes {@link #OPT_CELL_UNLOAD_BUDGET_PER_TICK} through {@link
+     * StormCellUnloadBudget#setBudgetPerTick(int)} — the per-tick cap on destructive server-cell
+     * unloads in {@code ServerMap.postupdate}. 0 restores vanilla unload-everything-now behavior.
+     */
+    private static void applyCellUnloadBudgetPerTick() {
+        Integer value = readIntOption(OPT_CELL_UNLOAD_BUDGET_PER_TICK);
+        if (value == null) {
+            return;
+        }
+        StormCellUnloadBudget.setBudgetPerTick(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_ENTITY_REMOVE_FAST_PATH} through {@link
+     * StormEntityIndex#setEnabled(boolean)} — the kill switch for the O(1) indexed removal from the
+     * engine's global entity array. Safe to flip live in either direction: re-enabling schedules a
+     * one-off index rebuild on the main thread.
+     */
+    private static void applyEntityRemoveFastPath() {
+        Boolean value = readBooleanOption(OPT_ENTITY_REMOVE_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        StormEntityIndex.setEnabled(value);
     }
 
     /**
@@ -110,6 +156,59 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         ZombieVehicleOcclusion.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_PLAYER_LOS_FAST_PATH} through {@link StormPlayerLos#setEnabled(boolean)} —
+     * the kill switch for the distance-culled, server-stripped {@code IsoPlayer.updateLOS()} fast
+     * path.
+     */
+    private static void applyPlayerLosFastPath() {
+        Boolean value = readBooleanOption(OPT_PLAYER_LOS_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        StormPlayerLos.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_USING_PLAYER_SWEEP_FAST_PATH} through {@link
+     * UsingPlayerRegistry#setEnabled(boolean)} — the kill switch for the registry-backed {@code
+     * UsingPlayerUpdateSystem.update()} sweep. Safe to flip live in either direction: registry
+     * maintenance runs unconditionally, so the registry is complete even while the sweep is off.
+     */
+    private static void applyUsingPlayerSweepFastPath() {
+        Boolean value = readBooleanOption(OPT_USING_PLAYER_SWEEP_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        UsingPlayerRegistry.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_FLUID_CONTAINER_UPDATE_FAST_PATH} through {@link
+     * StormFluidContainerUpdate#setEnabled(boolean)} — the kill switch for the hoisted/reordered
+     * {@code FluidContainerUpdateSystem.updateSimulation()} pass.
+     */
+    private static void applyFluidContainerUpdateFastPath() {
+        Boolean value = readBooleanOption(OPT_FLUID_CONTAINER_UPDATE_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        StormFluidContainerUpdate.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_ECS_CLASS_CACHE} through {@link EcsClassCache#setEnabled(boolean)} — the
+     * kill switch for the {@code ECSComponent.getECSClass(Class)} memoization. Always safe to flip
+     * live in either direction: the cache is stateless toward the game.
+     */
+    private static void applyEcsClassCache() {
+        Boolean value = readBooleanOption(OPT_ECS_CLASS_CACHE);
+        if (value == null) {
+            return;
+        }
+        EcsClassCache.setEnabled(value);
     }
 
     /**

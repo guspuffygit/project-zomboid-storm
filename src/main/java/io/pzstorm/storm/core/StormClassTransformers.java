@@ -72,16 +72,21 @@ import io.pzstorm.storm.patch.performance.CollisionManagerResolveContactsPatch;
 import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
 import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
+import io.pzstorm.storm.patch.performance.EcsGetClassCachePatch;
+import io.pzstorm.storm.patch.performance.EngineEntityManagerIndexPatch;
 import io.pzstorm.storm.patch.performance.EngineUpdatePatch;
 import io.pzstorm.storm.patch.performance.EngineUpdateSimulationPatch;
+import io.pzstorm.storm.patch.performance.EntityArrayRemoveFastPathPatch;
 import io.pzstorm.storm.patch.performance.EntitySimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquarePatch;
 import io.pzstorm.storm.patch.performance.EventTriggerFastPathPatch;
 import io.pzstorm.storm.patch.performance.FBORenderLevelsFreeSkipPatch;
 import io.pzstorm.storm.patch.performance.FileSystemUpdateAsyncTransactionsPatch;
 import io.pzstorm.storm.patch.performance.FishSchoolManagerUpdatePatch;
+import io.pzstorm.storm.patch.performance.FluidContainerUpdateSimulationFastPathPatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerSavePatch;
 import io.pzstorm.storm.patch.performance.GameEntityManagerUpdatePatch;
+import io.pzstorm.storm.patch.performance.GameEntityUsingPlayerTrackingPatch;
 import io.pzstorm.storm.patch.performance.GameServerNetDataPatch;
 import io.pzstorm.storm.patch.performance.GlobalModDataSavePatch;
 import io.pzstorm.storm.patch.performance.ImportantAreaManagerProcessPatch;
@@ -115,6 +120,7 @@ import io.pzstorm.storm.patch.performance.IsoLightSwitchElectricityMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoObjectStaticUpdaterRemoveSubstPatch;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsPatch;
+import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSFastPathPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.IsoRegionsUpdatePatch;
@@ -169,6 +175,7 @@ import io.pzstorm.storm.patch.performance.ServerLOSRemovePlayerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSRunInnerPatch;
 import io.pzstorm.storm.patch.performance.ServerLOSUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapCharacterInPatch;
+import io.pzstorm.storm.patch.performance.ServerMapPostUpdateBudgetPatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdateWarmPatch;
 import io.pzstorm.storm.patch.performance.ServerMapPreUpdatePatch;
@@ -182,6 +189,7 @@ import io.pzstorm.storm.patch.performance.SteamUtilsRunLoopPatch;
 import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
 import io.pzstorm.storm.patch.performance.TradingManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.TryAddIndoorZombiesPatch;
+import io.pzstorm.storm.patch.performance.UsingPlayerSweepFastPathPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdateOptPatch;
@@ -305,6 +313,10 @@ public class StormClassTransformers {
         if (StormEnv.isStormServer()) {
             registerTransformer(new StatsGetPatch());
             registerTransformer(new IsoPlayerUpdateRemotePatch());
+            // Must precede IsoPlayerUpdateLOSPatch: transformers apply in registration order,
+            // so the stopwatch advice registered second wraps the fast-path skip and keeps
+            // pz_player_update_los_call_duration_seconds timing both paths.
+            registerTransformer(new IsoPlayerUpdateLOSFastPathPatch());
             registerTransformer(new IsoPlayerUpdateLOSPatch());
             registerTransformer(new IsoAnimalUpdateLOSPatch());
             registerTransformer(new TestZombieSpotPlayerPatch());
@@ -320,8 +332,32 @@ public class StormClassTransformers {
             registerTransformer(new BitHeaderShortReleasePatch());
             registerTransformer(new BitHeaderIntReleasePatch());
             registerTransformer(new BitHeaderLongReleasePatch());
+            // Must precede ServerMapPostUpdatePatch: transformers apply in registration order,
+            // so the stopwatch advice registered second wraps the budget skip and keeps
+            // pz_server_map_post_update_call_duration_seconds timing both paths. The
+            // ServerMapPostUpdateWarmPatch registered much later stays outermost: with cell
+            // warming enabled its advice owns the whole postupdate body and the budget helper
+            // defers to it via the StormCellWarmingConfig gate.
+            registerTransformer(new ServerMapPostUpdateBudgetPatch());
             registerTransformer(new ServerMapPostUpdatePatch());
+            registerTransformer(new GameEntityUsingPlayerTrackingPatch());
+            // Must precede UsingPlayerUpdatePatch: transformers apply in registration order,
+            // so the stopwatch advice registered second wraps the registry-sweep skip and keeps
+            // pz_using_player_update_call_duration_seconds timing both paths.
+            registerTransformer(new UsingPlayerSweepFastPathPatch());
             registerTransformer(new UsingPlayerUpdatePatch());
+            // No stopwatch patch exists on FluidContainerUpdateSystem.updateSimulation (the
+            // Engine.updateSimulation timing patch targets a different class), so this fast
+            // path has no ordering constraint.
+            registerTransformer(new FluidContainerUpdateSimulationFastPathPatch());
+            // Server-side ECSComponent.getECSClass memoization — distinct from the
+            // EXPERIMENTAL client-side EcsComponentGetClassMemoPatch registered above.
+            registerTransformer(new EcsGetClassCachePatch());
+            // O(1) removal from the engine's global entity array: the constructor hook tracks
+            // each new EngineEntityManager's array, the Array patch maintains/consults the
+            // index. No other transformer targets either class, so ordering is unconstrained.
+            registerTransformer(new EngineEntityManagerIndexPatch());
+            registerTransformer(new EntityArrayRemoveFastPathPatch());
             registerTransformer(new GameEntityManagerUpdatePatch());
             registerTransformer(new NetworkZombieManagerAuthPatch());
             registerTransformer(new AnimalSyncManagerUpdatePatch());

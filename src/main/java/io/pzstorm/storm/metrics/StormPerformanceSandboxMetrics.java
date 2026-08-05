@@ -2,8 +2,14 @@ package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
+import io.pzstorm.storm.entity.EcsClassCache;
+import io.pzstorm.storm.entity.StormEntityIndex;
+import io.pzstorm.storm.entity.StormFluidContainerUpdate;
+import io.pzstorm.storm.entity.UsingPlayerRegistry;
+import io.pzstorm.storm.los.StormPlayerLos;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.los.ZombieVehicleOcclusion;
+import io.pzstorm.storm.map.StormCellUnloadBudget;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -226,6 +232,71 @@ public final class StormPerformanceSandboxMetrics {
                                     + " path (default); 0 = vanilla whole-cell vehicle scan.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge PLAYER_LOS_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_player_los_fast_path")
+                    .help(
+                            "Whether the distance-culled, server-stripped fast path for"
+                                    + " IsoPlayer.updateLOS() is active. Sourced from the"
+                                    + " Storm.PlayerLosFastPath sandbox option. 1 = fast path"
+                                    + " (default); 0 = vanilla whole-cell moving-object walk.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge USING_PLAYER_SWEEP_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_using_player_sweep_fast_path")
+                    .help(
+                            "Whether the registry-backed sweep for"
+                                    + " UsingPlayerUpdateSystem.update() is active. Sourced from"
+                                    + " the Storm.UsingPlayerSweepFastPath sandbox option. 1 ="
+                                    + " registry sweep (default); 0 = vanilla full iso-bucket"
+                                    + " scan.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge FLUID_CONTAINER_UPDATE_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_fluid_container_update_fast_path")
+                    .help(
+                            "Whether the hoisted/reordered fast path for"
+                                    + " FluidContainerUpdateSystem.updateSimulation() is active."
+                                    + " Sourced from the Storm.FluidContainerUpdateFastPath sandbox"
+                                    + " option. 1 = fast path (default); 0 = vanilla per-entity"
+                                    + " climate/sandbox re-reads and fluid-list scans.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ECS_CLASS_CACHE =
+            Gauge.builder()
+                    .name("storm_ecs_class_cache")
+                    .help(
+                            "Whether the ClassValue memoization of ECSComponent.getECSClass(Class)"
+                                    + " is active. Sourced from the Storm.EcsClassCache sandbox"
+                                    + " option. 1 = memoized (default); 0 = vanilla superclass walk"
+                                    + " on every component lookup.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge CELL_UNLOAD_BUDGET_PER_TICK =
+            Gauge.builder()
+                    .name("storm_cell_unload_budget_per_tick")
+                    .help(
+                            "Maximum number of stale server cells ServerMap.postupdate may"
+                                    + " destructively unload per tick; stale cells beyond the"
+                                    + " budget stay loaded and are re-evaluated next tick. Sourced"
+                                    + " from the Storm.CellUnloadBudgetPerTick sandbox option."
+                                    + " Default 2; 0 = vanilla (unload every stale cell in one"
+                                    + " tick).")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ENTITY_REMOVE_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_entity_remove_fast_path")
+                    .help(
+                            "Whether the O(1) indexed removal from the engine's global entity"
+                                    + " array is active. Sourced from the"
+                                    + " Storm.EntityRemoveFastPath sandbox option. 1 = indexed"
+                                    + " swap-with-last removal (default); 0 = vanilla linear"
+                                    + " identity scan of the whole array.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge SCREENSHOT_ENCODE_KB_PER_TICK =
             Gauge.builder()
                     .name("storm_screenshot_encode_kb_per_tick")
@@ -256,6 +327,12 @@ public final class StormPerformanceSandboxMetrics {
         SCREENSHOT_UPLOAD_KB_PER_SEC.set(StormScreenshotConfig.DEFAULT_UPLOAD_KB_PER_SEC);
         SCREENSHOT_ENCODE_KB_PER_TICK.set(StormScreenshotConfig.DEFAULT_ENCODE_KB_PER_TICK);
         ZOMBIE_SIGHT_VEHICLE_FAST_PATH.set(ZombieVehicleOcclusion.DEFAULT_ENABLED ? 1 : 0);
+        PLAYER_LOS_FAST_PATH.set(StormPlayerLos.DEFAULT_ENABLED ? 1 : 0);
+        USING_PLAYER_SWEEP_FAST_PATH.set(UsingPlayerRegistry.DEFAULT_ENABLED ? 1 : 0);
+        FLUID_CONTAINER_UPDATE_FAST_PATH.set(StormFluidContainerUpdate.DEFAULT_ENABLED ? 1 : 0);
+        ECS_CLASS_CACHE.set(EcsClassCache.DEFAULT_ENABLED ? 1 : 0);
+        CELL_UNLOAD_BUDGET_PER_TICK.set(StormCellUnloadBudget.DEFAULT_BUDGET);
+        ENTITY_REMOVE_FAST_PATH.set(StormEntityIndex.DEFAULT_ENABLED ? 1 : 0);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -326,5 +403,29 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setZombieSightVehicleFastPath(boolean enabled) {
         ZOMBIE_SIGHT_VEHICLE_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setPlayerLosFastPath(boolean enabled) {
+        PLAYER_LOS_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setUsingPlayerSweepFastPath(boolean enabled) {
+        USING_PLAYER_SWEEP_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setFluidContainerUpdateFastPath(boolean enabled) {
+        FLUID_CONTAINER_UPDATE_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setEcsClassCache(boolean enabled) {
+        ECS_CLASS_CACHE.set(enabled ? 1 : 0);
+    }
+
+    public static void setCellUnloadBudgetPerTick(int budget) {
+        CELL_UNLOAD_BUDGET_PER_TICK.set(budget);
+    }
+
+    public static void setEntityRemoveFastPath(boolean enabled) {
+        ENTITY_REMOVE_FAST_PATH.set(enabled ? 1 : 0);
     }
 }

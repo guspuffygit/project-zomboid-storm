@@ -44,3 +44,21 @@ option Storm.ReapStalledConnectionSeconds
 
 option Storm.ZombieSightVehicleFastPath
 {type = boolean, default = true, page = Storm, translation = Storm_ZombieSightVehicleFastPath,}
+
+option Storm.PlayerLosFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_PlayerLosFastPath,}
+
+option Storm.UsingPlayerSweepFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_UsingPlayerSweepFastPath,}
+
+option Storm.FluidContainerUpdateFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_FluidContainerUpdateFastPath,}
+
+option Storm.EcsClassCache
+{type = boolean, default = true, page = Storm, translation = Storm_EcsClassCache,}
+
+option Storm.CellUnloadBudgetPerTick
+{type = integer, min = 0, max = 32, default = 2, page = Storm, translation = Storm_CellUnloadBudgetPerTick,}
+
+option Storm.EntityRemoveFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_EntityRemoveFastPath,}

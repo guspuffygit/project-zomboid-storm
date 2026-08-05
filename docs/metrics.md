@@ -171,6 +171,100 @@ rate(pz_chunk_load_call_duration_seconds_count[1m])
   / rate(pz_chunk_load_ticks_total[1m])
 ```
 
+### Player-LOS fast path (StormPlayerLos)
+
+Tallies for the distance-culled, server-stripped `IsoPlayer.updateLOS()` replacement
+(`Storm.PlayerLosFastPath`). Backed by plain non-atomic `long`s flushed once per call and read at
+scrape time via `CounterWithCallback` — this path runs per player × per moving object per tick,
+where an eager atomic `Counter.inc()` once cost ~8% of the main thread. The existing
+`pz_player_update_los_call_duration_seconds` histogram keeps timing the full call on both paths
+(its stopwatch advice wraps the fast-path skip), so before/after comparison stays valid. Note
+`pz_server_los_could_see_calls_total` drops when the fast path is active: it counts real
+`ServerLOS.isCouldSee` invocations, and the fast path replaces most of them with direct
+visibility-cube reads.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_player_update_los_calls_total` | CounterWithCallback | `path={optimized,vanilla}` | `updateLOS()` invocations by executed path (`vanilla` = kill switch off, failure latch, or no `PlayerData` cached yet). |
+| `pz_player_update_los_objects_total` | CounterWithCallback | `outcome={culled,processed}` | Moving objects rejected by the visibility-cube distance check vs walked through the stripped loop body. |
+
+### UsingPlayer registry sweep (UsingPlayerRegistry)
+
+Tallies for the registry-backed replacement of `UsingPlayerUpdateSystem.update()`
+(`Storm.UsingPlayerSweepFastPath`). Vanilla null-checks every iso-bucket entity per tick; the
+optimized sweep iterates only the entities whose `usingPlayer` is currently non-null, tracked by
+advice on `GameEntity.setUsingPlayer` and the `receiveUpdateUsingPlayer` packet handler. Sweep
+counters are plain non-atomic `long`s read at scrape time via `CounterWithCallback` (one increment
+per tick, main-thread writers only). The existing `pz_using_player_update_call_duration_seconds`
+histogram keeps timing the full call on both paths (its stopwatch advice wraps the sweep skip), so
+before/after comparison stays valid. The applied kill-switch value is exposed as
+`storm_using_player_sweep_fast_path` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_using_player_update_sweeps_total` | CounterWithCallback | `path={optimized,vanilla}` | `update()` invocations by executed path (`vanilla` = kill switch off or failure latch). |
+| `storm_using_player_registry_size` | GaugeWithCallback | — | Entities currently registered with a non-null `usingPlayer` (≈ players with a crafting/entity UI open). |
+
+### Fluid-container update fast path (StormFluidContainerUpdate)
+
+Tallies for the hoisted, reordered replacement of `FluidContainerUpdateSystem.updateSimulation()`
+(`Storm.FluidContainerUpdateFastPath`). Vanilla re-reads climate/day-length state per entity and
+scans each container's fluid list for the `"Petrol"` compare before the cheap rain guards; the
+optimized pass hoists the invariants, checks the branches' shared cheap prefix first, and compares
+petrol by `FluidType` identity. Tallies are plain non-atomic `long`s flushed once per pass and read
+at scrape time via `CounterWithCallback` (main-thread writers only). The applied kill-switch value
+is exposed as `storm_fluid_container_update_fast_path` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_fluid_container_update_passes_total` | CounterWithCallback | `path={optimized,vanilla}` | `updateSimulation()` invocations by executed path (`vanilla` = kill switch off or failure latch). |
+| `pz_fluid_container_update_entities_total` | CounterWithCallback | `outcome={short_circuited,worked}` | Entities examined by the optimized pass: exited on the cheap guards before any fluid-list work vs ran the petrol comparison and/or rain-fill branch. |
+
+### ECS class cache (EcsClassCache)
+
+Miss tally for the `ClassValue` memoization of the static `ECSComponent.getECSClass(Class)`
+superclass walk (`Storm.EcsClassCache`). The memoized path deliberately records **nothing** — it
+runs millions of times per second, so the only instrumentation is a non-atomic miss counter
+incremented inside `ClassValue.computeValue`, which executes once per distinct class. A flat
+`storm_ecs_class_cache_misses_total` with the cache enabled means every lookup is a hit. The
+applied kill-switch value is exposed as `storm_ecs_class_cache` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_ecs_class_cache_misses_total` | CounterWithCallback | — | Distinct classes memoized (`computeValue` executions); hits are intentionally uncounted. |
+
+### Cell-unload budget (StormCellUnloadBudget)
+
+Tallies for the budgeted replacement of the `ServerMap.postupdate()` cell-unload loop
+(`Storm.CellUnloadBudgetPerTick`). Vanilla unloads every stale cell in a single tick; the budgeted
+pass unloads at most N per tick and leaves the rest in `loadedCells` for later ticks. Tallies are
+plain non-atomic `long`s flushed once per tick and read at scrape time via `CounterWithCallback`
+(main-thread writers only). The existing `pz_server_map_post_update_call_duration_seconds`
+histogram keeps timing the full call on both paths (its stopwatch advice wraps the budget skip), so
+before/after spike comparison stays valid; the per-unload internals
+(`ServerCell.Unload` / `IsoChunk.removeFromWorld` timing advices) also keep recording because the
+budgeted pass calls the same patched methods. The applied budget is exposed as
+`storm_cell_unload_budget_per_tick` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_server_cell_unloads_total` | CounterWithCallback | `outcome={unloaded,deferred}` | Stale cells destructively unloaded within the budget vs left loaded for a later tick because the budget was exhausted. Only counts while the budgeted pass is active. |
+
+### Entity removal index (StormEntityIndex)
+
+Tallies for the O(1) indexed removal from the engine's global entity array
+(`Storm.EntityRemoveFastPath`). Tallies are plain non-atomic `long`s read at scrape time via
+`CounterWithCallback` (main-thread writers only — the engine mutates its entity array exclusively
+on the server main thread). A non-zero `mismatch` count means the index desynced, the self-check
+caught it, and the fast path latched itself off permanently — grep the server log for
+"StormEntityIndex self-check MISMATCH". The applied kill-switch value is exposed as
+`storm_entity_remove_fast_path` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_entity_array_removes_total` | CounterWithCallback | `path={fast,scan,mismatch,vanilla}` | Removals from the global entity array: `fast` = indexed O(1) swap-with-last; `scan` = Storm's inline linear scan (index miss around a kill-switch toggle, or an equals-based call); `mismatch` = self-check failure (latches the fast path off); `vanilla` = fell through to the vanilla scan (kill switch off or failure latch). |
+| `storm_entity_index_size` | GaugeWithCallback | — | Entities currently tracked by the removal index — mirrors the global entity array size while the fast path is active. |
+
 ### Comparative timing (CellObjectAdd / CellObjectRemove)
 
 Both classes patch `IsoCell` add/remove paths and time a "fast" path (every call) alongside a "vanilla simulated" path (sampled 1-in-1024 via `VANILLA_SAMPLE_MASK = 1023`). The "speedup ratio" comparison lives in PromQL (see below).
