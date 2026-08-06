@@ -24,9 +24,8 @@ class LauncherConfigTest {
         profile.name = "ATF";
         profile.host = "play.example.org";
         profile.port = 16261;
-        profile.stormHttpPort = 41798;
         profile.serverPassword = "pw";
-        profile.noSteam = true;
+        profile.autoConnect = true;
         profile.extraVmArgs.add("-DstormType=local");
         config.servers.add(profile);
 
@@ -42,10 +41,9 @@ class LauncherConfigTest {
         assertEquals("ATF", p.name);
         assertEquals("play.example.org", p.host);
         assertEquals(16261, p.port);
-        assertEquals(41798, p.stormHttpPort);
         assertEquals("pw", p.serverPassword);
-        assertTrue(p.noSteam);
-        assertTrue(p.syncMods);
+        assertTrue(p.autoConnect);
+        assertTrue(p.updateWorkshopMods);
         assertEquals(java.util.List.of("-DstormType=local"), p.extraVmArgs);
     }
 
@@ -192,15 +190,5 @@ class LauncherConfigTest {
         assertEquals(4, loaded.resolveMemoryGb());
         loaded.memoryGb = 99;
         assertEquals(32, loaded.resolveMemoryGb());
-    }
-
-    @Test
-    void serverKeyIsFilesystemSafe() {
-        ServerProfile profile = new ServerProfile();
-        profile.host = "play.example.org";
-        profile.port = 16261;
-        assertEquals("play.example.org_16261", profile.serverKey());
-        profile.host = "fe80::1%eth0";
-        assertEquals("fe80__1_eth0_16261", profile.serverKey());
     }
 }

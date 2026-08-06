@@ -24,7 +24,6 @@ public final class ServerDialog extends JDialog {
     private final JTextField name = new JTextField(24);
     private final JTextField host = new JTextField(24);
     private final JTextField port = new JTextField("16261", 8);
-    private final JTextField stormHttpPort = new JTextField("41798", 8);
     private final JPasswordField serverPassword = new JPasswordField(24);
     private final JTextField username = new JTextField(24);
     private final JPasswordField accountPassword = new JPasswordField(24);
@@ -34,8 +33,6 @@ public final class ServerDialog extends JDialog {
             new JCheckBox("Auto-connect in-game (requires Storm mod enabled on this client)");
     private final JCheckBox updateWorkshopMods =
             new JCheckBox("Update Steam workshop mods before launch");
-    private final JCheckBox syncMods = new JCheckBox("Sync java mods from server before launch");
-    private final JCheckBox noSteam = new JCheckBox("Pass -nosteam (non-Steam server)");
     private final JTextField extraVmArgs = new JTextField(24);
     private boolean accepted;
 
@@ -47,16 +44,12 @@ public final class ServerDialog extends JDialog {
         name.setText(profile.name);
         host.setText(profile.host);
         port.setText(String.valueOf(profile.port));
-        stormHttpPort.setText(
-                profile.stormHttpPort > 0 ? String.valueOf(profile.stormHttpPort) : "");
         serverPassword.setText(profile.serverPassword);
         username.setText(profile.username);
         accountPassword.setText(profile.accountPassword);
         savePassword.setSelected(!profile.accountPassword.isEmpty());
         autoConnect.setSelected(profile.autoConnect);
         updateWorkshopMods.setSelected(profile.updateWorkshopMods);
-        syncMods.setSelected(profile.syncMods);
-        noSteam.setSelected(profile.noSteam);
         extraVmArgs.setText(String.join(" ", profile.extraVmArgs));
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -65,7 +58,6 @@ public final class ServerDialog extends JDialog {
         row = addRow(form, row, "Name", name);
         row = addRow(form, row, "Host / IP", host);
         row = addRow(form, row, "Game port", port);
-        row = addRow(form, row, "Storm HTTP port", stormHttpPort);
         row = addRow(form, row, "Server password", serverPassword);
         row = addRow(form, row, "Username", username);
         row = addRow(form, row, "Account password", accountPassword);
@@ -73,15 +65,11 @@ public final class ServerDialog extends JDialog {
         row = addRow(form, row, null, autoConnect);
         row = addRow(form, row, "Extra JVM args", extraVmArgs);
         row = addRow(form, row, null, updateWorkshopMods);
-        row = addRow(form, row, null, syncMods);
-        row = addRow(form, row, null, noSteam);
         JLabel note =
                 new JLabel(
                         "<html><i>With auto-connect on, Storm fills and submits"
                                 + " the connect dialog for you.<br>Without it the game still"
-                                + " pre-fills what it remembers; you click CONNECT once.<br>"
-                                + "Leave Storm HTTP port empty if the server doesn't publish"
-                                + " java mods.</i></html>");
+                                + " pre-fills what it remembers; you click CONNECT once.</i></html>");
         row = addRow(form, row, null, note);
 
         JButton ok = new JButton("OK");
@@ -134,27 +122,15 @@ public final class ServerDialog extends JDialog {
                     this, "Game port must be 1-65535.", "Invalid port", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        int httpPort = parsePort(stormHttpPort.getText(), 0);
-        if (httpPort < 0) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Storm HTTP port must be 1-65535, or empty to disable mod sync.",
-                    "Invalid port",
-                    JOptionPane.ERROR_MESSAGE);
-            return;
-        }
         profile.name = name.getText().trim();
         profile.host = hostText;
         profile.port = gamePort;
-        profile.stormHttpPort = httpPort;
         profile.serverPassword = new String(serverPassword.getPassword());
         profile.username = username.getText().trim();
         profile.accountPassword =
                 savePassword.isSelected() ? new String(accountPassword.getPassword()) : "";
         profile.autoConnect = autoConnect.isSelected();
         profile.updateWorkshopMods = updateWorkshopMods.isSelected();
-        profile.syncMods = syncMods.isSelected();
-        profile.noSteam = noSteam.isSelected();
         profile.extraVmArgs = new ArrayList<>();
         Arrays.stream(extraVmArgs.getText().trim().split("\\s+"))
                 .filter(s -> !s.isEmpty())

@@ -11,9 +11,8 @@ import javax.swing.UIManager;
  * classes are on this JVM's classpath, by design, so mod jars and Storm itself can be replaced
  * freely and the game only ever boots against the already-updated files.
  *
- * <p>Headless modes (mainly for scripting/CI): {@code --list}, {@code --sync <server>}, {@code
- * --print-launch <server>}, {@code --join <server>} where {@code <server>} is a profile name or
- * {@code host:port}.
+ * <p>Headless modes (mainly for scripting/CI): {@code --list}, {@code --print-launch <server>},
+ * {@code --join <server>} where {@code <server>} is a profile name or {@code host:port}.
  */
 public final class LauncherMain {
 
@@ -32,6 +31,7 @@ public final class LauncherMain {
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
         config.setStagedOrigin(stage.stagedFrom);
         clearStaleAutoJoin();
+        importVanillaServersOnFirstRun(config);
 
         args = effectiveArgs(stage.args);
         if (args.length > 0) {
@@ -69,7 +69,6 @@ public final class LauncherMain {
                     System.out.println(profile);
                 }
                 return;
-            case "--sync":
             case "--print-launch":
             case "--join":
                 break;
@@ -77,7 +76,7 @@ public final class LauncherMain {
                 System.err.println("Unknown option: " + mode);
                 System.err.println(
                         "Usage: storm-launcher"
-                                + " [--list | --version | --sync <server> | --print-launch <server>"
+                                + " [--list | --version | --print-launch <server>"
                                 + " | --join <server>]");
                 System.exit(2);
                 return;
@@ -94,16 +93,9 @@ public final class LauncherMain {
             return;
         }
         switch (mode) {
-            case "--sync":
-                JoinFlow.syncMods(config, profile, JoinFlow.fetchManifest(profile));
-                break;
             case "--print-launch":
                 {
-                    Path modsDir =
-                            profile.syncMods && profile.stormHttpPort > 0
-                                    ? LauncherPaths.modsDir(profile.serverKey())
-                                    : null;
-                    GameLaunch.LaunchPlan plan = GameLaunch.plan(config, profile, modsDir);
+                    GameLaunch.LaunchPlan plan = GameLaunch.plan(config, profile);
                     plan.warnings.forEach(w -> System.err.println("WARNING: " + w));
                     System.out.println(GameLaunch.describe(plan));
                     break;
@@ -134,6 +126,24 @@ public final class LauncherMain {
             return new String[0];
         }
         return args;
+    }
+
+    /**
+     * An empty server list means a fresh install (or a wiped config), so the servers already set up
+     * in the game itself are pulled in once. A non-empty list is user-curated — re-importing into
+     * it only happens through the explicit UI action.
+     */
+    private static void importVanillaServersOnFirstRun(LauncherConfig config) {
+        if (!config.servers.isEmpty()) {
+            return;
+        }
+        try {
+            if (VanillaServerImport.importInto(config) > 0) {
+                config.save(LauncherPaths.configFile());
+            }
+        } catch (Exception e) {
+            Log.warn("Could not import the game's saved servers: " + e.getMessage());
+        }
     }
 
     /**

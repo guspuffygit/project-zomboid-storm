@@ -28,10 +28,6 @@ public final class LauncherPaths {
         return launcherDir().resolve("launcher.json");
     }
 
-    public static Path modsDir(String serverKey) {
-        return launcherDir().resolve("mods").resolve(serverKey);
-    }
-
     /**
      * Staged launcher copies ({@code stage/<hash>/storm-launcher.jar}) — the launcher runs from
      * here, never from inside the workshop item, so Steam can always update the item. See {@link

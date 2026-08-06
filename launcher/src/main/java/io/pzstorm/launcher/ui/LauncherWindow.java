@@ -7,6 +7,7 @@ import io.pzstorm.launcher.LauncherInfo;
 import io.pzstorm.launcher.LauncherPaths;
 import io.pzstorm.launcher.Log;
 import io.pzstorm.launcher.ServerProfile;
+import io.pzstorm.launcher.VanillaServerImport;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -77,6 +78,7 @@ public final class LauncherWindow extends JFrame {
         toolbar.add(button("Add", this::onAdd));
         toolbar.add(button("Edit", this::onEdit));
         toolbar.add(button("Remove", this::onRemove));
+        toolbar.add(button("Import from game", this::onImportFromGame));
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(button("Settings", this::onSettings));
 
@@ -137,17 +139,14 @@ public final class LauncherWindow extends JFrame {
             detailLabel.setText("<html><i>Add a server to get started.</i></html>");
             return;
         }
-        String sync =
-                p.syncMods && p.stormHttpPort > 0
-                        ? "mods synced from port " + p.stormHttpPort
-                        : "mod sync off";
+        String extras = p.autoConnect ? "auto-connect on" : "auto-connect off";
         detailLabel.setText(
                 "<html><b>"
                         + escape(p.name.isEmpty() ? p.connectAddress() : p.name)
                         + "</b><br>"
                         + escape(p.connectAddress())
                         + "<br>"
-                        + sync
+                        + extras
                         + "</html>");
     }
 
@@ -191,6 +190,22 @@ public final class LauncherWindow extends JFrame {
         }
     }
 
+    private void onImportFromGame() {
+        int added = VanillaServerImport.importInto(config);
+        if (added == 0) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "No new servers found in the game's saved-server list.",
+                    "Import from game",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        model.clear();
+        config.servers.forEach(model::addElement);
+        serverList.setSelectedIndex(model.size() - added);
+        saveConfig();
+    }
+
     private void onSettings() {
         if (SettingsDialog.edit(this, config)) {
             saveConfig();
@@ -213,7 +228,7 @@ public final class LauncherWindow extends JFrame {
     private void onLaunchOnly() {
         runLaunch(
                 () -> {
-                    GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
+                    GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null);
                     plan.warnings.forEach(Log::warn);
                     Log.info("Launching: " + GameLaunch.describe(plan));
                     plan.start(LauncherPaths.gameLogFile());

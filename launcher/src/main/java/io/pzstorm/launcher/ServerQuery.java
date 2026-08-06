@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Asks a Storm server for its required workshop items over the game's own UDP port, before anything
- * connects. This is the path for servers whose Storm HTTP endpoint is not reachable from the
- * internet — the common case, since that port is meant for operators rather than players.
+ * connects — no extra port needs to be open beyond the one players already join on.
  *
  * <p>The launcher may not touch Project Zomboid classes, and the query rides Project Zomboid's own
  * RakNet transport, so the actual conversation happens in a CHILD JVM running {@code

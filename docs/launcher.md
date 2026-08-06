@@ -13,18 +13,20 @@ workshop updates.
 
 ## What it does
 
-1. **Server list** — add/edit/remove saved servers (`host`, game port, optional
-   Storm HTTP port, server access password, in-game account credentials).
-2. **Workshop query over the game port** — when the manifest is unavailable or
-   lists no items (the usual case: almost nobody exposes the Storm HTTP port to
-   players), the launcher asks the server directly over the port it is already
-   joining. See [Workshop query over UDP](#workshop-query-over-udp). A server
-   with no Storm on it at all cannot answer that either, so there is a third
-   source: log in the way the game does and read the list the server sends
-   every joining client. See
+1. **Server list** — add/edit/remove saved servers (`host`, game port, server
+   access password, in-game account credentials).
+2. **Workshop query over the game port** — the launcher asks the server for
+   its required workshop items directly over the port it is already joining.
+   See [Workshop query over UDP](#workshop-query-over-udp). A server with no
+   Storm on it at all cannot answer that, so there is a second source: log in
+   the way the game does and read the list the server sends every joining
+   client. See
    [Mod list from the login handshake](#mod-list-from-the-login-handshake).
+   A Storm version skew between client and server (reported by the UDP query)
+   logs a warning.
 3. **Steam workshop pre-update** — the server publishes its required workshop
-   item ids in the manifest (`workshopItems`, from `server.ini`). Before
+   item ids (`WorkshopItems` in `server.ini`), read via the sources above.
+   Before
    launching, the launcher asks the running Steam client to subscribe + update
    each item via Steam's own UGC API (the platform's `steam_api` library bound
    through `java.lang.foreign` — no SDK, no writes into steamapps; Steam
@@ -42,7 +44,8 @@ workshop updates.
    item as current. Runs in a child JVM with cwd = game dir (where
    `steam_appid.txt` lives); Steam not running degrades gracefully to the
    vanilla in-game flow.
-   When the server's own item list is unreachable (no manifest, no UDP reply),
+   When the server's own item list is unreachable (no UDP reply, no login
+   probe),
    the launcher still pre-updates **every installed workshop item whose
    published version diverged from the local install** (`WorkshopStaleScan`):
    local install timestamps come from Steam's
@@ -54,11 +57,7 @@ workshop updates.
    the one remaining first-join case the in-game subscribe flow still covers.
    (An explicitly configured bootstrap dir outside any workshop item turns the
    Storm self-update off — a pinned custom install is not fought.)
-4. **Java mod sync** — fetches `GET /storm/client/manifest` and mirrors the
-   published mod tree into `<home>/Zomboid/storm/launcher/mods/<host_port>/`.
-   Every file is SHA-256 verified; files that drop out of the manifest are
-   deleted. A Storm version skew between client and server logs a warning.
-5. **Full auto-join (optional)** — with a username (and optionally a saved
+4. **Full auto-join (optional)** — with a username (and optionally a saved
    account password) on the profile and *Auto-connect* ticked, the launcher
    writes a one-shot credential handoff
    (`<home>/Zomboid/storm/launcher/autojoin.properties`, `java.util.Properties`
@@ -73,15 +72,11 @@ workshop updates.
    auto-join a manually started game; the launcher also deletes handoffs older
    than ten minutes on startup. Any missing prerequisite falls back to the
    pre-filled popup flow. **Requires client Storm ≥ 2.5.1** (the first version
-   whose client Java ships `LauncherAutoJoin` and the `-Dstorm.launcher.mods`
-   loader): against an older installed Storm the launcher does not arm the
-   handoff — arming it would strand the player at the main menu with the
-   `+connect` args suppressed and nobody consuming the file — and instead
-   falls back to the vanilla `+connect` flow. For the same reason, joining a
-   server that publishes java mods hard-fails on a pre-2.5.1 client (the
-   synced mods would silently never load — a guaranteed desync); let Steam
-   update the Storm workshop item and join again.
-6. **Game launch** — builds the client java command from the game's own
+   whose client Java ships `LauncherAutoJoin`): against an older installed
+   Storm the launcher does not arm the handoff — arming it would strand the
+   player at the main menu with the `+connect` args suppressed and nobody
+   consuming the file — and instead falls back to the vanilla `+connect` flow.
+5. **Game launch** — builds the client java command from the game's own
    `ProjectZomboid64.json` (mainClass, classpath, vmArgs, windows overlays),
    appends the Storm agent flags, `-Dstorm.experimental.clientperf=true`
    (Storm's experimental client performance patches are **on by default**;
@@ -93,7 +88,7 @@ workshop updates.
    resulting size next to the checkbox; untick it for a manual 4–32 GB value;
    an explicit `-Xmx` among the user JVM args wins and suppresses the managed
    one),
-   `-Dstorm.launcher.mods=<synced dir>`, any user JVM args, and — unless the
+   any user JVM args, and — unless the
    auto-join handoff is armed — the vanilla `+connect host:port`
    (`+password <serverPassword>`) args, then spawns the JVM with the game
    directory as working directory. On linux/mac the launcher exports the same
@@ -102,11 +97,6 @@ workshop updates.
    `libjsig`/`libPZXInitThreads64` preloads on linux; `DYLD_LIBRARY_PATH` on
    mac) so transitive native dependencies resolve for a direct JVM spawn.
    Game output is captured to `<home>/Zomboid/storm/launcher/logs/game.log`.
-
-The client's `StormModLoader` scans the synced directory as an additional mods
-root (after workshop/mods roots, so the server-published version wins mod-id
-collisions). The directory layout is the standard mod layout — `<mod>/common/`,
-`<mod>/42/<jars>`, `mod.info` — mirrored verbatim from the server.
 
 Vanilla PZ behavior notes:
 
@@ -120,9 +110,8 @@ Vanilla PZ behavior notes:
   when "Save account password" is ticked** (the game's own ServerList DB
   stores an unsalted MD5-based hash — not meaningfully safer). Leave it
   unticked to keep auto-fill of everything except the password.
-- Steam mode comes from the game's own vmArgs (`-Dzomboid.steam=1`). For
-  non-Steam servers, tick *"Pass -nosteam"* on the profile (workshop
-  pre-update is skipped for those).
+- Steam mode comes from the game's own vmArgs (`-Dzomboid.steam=1`); the
+  launcher is Steam-only — non-Steam servers are not supported.
 - Workshop pre-update **subscribes** the player's Steam account to the
   server's items — the same thing the vanilla join flow does for unsubscribed
   items, and required by the game's join gate, which checks for exactly
@@ -183,10 +172,8 @@ Design points:
 
 ## Workshop query over UDP
 
-The mod manifest is only reachable where the Storm HTTP port is, and on real
-servers it usually isn't — it is an operator port, not a player port. So the
-launcher has a second source for the workshop list that needs no extra port
-open: it asks over the game's own UDP transport, before anything logs in.
+The launcher's primary source for the workshop list needs no extra port open:
+it asks over the game's own UDP transport, before anything logs in.
 
 - **Wire format** — a Storm-only packet pair carried inside PZ's normal user
   packet framing (`byte 134`, then a `short` id). Ids `0x7A17` (query) and
@@ -216,15 +203,12 @@ open: it asks over the game's own UDP transport, before anything logs in.
 - **Degradation** — no Storm on the server, an older Storm, or a blocked port
   all end as "no reply", and the game's own in-game workshop flow still runs.
 
-The result feeds the workshop pre-update only. It deliberately does **not**
-become a `ModManifest`: that object also drives java-mod sync, whose deletion
-pass would wipe the local mirror if handed a file list this query cannot
-produce.
+The result feeds the workshop pre-update and the Storm version-skew warning.
 
 ## Mod list from the login handshake
 
-Both sources above need Storm on the server. Against a stock server — or one
-whose Storm predates `StormQueryResponder` — neither answers, and
+The UDP query needs Storm on the server. Against a stock server — or one
+whose Storm predates `StormQueryResponder` — it goes unanswered, and
 `WorkshopStaleScan` can only refresh items that are already installed. That
 leaves the case a first-time player actually hits: **items the server requires
 and the player has never had.**
@@ -275,9 +259,9 @@ JVM, driven by `io.pzstorm.launcher.ServerModList`.
   so a child that crashes halfway through printing can never read as "this
   server requires no mods".
 
-Ordering in `JoinFlow.serverWorkshopItems`: manifest → UDP query → login probe,
-each only if the one before produced nothing. The probe is last because it is
-the only one that costs a login. Its ids are unioned with `WorkshopStaleScan`'s,
+Ordering in `JoinFlow.serverWorkshopItems`: UDP query → login probe, the probe
+only if the query produced nothing. The probe is last because it is the only
+one that costs a login. Its ids are unioned with `WorkshopStaleScan`'s,
 which still runs: the server states what it needs, the scan catches everything
 else on disk that Steam has since republished.
 
@@ -321,43 +305,10 @@ Alternatively, *Add a Non-Steam Game* pointing at `StormLauncher.bat` gives
 the launcher its own library entry; the game still authenticates through the
 running Steam client either way.
 
-## Server setup (publishing java mods to clients)
-
-Create the client-mods directory on the server host and drop in each mod using
-the normal mod layout:
-
-```
-~/Zomboid/storm/client-mods/
-  my-mod/
-    common/
-    mod.info            (or 42/mod.info)
-    42/
-      my-mod.jar
-```
-
-Override the directory with `-Dstorm.client.mods.dir=<path>`. The two endpoints
-(`/storm/client/manifest`, `/storm/client/file?path=…`) are served by Storm's
-HTTP server (`-Dstorm.http.port`) and registered **only on server JVMs**
-(`-Dstorm.server=true`). Manifest hashes are cached and invalidated by
-size/mtime, so republishing is just replacing files in that directory.
-
-Only publish mods that are safe to hand to clients — everything in
-`client-mods/` is downloadable by anyone who can reach the port. Server-side
-anti-cheat mods do not belong there.
-
-### Exposing the port
-
-Players need to reach the Storm HTTP port. Prefer fronting it with a reverse
-proxy that forwards **only** `/storm/client/*` (the other inspection endpoints
-leak player IPs, and the hot-reload endpoints must never be public — they are
-off by default; keep them off). A direct firewall opening also works if you
-accept exposing the inspection endpoints.
-
 ## Headless / scripting
 
 ```
 java -jar storm-launcher.jar --list
-java -jar storm-launcher.jar --sync <name|host:port>
 java -jar storm-launcher.jar --print-launch <name|host:port>
 java -jar storm-launcher.jar --join <name|host:port>
 ```

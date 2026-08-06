@@ -18,13 +18,6 @@ import java.util.Map;
 public final class GameLaunch {
 
     /**
-     * System property the game JVM receives; Storm's mod loader scans this directory as an
-     * additional mods root. Keep in sync with {@code
-     * io.pzstorm.storm.core.StormPaths#LAUNCHER_MODS_PROPERTY}.
-     */
-    public static final String MODS_DIR_PROPERTY = "storm.launcher.mods";
-
-    /**
      * Points the game JVM at the one-shot credential handoff; Storm's client Java reads and deletes
      * it at the first main menu, then drives the connect popup. Keep in sync with {@code
      * io.pzstorm.storm.client.LauncherAutoJoin#AUTOJOIN_FILE_PROPERTY}.
@@ -65,9 +58,8 @@ public final class GameLaunch {
         }
     }
 
-    public static LaunchPlan plan(LauncherConfig config, ServerProfile profile, Path modsDir)
-            throws IOException {
-        return plan(config, profile, modsDir, null);
+    public static LaunchPlan plan(LauncherConfig config, ServerProfile profile) throws IOException {
+        return plan(config, profile, null);
     }
 
     /**
@@ -76,8 +68,7 @@ public final class GameLaunch {
      * Storm's client Java drives the whole connect, and the vanilla path firing in parallel would
      * race it with a second popup flow.
      */
-    public static LaunchPlan plan(
-            LauncherConfig config, ServerProfile profile, Path modsDir, Path autoJoinFile)
+    public static LaunchPlan plan(LauncherConfig config, ServerProfile profile, Path autoJoinFile)
             throws IOException {
         Path gameDir = config.resolveGameDir();
         if (gameDir == null) {
@@ -123,9 +114,6 @@ public final class GameLaunch {
                             + " Set the bootstrap directory in Settings to enable java mods.");
         }
 
-        if (modsDir != null) {
-            command.add("-D" + MODS_DIR_PROPERTY + "=" + pathArgFor(jvm, modsDir.toAbsolutePath()));
-        }
         if (autoJoinFile != null) {
             command.add(
                     "-D"
@@ -144,17 +132,12 @@ public final class GameLaunch {
         command.add(String.join(windows ? ";" : ":", gameJson.classpath));
         command.add(gameJson.mainClass);
 
-        if (profile != null) {
-            if (autoJoinFile == null) {
-                command.add("+connect");
-                command.add(profile.connectAddress());
-                if (!profile.serverPassword.isEmpty()) {
-                    command.add("+password");
-                    command.add(profile.serverPassword);
-                }
-            }
-            if (profile.noSteam) {
-                command.add("-nosteam");
+        if (profile != null && autoJoinFile == null) {
+            command.add("+connect");
+            command.add(profile.connectAddress());
+            if (!profile.serverPassword.isEmpty()) {
+                command.add("+password");
+                command.add(profile.serverPassword);
             }
         }
         return new LaunchPlan(command, gameDir, nativeEnvironment(gameDir, windows), warnings);

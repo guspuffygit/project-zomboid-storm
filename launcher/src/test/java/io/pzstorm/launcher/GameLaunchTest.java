@@ -65,8 +65,7 @@ class GameLaunchTest {
         profile.serverPassword = "sekrit";
         profile.extraVmArgs.add("-Dstorm.http.port=8089");
 
-        Path modsDir = tmp.resolve("mods/play.example.org_16261");
-        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), profile, modsDir);
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), profile);
 
         List<String> cmd = plan.command;
         assertEquals(config().jvmPath, cmd.get(0));
@@ -74,8 +73,6 @@ class GameLaunchTest {
         assertEquals(gameDir, plan.workingDir);
         assertTrue(cmd.contains("-Dzomboid.steam=1"));
         assertTrue(cmd.contains("-javaagent:" + bootstrapDir.resolve("storm-bootstrap.jar")));
-        assertTrue(
-                cmd.contains("-D" + GameLaunch.MODS_DIR_PROPERTY + "=" + modsDir.toAbsolutePath()));
         assertTrue(cmd.contains("-Xmx16g"));
         assertTrue(cmd.contains("-Dstorm.http.port=8089"));
         assertTrue(cmd.contains("zombie.gameStates.MainScreenState"));
@@ -98,9 +95,8 @@ class GameLaunchTest {
 
     @Test
     void launchWithoutServerHasNoConnectArgs() throws IOException {
-        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null);
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null);
         assertFalse(plan.command.contains("+connect"));
-        assertFalse(plan.command.contains("-D" + GameLaunch.MODS_DIR_PROPERTY));
         assertTrue(plan.command.contains("zombie.gameStates.MainScreenState"));
     }
 
@@ -121,7 +117,7 @@ class GameLaunchTest {
         profile.serverPassword = "sekrit";
 
         Path handoff = LauncherPaths.autoJoinFile();
-        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), profile, null, handoff);
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), profile, handoff);
 
         assertTrue(
                 plan.command.contains(

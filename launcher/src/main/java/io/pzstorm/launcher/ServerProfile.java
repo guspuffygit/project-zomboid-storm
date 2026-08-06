@@ -17,9 +17,6 @@ public final class ServerProfile {
     public String host = "";
     public int port = 16261;
 
-    /** Port of the server's Storm HTTP endpoint; 0 disables mod sync for this server. */
-    public int stormHttpPort = 0;
-
     public String serverPassword = "";
 
     /** In-game account credentials for full auto-join (handed to Storm's client Java). */
@@ -34,17 +31,10 @@ public final class ServerProfile {
     /** Pre-update the server's Steam workshop items before launching. */
     public boolean updateWorkshopMods = true;
 
-    public boolean syncMods = true;
-    public boolean noSteam = false;
     public List<String> extraVmArgs = new ArrayList<>();
 
     public String connectAddress() {
         return host + ":" + port;
-    }
-
-    /** Directory-safe identity of this server; survives profile renames. */
-    public String serverKey() {
-        return (host + "_" + port).replaceAll("[^A-Za-z0-9.\\-]", "_");
     }
 
     public Map<String, Object> toMap() {
@@ -52,14 +42,11 @@ public final class ServerProfile {
         map.put("name", name);
         map.put("host", host);
         map.put("port", (long) port);
-        map.put("stormHttpPort", (long) stormHttpPort);
         map.put("serverPassword", serverPassword);
         map.put("username", username);
         map.put("accountPassword", accountPassword);
         map.put("autoConnect", autoConnect);
         map.put("updateWorkshopMods", updateWorkshopMods);
-        map.put("syncMods", syncMods);
-        map.put("noSteam", noSteam);
         map.put("extraVmArgs", new ArrayList<Object>(extraVmArgs));
         return map;
     }
@@ -69,14 +56,11 @@ public final class ServerProfile {
         p.name = str(map.get("name"), "");
         p.host = str(map.get("host"), "");
         p.port = (int) num(map.get("port"), 16261);
-        p.stormHttpPort = (int) num(map.get("stormHttpPort"), 0);
         p.serverPassword = str(map.get("serverPassword"), "");
         p.username = str(map.get("username"), "");
         p.accountPassword = str(map.get("accountPassword"), "");
         p.autoConnect = bool(map.get("autoConnect"), false);
         p.updateWorkshopMods = bool(map.get("updateWorkshopMods"), true);
-        p.syncMods = bool(map.get("syncMods"), true);
-        p.noSteam = bool(map.get("noSteam"), false);
         Object args = map.get("extraVmArgs");
         if (args instanceof List) {
             for (Object arg : (List<?>) args) {

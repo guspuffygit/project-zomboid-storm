@@ -2,7 +2,6 @@ package io.pzstorm.launcher;
 
 import java.io.IOException;
 import java.io.Writer;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -17,14 +16,12 @@ import java.util.Properties;
  * exists, so nothing is ever file-locked:
  *
  * <ol>
- *   <li>fetch the server's manifest (java mods + required workshop items)
- *   <li>failing that, ask the server for its workshop items over its game UDP port
+ *   <li>ask the server for its required workshop items over its game UDP port
  *   <li>failing that, read them out of the server's login response ({@link ServerModList}) — the
  *       only source a stock server offers, and the only one that names items never installed here
  *   <li>whichever answered, add every installed workshop item Steam considers stale ({@link
  *       WorkshopStaleScan}) — the set the game would otherwise interrupt the join for
  *   <li>have Steam update the workshop items (child process, Steam's own dirs)
- *   <li>mirror the server-published java mods (SHA-256 verified)
  *   <li>write the credential handoff for Storm's client Java (optional)
  *   <li>spawn the game JVM pointed at all of it
  * </ol>
@@ -33,9 +30,9 @@ public final class JoinFlow {
 
     /**
      * First Storm version whose client Java ships the launcher integration: {@code
-     * io.pzstorm.storm.client.LauncherAutoJoin} (consumes the credential handoff) and the {@code
-     * -Dstorm.launcher.mods} loader. Against anything older, arming the handoff strands the player
-     * at the main menu — the file is never consumed and the {@code +connect} args were suppressed.
+     * io.pzstorm.storm.client.LauncherAutoJoin} (consumes the credential handoff). Against anything
+     * older, arming the handoff strands the player at the main menu — the file is never consumed
+     * and the {@code +connect} args were suppressed.
      */
     static final String MIN_INTEGRATION_STORM_VERSION = "2.5.1";
 
@@ -44,29 +41,9 @@ public final class JoinFlow {
     /** Runs the full pre-launch pipeline and starts the game. */
     public static Process join(LauncherConfig config, ServerProfile profile)
             throws IOException, InterruptedException {
-        ModManifest manifest = fetchManifest(profile);
-        updateWorkshopItems(config, profile, manifest);
-        Path modsDir = syncMods(config, profile, manifest);
+        updateWorkshopItems(config, profile);
         boolean handoffActive = prepareAutoJoin(config, profile);
-        return launch(config, profile, modsDir, handoffActive);
-    }
-
-    /** Manifest, or null when this profile has no Storm HTTP endpoint to ask. */
-    public static ModManifest fetchManifest(ServerProfile profile) {
-        if (profile.stormHttpPort <= 0 || !(profile.syncMods || profile.updateWorkshopMods)) {
-            return null;
-        }
-        URI base = ModSync.baseUri(profile.host, profile.stormHttpPort);
-        Log.info("Fetching mod manifest from " + base + " …");
-        try {
-            return new ModSync().fetchManifest(base);
-        } catch (ModSync.SyncException e) {
-            if (profile.syncMods) {
-                throw e; // java-mod sync is required; joining anyway would desync
-            }
-            Log.warn(e.getMessage() + " — continuing without workshop pre-update.");
-            return null;
-        }
+        return launch(config, profile, handoffActive);
     }
 
     /**
@@ -74,10 +51,9 @@ public final class JoinFlow {
      * item is always first in the list — clients get (and keep) Storm from the workshop by default,
      * even when the server publishes no items of its own.
      */
-    public static void updateWorkshopItems(
-            LauncherConfig config, ServerProfile profile, ModManifest manifest)
+    public static void updateWorkshopItems(LauncherConfig config, ServerProfile profile)
             throws InterruptedException {
-        if (!profile.updateWorkshopMods || profile.noSteam) {
+        if (!profile.updateWorkshopMods) {
             return;
         }
         List<String> items = new ArrayList<>();
@@ -86,7 +62,7 @@ public final class JoinFlow {
             items.add(stormItem);
             Log.info("Storm workshop item " + stormItem + " added to the pre-update.");
         }
-        for (String item : serverWorkshopItems(config, profile, manifest)) {
+        for (String item : serverWorkshopItems(config, profile)) {
             if (!items.contains(item)) {
                 items.add(item);
             }
@@ -111,26 +87,24 @@ public final class JoinFlow {
     }
 
     /**
-     * The server's own requirement list, from the cheapest source that answers. Each fallback costs
-     * more and reaches further:
+     * The server's own requirement list, from the cheapest source that answers:
      *
      * <ol>
-     *   <li>{@link ModManifest} over Storm's HTTP port — free, but that port is rarely open to
-     *       players
      *   <li>{@link ServerQuery} over the game's UDP port — needs Storm on the server
      *   <li>{@link ServerModList} — a real login, so it works against a stock server, but it needs
      *       credentials and briefly occupies a slot
      * </ol>
+     *
+     * <p>An answering Storm server also names its Storm version, which feeds the skew warning.
      */
-    static List<String> serverWorkshopItems(
-            LauncherConfig config, ServerProfile profile, ModManifest manifest)
+    static List<String> serverWorkshopItems(LauncherConfig config, ServerProfile profile)
             throws InterruptedException {
-        if (manifest != null && !manifest.workshopItems.isEmpty()) {
-            return manifest.workshopItems;
-        }
-        List<String> queried = queryWorkshopItems(config, profile);
-        if (!queried.isEmpty()) {
-            return queried;
+        ServerQuery.Result queried = ServerQuery.run(config, profile);
+        if (queried != null) {
+            checkStormVersionSkew(config, queried.stormVersion);
+            if (!queried.workshopItems.isEmpty()) {
+                return queried.workshopItems;
+            }
         }
         ServerModList.Result probed = ServerModList.run(config, profile);
         return probed == null ? Collections.emptyList() : probed.workshopItems;
@@ -160,69 +134,6 @@ public final class JoinFlow {
                             + " — the game may prompt in-game.");
             return Collections.emptyList();
         }
-    }
-
-    /**
-     * Second source for the workshop list, over the game's own UDP port. Most servers never expose
-     * Storm's HTTP port to players, so this is the path that actually fires in the field.
-     *
-     * <p>The result deliberately stops here rather than being folded into a {@link ModManifest}: a
-     * manifest also drives {@link #syncMods}, whose deletion pass would wipe the local java-mod
-     * mirror if handed a file list this query cannot produce.
-     */
-    static List<String> queryWorkshopItems(LauncherConfig config, ServerProfile profile)
-            throws InterruptedException {
-        ServerQuery.Result result = ServerQuery.run(config, profile);
-        return result == null ? Collections.emptyList() : result.workshopItems;
-    }
-
-    /** Sync (if enabled) and return the mods dir to pass to the game, or null. */
-    public static Path syncMods(
-            LauncherConfig config, ServerProfile profile, ModManifest manifest) {
-        if (!profile.syncMods || manifest == null) {
-            if (!profile.syncMods) {
-                Log.info(
-                        "Java mod sync disabled for "
-                                + profile.connectAddress()
-                                + (profile.stormHttpPort <= 0
-                                        ? " (no Storm HTTP port configured)"
-                                        : ""));
-            }
-            return null;
-        }
-        checkStormVersionSkew(config, manifest.stormVersion);
-        if (!manifest.files.isEmpty()) {
-            String local = localStormVersion(config);
-            if (!supportsLauncherIntegration(local)) {
-                // joining anyway would desync: old Storm ignores -Dstorm.launcher.mods, so the
-                // server's java mods would never load client-side
-                throw new ModSync.SyncException(
-                        "This server publishes java mods, but the client's Storm ("
-                                + (local == null ? "none found" : local)
-                                + ") predates launcher-managed mods (needs storm "
-                                + MIN_INTEGRATION_STORM_VERSION
-                                + "+). Close the game, let Steam update the Storm workshop item,"
-                                + " then join again.");
-            }
-        }
-        URI base = ModSync.baseUri(profile.host, profile.stormHttpPort);
-        Path modsDir = LauncherPaths.modsDir(profile.serverKey());
-        try {
-            ModSync.SyncResult result = new ModSync().sync(base, manifest, modsDir);
-            Log.info(
-                    "Mod sync complete: "
-                            + result.downloaded
-                            + " downloaded ("
-                            + result.downloadedBytes
-                            + " bytes), "
-                            + result.kept
-                            + " up-to-date, "
-                            + result.deleted
-                            + " removed.");
-        } catch (IOException e) {
-            throw new ModSync.SyncException("Mod sync failed: " + e.getMessage(), e);
-        }
-        return modsDir;
     }
 
     /**
@@ -341,20 +252,12 @@ public final class JoinFlow {
         }
     }
 
-    public static Process launch(LauncherConfig config, ServerProfile profile, Path modsDir)
-            throws IOException {
-        return launch(config, profile, modsDir, false);
-    }
-
     public static Process launch(
-            LauncherConfig config, ServerProfile profile, Path modsDir, boolean handoffActive)
+            LauncherConfig config, ServerProfile profile, boolean handoffActive)
             throws IOException {
         GameLaunch.LaunchPlan plan =
                 GameLaunch.plan(
-                        config,
-                        profile,
-                        modsDir,
-                        handoffActive ? LauncherPaths.autoJoinFile() : null);
+                        config, profile, handoffActive ? LauncherPaths.autoJoinFile() : null);
         for (String warning : plan.warnings) {
             Log.warn(warning);
         }
@@ -375,7 +278,10 @@ public final class JoinFlow {
 
     private static void checkStormVersionSkew(LauncherConfig config, String serverVersion) {
         String local = localStormVersion(config);
-        if (local == null || serverVersion == null || serverVersion.equals("unknown")) {
+        if (local == null
+                || serverVersion == null
+                || serverVersion.isEmpty()
+                || serverVersion.equals("unknown")) {
             return;
         }
         if (!local.equals(serverVersion)) {

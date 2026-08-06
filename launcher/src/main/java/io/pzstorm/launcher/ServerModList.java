@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Reads a server's required workshop items straight out of its login response, before the game
  * starts. This is the only source that works against a stock server: {@link ServerQuery} needs
- * Storm on the server, {@link ModSync} needs its HTTP port reachable, and {@link WorkshopStaleScan}
- * can only refresh items that are already installed.
+ * Storm on the server, and {@link WorkshopStaleScan} can only refresh items that are already
+ * installed.
  *
  * <p>The launcher may not touch Project Zomboid classes, so the conversation happens in a CHILD JVM
  * running {@code io.pzstorm.storm.query.ServerModListProbe} out of the installed Storm jar, with
@@ -59,9 +59,6 @@ public final class ServerModList {
     /** The server's mod list, or null when the probe could not be run or was refused. */
     public static Result run(LauncherConfig config, ServerProfile profile)
             throws InterruptedException {
-        if (profile.noSteam) {
-            return null; // the probe logs in over Steam networking or not at all
-        }
         if (profile.username.isEmpty()) {
             Log.info(
                     "No username configured for "

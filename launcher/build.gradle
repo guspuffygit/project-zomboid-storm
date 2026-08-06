@@ -11,6 +11,8 @@ application {
 // on the JRE bundled with the game, before any game or Storm code is loaded.
 dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+	// Test-only: VanillaServerImport borrows the game's driver in production
+	testRuntimeOnly 'org.xerial:sqlite-jdbc:3.46.0.0'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
