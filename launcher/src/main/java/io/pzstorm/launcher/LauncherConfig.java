@@ -26,6 +26,9 @@ public final class LauncherConfig {
     /** Directory containing storm-bootstrap.jar / agentlib.dll; empty = auto-detect. */
     public String bootstrapDir = "";
 
+    /** Storm's experimental client-side performance patches; on by default. */
+    public boolean clientPerfFixes = true;
+
     /** Extra JVM args applied to every launch (e.g. -Xmx16g). */
     public List<String> globalVmArgs = new ArrayList<>();
 
@@ -65,6 +68,7 @@ public final class LauncherConfig {
         map.put("gameDir", gameDir);
         map.put("jvmPath", jvmPath);
         map.put("bootstrapDir", bootstrapDir);
+        map.put("clientPerfFixes", clientPerfFixes);
         map.put("globalVmArgs", new ArrayList<Object>(globalVmArgs));
         List<Object> serverList = new ArrayList<>();
         for (ServerProfile server : servers) {
@@ -80,6 +84,7 @@ public final class LauncherConfig {
         config.gameDir = ServerProfile.str(map.get("gameDir"), "");
         config.jvmPath = ServerProfile.str(map.get("jvmPath"), "");
         config.bootstrapDir = ServerProfile.str(map.get("bootstrapDir"), "");
+        config.clientPerfFixes = ServerProfile.bool(map.get("clientPerfFixes"), true);
         Object args = map.get("globalVmArgs");
         if (args instanceof List) {
             for (Object arg : (List<?>) args) {
@@ -105,8 +110,7 @@ public final class LauncherConfig {
 
     public Path resolveGameDir() {
         if (!gameDir.isEmpty()) {
-            Path dir = Paths.get(gameDir);
-            return isGameDir(dir) ? dir : null;
+            return gameDirAt(Paths.get(gameDir));
         }
         return detectGameDir();
     }
@@ -116,9 +120,15 @@ public final class LauncherConfig {
             return Paths.get(jvmPath);
         }
         if (resolvedGameDir != null) {
-            Path jreBin = resolvedGameDir.resolve("jre64").resolve("bin");
-            for (String candidate : new String[] {"javaw.exe", "java.exe", "java"}) {
-                Path jvm = jreBin.resolve(candidate);
+            Path jre = resolvedGameDir.resolve("jre64");
+            Path[] candidates = {
+                jre.resolve(Paths.get("bin", "javaw.exe")),
+                jre.resolve(Paths.get("bin", "java.exe")),
+                jre.resolve(Paths.get("bin", "java")),
+                // macOS ships the JRE as a bundle
+                jre.resolve(Paths.get("Contents", "Home", "bin", "java")),
+            };
+            for (Path jvm : candidates) {
                 if (Files.isRegularFile(jvm)) {
                     return jvm;
                 }
@@ -127,50 +137,140 @@ public final class LauncherConfig {
         return Paths.get("java");
     }
 
-    /** Directory holding storm-bootstrap.jar (and agentlib.dll on Windows), or null. */
+    /**
+     * Directory holding storm-bootstrap.jar (and agentlib.dll on Windows), or null. Workshop
+     * installs win: clients run the Storm that Steam downloaded, so the join flow can keep it
+     * current. The local-dev tree ({@code ~/Zomboid/Workshop/storm}) only applies when no workshop
+     * item is installed, or when set explicitly.
+     */
     public Path resolveBootstrapDir(Path resolvedGameDir) {
         if (!bootstrapDir.isEmpty()) {
             Path dir = Paths.get(bootstrapDir);
             return hasBootstrap(dir) ? dir : null;
         }
-        Path localDev =
-                LauncherPaths.zomboidDir()
-                        .resolve(
-                                Paths.get(
-                                        "Workshop",
-                                        "storm",
-                                        "Contents",
-                                        "mods",
-                                        "storm",
-                                        "bootstrap"));
-        if (hasBootstrap(localDev)) {
-            return localDev;
+        for (String workshopId : orderedWorkshopIds()) {
+            Path candidate = workshopBootstrap(resolvedGameDir, workshopId);
+            if (candidate != null) {
+                return candidate;
+            }
         }
-        if (resolvedGameDir != null) {
-            // <library>/steamapps/common/ProjectZomboid -> <library>/steamapps/workshop
-            Path steamapps =
-                    resolvedGameDir.getParent() == null
-                            ? null
-                            : resolvedGameDir.getParent().getParent();
-            if (steamapps != null) {
-                for (String workshopId : LauncherInfo.workshopIds()) {
-                    Path candidate =
-                            steamapps.resolve(
-                                    Paths.get(
-                                            "workshop",
-                                            "content",
-                                            "108600",
-                                            workshopId,
-                                            "mods",
-                                            "storm",
-                                            "bootstrap"));
-                    if (hasBootstrap(candidate)) {
-                        return candidate;
-                    }
-                }
+        Path localDev = localDevBootstrap();
+        return hasBootstrap(localDev) ? localDev : null;
+    }
+
+    /**
+     * The Storm workshop item this client should keep updated before joining: the item the launcher
+     * itself ships inside, else the item providing the resolved bootstrap, else the first baked id
+     * (prod) so a client with no Storm at all downloads it fresh. Null when the user pinned a
+     * bootstrap dir outside any workshop item — an explicit custom install is not fought.
+     */
+    public String stormWorkshopItemId(Path resolvedGameDir) {
+        if (!bootstrapDir.isEmpty()) {
+            return workshopItemIdOf(resolveBootstrapDir(resolvedGameDir));
+        }
+        String own = workshopItemIdOf(ownLocation());
+        if (own != null) {
+            return own;
+        }
+        String fromBootstrap = workshopItemIdOf(resolveBootstrapDir(resolvedGameDir));
+        if (fromBootstrap != null) {
+            return fromBootstrap;
+        }
+        List<String> baked = LauncherInfo.workshopIds();
+        return baked.isEmpty() ? null : baked.get(0);
+    }
+
+    /** Baked ids (prod, stage, dev) with the item this launcher ships inside tried first. */
+    List<String> orderedWorkshopIds() {
+        List<String> ids = LauncherInfo.workshopIds();
+        String own = workshopItemIdOf(ownLocation());
+        if (own != null) {
+            ids.remove(own);
+            ids.add(0, own);
+        }
+        return ids;
+    }
+
+    /** Bootstrap dir inside the given workshop item, or null when absent. */
+    Path workshopBootstrap(Path resolvedGameDir, String workshopId) {
+        for (Path steamapps : steamappsCandidates(resolvedGameDir)) {
+            Path candidate =
+                    steamapps.resolve(
+                            Paths.get(
+                                    "workshop",
+                                    "content",
+                                    "108600",
+                                    workshopId,
+                                    "mods",
+                                    "storm",
+                                    "bootstrap"));
+            if (hasBootstrap(candidate)) {
+                return candidate;
             }
         }
         return null;
+    }
+
+    /**
+     * steamapps roots reachable from the launcher jar or the game dir. An ancestor either IS
+     * steamapps (standard Steam layout, including the linux depot's extra {@code projectzomboid/}
+     * nesting) or CONTAINS one (steamcmd's force_install_dir layout).
+     */
+    List<Path> steamappsCandidates(Path resolvedGameDir) {
+        List<Path> roots = new ArrayList<>();
+        addSteamappsAbove(ownLocation(), roots);
+        addSteamappsAbove(resolvedGameDir, roots);
+        return roots;
+    }
+
+    private static void addSteamappsAbove(Path start, List<Path> out) {
+        Path cursor = start == null ? null : start.toAbsolutePath().normalize();
+        for (; cursor != null; cursor = cursor.getParent()) {
+            Path name = cursor.getFileName();
+            if (name != null && name.toString().equals("steamapps")) {
+                if (!out.contains(cursor)) {
+                    out.add(cursor);
+                }
+            } else {
+                Path child = cursor.resolve("steamapps");
+                if (Files.isDirectory(child) && !out.contains(child)) {
+                    out.add(child);
+                }
+            }
+        }
+    }
+
+    /** The workshop item id a path lives under ({@code …/content/108600/<id>/…}), or null. */
+    static String workshopItemIdOf(Path path) {
+        if (path == null) {
+            return null;
+        }
+        Path child = null;
+        for (Path cursor = path.toAbsolutePath().normalize();
+                cursor != null;
+                child = cursor, cursor = cursor.getParent()) {
+            Path name = cursor.getFileName();
+            Path parent = cursor.getParent();
+            if (child != null
+                    && name != null
+                    && name.toString().equals("108600")
+                    && parent != null
+                    && parent.getFileName() != null
+                    && parent.getFileName().toString().equals("content")) {
+                return child.getFileName().toString();
+            }
+        }
+        return null;
+    }
+
+    static Path localDevBootstrap() {
+        return LauncherPaths.zomboidDir()
+                .resolve(Paths.get("Workshop", "storm", "Contents", "mods", "storm", "bootstrap"));
+    }
+
+    /** Where this launcher runs from (jar path); overridable so tests can simulate. */
+    Path ownLocation() {
+        return WorkshopUpdate.ownJar();
     }
 
     /** The local-dev install needs -DstormType=local so the bootstrapper finds its libs. */
@@ -194,6 +294,15 @@ public final class LauncherConfig {
         return dir != null && Files.isRegularFile(dir.resolve("ProjectZomboid64.json"));
     }
 
+    /** The dir itself, or the {@code projectzomboid/} subdir the linux/mac depots nest under. */
+    static Path gameDirAt(Path dir) {
+        if (isGameDir(dir)) {
+            return dir;
+        }
+        Path nested = dir == null ? null : dir.resolve("projectzomboid");
+        return isGameDir(nested) ? nested : null;
+    }
+
     static Path detectGameDir() {
         List<Path> candidates = new ArrayList<>();
         Path jarRelative = gameDirRelativeToOwnJar();
@@ -210,9 +319,11 @@ public final class LauncherConfig {
         Path home = Paths.get(System.getProperty("user.home"));
         candidates.add(home.resolve(".steam/steam/" + rel));
         candidates.add(home.resolve(".local/share/Steam/" + rel));
+        candidates.add(home.resolve("Library/Application Support/Steam/" + rel));
         for (Path candidate : candidates) {
-            if (isGameDir(candidate)) {
-                return candidate;
+            Path resolved = gameDirAt(candidate);
+            if (resolved != null) {
+                return resolved;
             }
         }
         return null;

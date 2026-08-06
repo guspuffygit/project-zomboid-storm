@@ -379,6 +379,11 @@ tasks.register('installStorm', Sync) {
 		into 'launcher'
 	}
 
+	from('launcher/dist/StormLauncher.sh') {
+		into 'launcher'
+		filePermissions { unix(0755) }
+	}
+
 	from('LICENSE') {
 		into 'common'
 	}
@@ -720,7 +725,10 @@ tasks.register('runProjectZomboidServer', Exec) {
 			"${dir}/start-server.sh".toString(),
 			"-javaagent:${workshopModPath}/bootstrap/storm-bootstrap.jar".toString(),
 			'-DLOG_LEVEL=debug',
-			'-Dstorm.server=true'
+			'-Dstorm.server=true',
+			// pzmcp's server target and the launcher's manifest fetch both expect this port
+			'-Dstorm.http.port=41798',
+			'-Dstorm.hotreload=true'
 		]
 		def prometheusPort = getLocalProperty('prometheusPort').getOrNull()
 		if (prometheusPort) {

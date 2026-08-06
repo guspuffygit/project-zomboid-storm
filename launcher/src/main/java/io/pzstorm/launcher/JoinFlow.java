@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
@@ -26,6 +27,14 @@ import java.util.Properties;
  */
 public final class JoinFlow {
 
+    /**
+     * First Storm version whose client Java ships the launcher integration: {@code
+     * io.pzstorm.storm.client.LauncherAutoJoin} (consumes the credential handoff) and the {@code
+     * -Dstorm.launcher.mods} loader. Against anything older, arming the handoff strands the player
+     * at the main menu — the file is never consumed and the {@code +connect} args were suppressed.
+     */
+    static final String MIN_INTEGRATION_STORM_VERSION = "2.5.1";
+
     private JoinFlow() {}
 
     /** Runs the full pre-launch pipeline and starts the game. */
@@ -34,7 +43,7 @@ public final class JoinFlow {
         ModManifest manifest = fetchManifest(profile);
         updateWorkshopItems(config, profile, manifest);
         Path modsDir = syncMods(config, profile, manifest);
-        boolean handoffActive = prepareAutoJoin(profile);
+        boolean handoffActive = prepareAutoJoin(config, profile);
         return launch(config, profile, modsDir, handoffActive);
     }
 
@@ -56,16 +65,32 @@ public final class JoinFlow {
         }
     }
 
-    /** Best-effort: failures fall back to the game's own in-game workshop flow. */
+    /**
+     * Best-effort: failures fall back to the game's own in-game workshop flow. Storm's own workshop
+     * item is always first in the list — clients get (and keep) Storm from the workshop by default,
+     * even when the server publishes no items of its own.
+     */
     public static void updateWorkshopItems(
             LauncherConfig config, ServerProfile profile, ModManifest manifest)
             throws InterruptedException {
         if (!profile.updateWorkshopMods || profile.noSteam) {
             return;
         }
-        List<String> items = manifest == null ? Collections.emptyList() : manifest.workshopItems;
-        if (items.isEmpty()) {
-            items = queryWorkshopItems(config, profile);
+        List<String> items = new ArrayList<>();
+        String stormItem = config.stormWorkshopItemId(config.resolveGameDir());
+        if (stormItem != null) {
+            items.add(stormItem);
+            Log.info("Storm workshop item " + stormItem + " added to the pre-update.");
+        }
+        List<String> serverItems =
+                manifest == null ? Collections.emptyList() : manifest.workshopItems;
+        if (serverItems.isEmpty()) {
+            serverItems = queryWorkshopItems(config, profile);
+        }
+        for (String item : serverItems) {
+            if (!items.contains(item)) {
+                items.add(item);
+            }
         }
         if (items.isEmpty()) {
             Log.info("Server did not publish workshop items to pre-update.");
@@ -110,6 +135,20 @@ public final class JoinFlow {
             return null;
         }
         checkStormVersionSkew(config, manifest.stormVersion);
+        if (!manifest.files.isEmpty()) {
+            String local = localStormVersion(config);
+            if (!supportsLauncherIntegration(local)) {
+                // joining anyway would desync: old Storm ignores -Dstorm.launcher.mods, so the
+                // server's java mods would never load client-side
+                throw new ModSync.SyncException(
+                        "This server publishes java mods, but the client's Storm ("
+                                + (local == null ? "none found" : local)
+                                + ") predates launcher-managed mods (needs storm "
+                                + MIN_INTEGRATION_STORM_VERSION
+                                + "+). Close the game, let Steam update the Storm workshop item,"
+                                + " then join again.");
+            }
+        }
         URI base = ModSync.baseUri(profile.host, profile.stormHttpPort);
         Path modsDir = LauncherPaths.modsDir(profile.serverKey());
         try {
@@ -137,7 +176,7 @@ public final class JoinFlow {
      * suppresses vanilla's {@code +connect} args so the two flows can't race. Any failure degrades
      * to the +connect pre-filled popup.
      */
-    public static boolean prepareAutoJoin(ServerProfile profile) {
+    public static boolean prepareAutoJoin(LauncherConfig config, ServerProfile profile) {
         if (!profile.autoConnect) {
             clearAutoJoinHandoff();
             return false;
@@ -150,7 +189,58 @@ public final class JoinFlow {
             clearAutoJoinHandoff();
             return false;
         }
+        String stormVersion = localStormVersion(config);
+        if (!supportsLauncherIntegration(stormVersion)) {
+            Log.info(
+                    "Client Storm "
+                            + (stormVersion == null ? "(none found)" : stormVersion)
+                            + " predates launcher auto-join (needs storm "
+                            + MIN_INTEGRATION_STORM_VERSION
+                            + "+) — using the game's connect flow instead. Let Steam update the"
+                            + " Storm workshop item to enable one-click join.");
+            clearAutoJoinHandoff();
+            return false;
+        }
         return writeAutoJoinHandoff(profile);
+    }
+
+    /**
+     * Whether the installed client Storm understands the launcher handoff (see {@link
+     * #MIN_INTEGRATION_STORM_VERSION}). Full version strings look like {@code
+     * 42.20.2_2.5.1-SNAPSHOT}: game version, '_', storm version.
+     *
+     * <p>No storm jar at all → false; only {@code +connect} can work on a vanilla client. A storm
+     * segment that does not parse as a dotted number → true: that is a hand-built dev Storm, which
+     * postdates the integration.
+     */
+    static boolean supportsLauncherIntegration(String fullStormVersion) {
+        if (fullStormVersion == null) {
+            return false;
+        }
+        int sep = fullStormVersion.lastIndexOf('_');
+        if (sep < 0 || sep == fullStormVersion.length() - 1) {
+            return true;
+        }
+        String storm = fullStormVersion.substring(sep + 1);
+        int dash = storm.indexOf('-');
+        if (dash >= 0) {
+            storm = storm.substring(0, dash);
+        }
+        String[] have = storm.split("\\.");
+        String[] need = MIN_INTEGRATION_STORM_VERSION.split("\\.");
+        for (int i = 0; i < Math.max(have.length, need.length); i++) {
+            int haveN;
+            try {
+                haveN = i < have.length ? Integer.parseInt(have[i]) : 0;
+            } catch (NumberFormatException e) {
+                return true;
+            }
+            int needN = i < need.length ? Integer.parseInt(need[i]) : 0;
+            if (haveN != needN) {
+                return haveN > needN;
+            }
+        }
+        return true;
     }
 
     /**

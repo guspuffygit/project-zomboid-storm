@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -128,6 +129,54 @@ class GameLaunchTest {
                 plan.command.toString());
         assertFalse(plan.command.contains("+connect"), "auto-join must suppress +connect");
         assertFalse(plan.command.contains("+password"), "auto-join must suppress +password");
+    }
+
+    @Test
+    void clientPerfFixesDefaultOnAndOverridable() throws IOException {
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null);
+        assertTrue(plan.command.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=true"));
+
+        LauncherConfig off = config();
+        off.clientPerfFixes = false;
+        assertTrue(
+                GameLaunch.plan(off, null, null).command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.CLIENT_PERF_PROPERTY)));
+
+        LauncherConfig userOverride = config();
+        userOverride.globalVmArgs.add("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=false");
+        List<String> cmd = GameLaunch.plan(userOverride, null, null).command;
+        assertFalse(cmd.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=true"));
+        assertTrue(cmd.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=false"));
+    }
+
+    @Test
+    void missingBootstrapOmitsClientPerfFlag() throws IOException {
+        LauncherConfig config = config();
+        config.bootstrapDir = tmp.resolve("nope").toString();
+        assertTrue(
+                GameLaunch.plan(config, null, null).command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.CLIENT_PERF_PROPERTY)));
+    }
+
+    @Test
+    void nativeEnvironmentMirrorsVanillaLauncherOnLinux() throws IOException {
+        assumeTrue(
+                System.getProperty("os.name", "").toLowerCase().contains("linux"),
+                "linux loader-path conventions");
+        Files.createDirectories(gameDir.resolve("linux64"));
+        Files.createDirectories(gameDir.resolve(Path.of("jre64", "lib")));
+        Files.write(gameDir.resolve(Path.of("jre64", "lib", "libjsig.so")), new byte[] {1});
+        Files.write(gameDir.resolve("libPZXInitThreads64.so"), new byte[] {1});
+
+        Map<String, String> env = GameLaunch.nativeEnvironment(gameDir, false);
+        assertTrue(env.get("LD_LIBRARY_PATH").contains(gameDir.resolve("linux64").toString()));
+        assertTrue(env.get("LD_LIBRARY_PATH").contains(gameDir.toString()));
+        assertTrue(env.get("LD_PRELOAD").contains("libjsig.so"));
+        assertTrue(env.get("LD_PRELOAD").contains("libPZXInitThreads64.so"));
+
+        assertTrue(
+                GameLaunch.nativeEnvironment(gameDir, true).isEmpty(),
+                "windows targets need no loader env");
     }
 
     @Test

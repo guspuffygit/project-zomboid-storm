@@ -3,8 +3,11 @@ package io.pzstorm.launcher;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds and spawns the actual game-client JVM. The launcher process loads zero Project Zomboid
@@ -28,14 +31,26 @@ public final class GameLaunch {
      */
     public static final String AUTOJOIN_FILE_PROPERTY = "storm.autojoin.file";
 
+    /**
+     * Enables Storm's experimental client-side performance patches; the launcher passes it by
+     * default. Keep in sync with the gate in {@code io.pzstorm.storm.core.StormClassTransformers}.
+     */
+    public static final String CLIENT_PERF_PROPERTY = "storm.experimental.clientperf";
+
     public static final class LaunchPlan {
         public final List<String> command;
         public final Path workingDir;
+        public final Map<String, String> environment;
         public final List<String> warnings;
 
-        LaunchPlan(List<String> command, Path workingDir, List<String> warnings) {
+        LaunchPlan(
+                List<String> command,
+                Path workingDir,
+                Map<String, String> environment,
+                List<String> warnings) {
             this.command = command;
             this.workingDir = workingDir;
+            this.environment = environment;
             this.warnings = warnings;
         }
 
@@ -43,6 +58,7 @@ public final class GameLaunch {
             Files.createDirectories(gameLog.getParent());
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(workingDir.toFile());
+            pb.environment().putAll(environment);
             pb.redirectErrorStream(true);
             pb.redirectOutput(ProcessBuilder.Redirect.to(gameLog.toFile()));
             return pb.start();
@@ -92,6 +108,9 @@ public final class GameLaunch {
             if (LauncherConfig.isLocalDevBootstrap(bootstrapDir)) {
                 command.add("-DstormType=local");
             }
+            if (config.clientPerfFixes && !specifiesClientPerf(config, profile)) {
+                command.add("-D" + CLIENT_PERF_PROPERTY + "=true");
+            }
         } else {
             warnings.add(
                     "Storm bootstrap not found — launching WITHOUT Storm."
@@ -132,7 +151,71 @@ public final class GameLaunch {
                 command.add("-nosteam");
             }
         }
-        return new LaunchPlan(command, gameDir, warnings);
+        return new LaunchPlan(command, gameDir, nativeEnvironment(gameDir, windows), warnings);
+    }
+
+    /** User args win: an explicit -Dstorm.experimental.clientperf=… suppresses the default. */
+    static boolean specifiesClientPerf(LauncherConfig config, ServerProfile profile) {
+        List<String> args = new ArrayList<>(config.globalVmArgs);
+        if (profile != null) {
+            args.addAll(profile.extraVmArgs);
+        }
+        for (String arg : args) {
+            if (arg.startsWith("-D" + CLIENT_PERF_PROPERTY)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Vanilla's projectzomboid.sh exports these before starting the game: transitive native
+     * dependencies (fmod, steam_api) resolve through the loader path, not java.library.path, so a
+     * direct JVM spawn needs them too. Windows resolves DLLs from the working directory already.
+     */
+    static Map<String, String> nativeEnvironment(Path gameDir, boolean windowsJvm) {
+        Map<String, String> env = new LinkedHashMap<>();
+        if (windowsJvm) {
+            return env;
+        }
+        boolean mac = System.getProperty("os.name", "").toLowerCase().contains("mac");
+        List<String> libDirs = new ArrayList<>();
+        Path[] dirs = {
+            gameDir.resolve("linux64"),
+            gameDir,
+            gameDir.resolve(Paths.get("jre64", "lib")),
+            gameDir.resolve(Paths.get("jre64", "Contents", "Home", "lib")),
+        };
+        for (Path dir : dirs) {
+            if (Files.isDirectory(dir)) {
+                libDirs.add(dir.toString());
+            }
+        }
+        String var = mac ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+        String existing = System.getenv(var);
+        if (existing != null && !existing.isEmpty()) {
+            libDirs.add(existing);
+        }
+        if (!libDirs.isEmpty()) {
+            env.put(var, String.join(":", libDirs));
+        }
+        if (!mac) {
+            List<String> preloads = new ArrayList<>();
+            String preloadExisting = System.getenv("LD_PRELOAD");
+            if (preloadExisting != null && !preloadExisting.isEmpty()) {
+                preloads.add(preloadExisting);
+            }
+            if (Files.isRegularFile(gameDir.resolve(Paths.get("jre64", "lib", "libjsig.so")))) {
+                preloads.add("libjsig.so");
+            }
+            if (Files.isRegularFile(gameDir.resolve("libPZXInitThreads64.so"))) {
+                preloads.add("libPZXInitThreads64.so");
+            }
+            if (!preloads.isEmpty()) {
+                env.put("LD_PRELOAD", String.join(":", preloads));
+            }
+        }
+        return env;
     }
 
     static String agentArg(Path bootstrapDir, Path jvm) {

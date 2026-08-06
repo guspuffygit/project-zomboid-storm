@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
@@ -25,6 +26,8 @@ public final class SettingsDialog extends JDialog {
     private final JTextField gameDir = new JTextField(36);
     private final JTextField jvmPath = new JTextField(36);
     private final JTextField bootstrapDir = new JTextField(36);
+    private final JCheckBox clientPerfFixes =
+            new JCheckBox("Experimental client performance fixes");
     private final JTextArea globalVmArgs = new JTextArea(4, 36);
     private boolean accepted;
 
@@ -33,6 +36,9 @@ public final class SettingsDialog extends JDialog {
         gameDir.setText(config.gameDir);
         jvmPath.setText(config.jvmPath);
         bootstrapDir.setText(config.bootstrapDir);
+        clientPerfFixes.setSelected(config.clientPerfFixes);
+        clientPerfFixes.setToolTipText(
+                "Passes -Dstorm.experimental.clientperf=true to the game (default on)");
         globalVmArgs.setText(String.join("\n", config.globalVmArgs));
 
         Path detectedGame = config.resolveGameDir();
@@ -48,6 +54,7 @@ public final class SettingsDialog extends JDialog {
         row = addHint(form, row, detectedJvm, "JVM");
         row = addRow(form, row, "Storm bootstrap dir", withBrowse(bootstrapDir, true));
         row = addHint(form, row, detectedBootstrap, "Storm bootstrap");
+        row = addRow(form, row, null, clientPerfFixes);
         row = addRow(form, row, "Global JVM args", new JScrollPane(globalVmArgs));
         row =
                 addRow(
@@ -64,6 +71,7 @@ public final class SettingsDialog extends JDialog {
                     config.gameDir = gameDir.getText().trim();
                     config.jvmPath = jvmPath.getText().trim();
                     config.bootstrapDir = bootstrapDir.getText().trim();
+                    config.clientPerfFixes = clientPerfFixes.isSelected();
                     config.globalVmArgs = new ArrayList<>();
                     Arrays.stream(globalVmArgs.getText().split("\\s+"))
                             .filter(s -> !s.isEmpty())

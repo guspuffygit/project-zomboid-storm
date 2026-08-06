@@ -22,14 +22,24 @@ workshop updates.
 3. **Steam workshop pre-update** — the server publishes its required workshop
    item ids in the manifest (`workshopItems`, from `server.ini`). Before
    launching, the launcher asks the running Steam client to subscribe + update
-   each item via Steam's own UGC API (`steam_api64.dll` bound through
-   `java.lang.foreign` — no SDK, no writes into steamapps; Steam manages its
-   own content dir). Items are brought to the exact state the game's join gate
-   demands (`Subscribed|Installed`, no update pending), so the in-game
-   "workshop items" download screen never appears and joins don't wedge on
-   locked files. Runs in a child JVM with cwd = game dir (where
+   each item via Steam's own UGC API (the platform's `steam_api` library bound
+   through `java.lang.foreign` — no SDK, no writes into steamapps; Steam
+   manages its own content dir). **Storm's own workshop item is always first
+   in that list**: clients get Storm from the workshop by default — a client
+   with no Storm at all subscribes and downloads it, an outdated one is
+   refreshed — even when the server publishes no items of its own. Items are
+   brought to the exact state the game's join gate demands
+   (`Subscribed|Installed`, no update pending), so the in-game "workshop
+   items" download screen never appears and joins don't wedge on locked
+   files. Every item gets a real `DownloadItem` call and the launcher waits
+   for Steam's per-item download result callback — Steam's cached item state
+   is stale from the moment a new version is published until Steam happens to
+   re-poll, so trusting `GetItemState` alone would happily report an outdated
+   item as current. Runs in a child JVM with cwd = game dir (where
    `steam_appid.txt` lives); Steam not running degrades gracefully to the
    vanilla in-game flow.
+   (An explicitly configured bootstrap dir outside any workshop item turns the
+   Storm self-update off — a pinned custom install is not fought.)
 4. **Java mod sync** — fetches `GET /storm/client/manifest` and mirrors the
    published mod tree into `<home>/Zomboid/storm/launcher/mods/<host_port>/`.
    Every file is SHA-256 verified; files that drop out of the manifest are
@@ -48,14 +58,30 @@ workshop updates.
    handoff only fires when the property is present, a stale file can never
    auto-join a manually started game; the launcher also deletes handoffs older
    than ten minutes on startup. Any missing prerequisite falls back to the
-   pre-filled popup flow.
+   pre-filled popup flow. **Requires client Storm ≥ 2.5.1** (the first version
+   whose client Java ships `LauncherAutoJoin` and the `-Dstorm.launcher.mods`
+   loader): against an older installed Storm the launcher does not arm the
+   handoff — arming it would strand the player at the main menu with the
+   `+connect` args suppressed and nobody consuming the file — and instead
+   falls back to the vanilla `+connect` flow. For the same reason, joining a
+   server that publishes java mods hard-fails on a pre-2.5.1 client (the
+   synced mods would silently never load — a guaranteed desync); let Steam
+   update the Storm workshop item and join again.
 6. **Game launch** — builds the client java command from the game's own
    `ProjectZomboid64.json` (mainClass, classpath, vmArgs, windows overlays),
-   appends the Storm agent flags, `-Dstorm.launcher.mods=<synced dir>`, any
-   user JVM args, and — unless the auto-join handoff is armed — the vanilla
-   `+connect host:port` (`+password <serverPassword>`) args, then spawns the
-   JVM with the game directory as working directory. Game output is captured
-   to `<home>/Zomboid/storm/launcher/logs/game.log`.
+   appends the Storm agent flags, `-Dstorm.experimental.clientperf=true`
+   (Storm's experimental client performance patches are **on by default**;
+   untick *"Experimental client performance fixes"* in Settings or pass your
+   own `-Dstorm.experimental.clientperf=…` to override),
+   `-Dstorm.launcher.mods=<synced dir>`, any user JVM args, and — unless the
+   auto-join handoff is armed — the vanilla `+connect host:port`
+   (`+password <serverPassword>`) args, then spawns the JVM with the game
+   directory as working directory. On linux/mac the launcher exports the same
+   loader environment vanilla's `projectzomboid.sh` would (`LD_LIBRARY_PATH`
+   with `linux64/`, the game dir and the bundled JRE's lib dir, plus the
+   `libjsig`/`libPZXInitThreads64` preloads on linux; `DYLD_LIBRARY_PATH` on
+   mac) so transitive native dependencies resolve for a direct JVM spawn.
+   Game output is captured to `<home>/Zomboid/storm/launcher/logs/game.log`.
 
 The client's `StormModLoader` scans the synced directory as an additional mods
 root (after workshop/mods roots, so the server-published version wins mod-id
@@ -129,13 +155,17 @@ The launcher ships inside the Storm workshop item:
 
 ```
 steamapps/workshop/content/108600/<storm id>/mods/storm/launcher/StormLauncher.bat
+steamapps/workshop/content/108600/<storm id>/mods/storm/launcher/StormLauncher.sh
 steamapps/workshop/content/108600/<storm id>/mods/storm/launcher/storm-launcher.jar
 ```
 
-Run `StormLauncher.bat` (it uses the game's bundled JRE), add a server, Join.
-Paths (game dir, bootstrap dir, JVM) are auto-detected; override them in
-Settings if needed. Config lives at
-`<home>/Zomboid/storm/launcher/launcher.json`; the launcher log at
+Run `StormLauncher.bat` on Windows or `sh StormLauncher.sh` on linux/mac
+(both use the game's bundled JRE; Steam does not preserve the execute bit, so
+invoke the shell script through `sh`). Add a server, Join. Paths (game dir,
+bootstrap dir, JVM) are auto-detected on all three platforms — including the
+linux/mac depots that nest the game in a `projectzomboid/` subdirectory and
+the macOS JRE bundle layout; override them in Settings if needed. Config
+lives at `<home>/Zomboid/storm/launcher/launcher.json`; the launcher log at
 `<home>/Zomboid/storm/launcher/logs/launcher.log`.
 
 ### Starting from Steam
@@ -212,9 +242,14 @@ workshop pre-update spawns with cwd = game dir.
 - Build: `./gradlew :launcher:jar` → `launcher/build/libs/storm-launcher.jar`
   (also copied into the workshop layout by `installStorm`).
 - Test: `./gradlew :launcher:test`.
-- The launcher's dir-detection understands the local-dev install: if the Storm
-  bootstrap is found under `~/Zomboid/Workshop/storm/…` it automatically adds
-  `-DstormType=local` to the game JVM.
+- Bootstrap resolution is workshop-first: an installed Storm workshop item
+  (the item the launcher jar itself ships inside is tried first, then
+  prod/stage/dev) always wins over the local-dev install under
+  `~/Zomboid/Workshop/storm/…` — clients run the Storm that Steam downloaded,
+  and the join flow keeps it current. The local-dev tree is only used when no
+  workshop item is installed (the launcher then adds `-DstormType=local` so
+  the bootstrapper finds its libs), or when the bootstrap dir is set
+  explicitly in Settings.
 - Hard rule reminder: the launcher itself must stay free of PZ classes — it
   only writes files and spawns a process. Anything that needs the game's
   runtime (Lua env, UI, world state) belongs in Storm-core client Java on the
