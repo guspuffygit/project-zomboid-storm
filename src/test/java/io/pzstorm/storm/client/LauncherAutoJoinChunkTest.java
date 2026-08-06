@@ -34,7 +34,7 @@ class LauncherAutoJoinChunkTest {
                     usernameEntry = entry("username"),
                     passwordEntry = entry("password"),
                     serverPasswordEntry = entry("serverPassword"),
-                    connectBtn = "the-connect-btn",
+                    connectTypeEntry = { selected = { true } },
                     setServer = function(self, ip, port, pw)
                         calls.ip = ip
                         calls.portValue = port
@@ -42,7 +42,6 @@ class LauncherAutoJoinChunkTest {
                         calls.setServerPassword = pw
                     end,
                     setVisible = function(self, visible) calls.popupVisible = visible end,
-                    onOptionMouseDown = function(self, btn) calls.clicked = btn end,
                 },
             }
             MainScreen = {
@@ -52,6 +51,26 @@ class LauncherAutoJoinChunkTest {
                     },
                 },
             }
+            ConnectToServer = {
+                instance = {
+                    connect = function(self, previousScreen, serverName, username, password,
+                            ip, localIP, port, serverPassword, useSteamRelay, doHash, authType)
+                        calls.connectPreviousScreen = previousScreen
+                        calls.connectServerName = serverName
+                        calls.connectUsername = username
+                        calls.connectPassword = password
+                        calls.connectIp = ip
+                        calls.connectLocalIp = localIP
+                        calls.connectPort = port
+                        calls.connectPortType = type(port)
+                        calls.connectServerPassword = serverPassword
+                        calls.connectUseSteamRelay = useSteamRelay
+                        calls.connectDoHash = doHash
+                        calls.connectAuthType = authType
+                    end,
+                },
+            }
+            getSteamModeActive = function() return true end
             autoJoinTestCalls = calls
             """;
 
@@ -79,7 +98,7 @@ class LauncherAutoJoinChunkTest {
     }
 
     @Test
-    void fillsAndSubmitsThePopupExactlyLikeAHumanWould() throws Exception {
+    void fillsThePopupAndConnectsWithoutRehashingTheStoredPassword() throws Exception {
         run(STUB_UI_LUA);
         Object[] results =
                 run(
@@ -87,7 +106,7 @@ class LauncherAutoJoinChunkTest {
                         "play.example.org",
                         "16261",
                         "gus",
-                        "account-pw",
+                        "stored-form-pw",
                         "server-pw");
         assertEquals("ok", results[1]);
 
@@ -97,11 +116,27 @@ class LauncherAutoJoinChunkTest {
         assertEquals("string", calls.rawget("portType"), "the popup needs the port as a STRING");
         assertEquals("server-pw", calls.rawget("setServerPassword"));
         assertEquals("gus", calls.rawget("username"));
-        assertEquals("account-pw", calls.rawget("password"));
+        assertEquals("stored-form-pw", calls.rawget("password"));
         assertEquals("server-pw", calls.rawget("serverPassword"));
         assertEquals(Boolean.TRUE, calls.rawget("popupVisible"));
-        assertEquals("the-connect-btn", calls.rawget("clicked"));
         assertEquals(Boolean.FALSE, calls.rawget("bottomPanelVisible"), "menu buttons must hide");
+
+        // the popup CONNECT branch, argument for argument — except doHash
+        assertEquals("", calls.rawget("connectServerName"));
+        assertEquals("gus", calls.rawget("connectUsername"));
+        assertEquals("stored-form-pw", calls.rawget("connectPassword"));
+        assertEquals("play.example.org", calls.rawget("connectIp"));
+        assertEquals("", calls.rawget("connectLocalIp"));
+        assertEquals("16261", calls.rawget("connectPort"));
+        assertEquals("string", calls.rawget("connectPortType"));
+        assertEquals("server-pw", calls.rawget("connectServerPassword"));
+        assertEquals(Boolean.TRUE, calls.rawget("connectUseSteamRelay"));
+        assertEquals(
+                Boolean.FALSE,
+                calls.rawget("connectDoHash"),
+                "the password is already the stored form the server compares — hashing it"
+                        + " again would guarantee InvalidUsernamePassword");
+        assertEquals(1.0, calls.rawget("connectAuthType"));
     }
 
     @Test
@@ -111,8 +146,14 @@ class LauncherAutoJoinChunkTest {
         assertEquals("not-ready", bare[1]);
 
         // class tables exist but no instances yet: the common first-frames state
-        run("ServerConnectPopup = {}; MainScreen = {}");
+        run("ServerConnectPopup = {}; MainScreen = {}; ConnectToServer = {}");
         Object[] noInstance = run(LauncherAutoJoin.DRIVE_POPUP_LUA, "h", "1", "u", "", "");
         assertEquals("not-ready", noInstance[1]);
+
+        // popup and menu are up but ConnectToServer has not instantiated yet
+        run(STUB_UI_LUA);
+        run("ConnectToServer.instance = nil");
+        Object[] noConnect = run(LauncherAutoJoin.DRIVE_POPUP_LUA, "h", "1", "u", "", "");
+        assertEquals("not-ready", noConnect[1]);
     }
 }

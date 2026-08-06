@@ -13,6 +13,8 @@ dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 	// Test-only: VanillaServerImport borrows the game's driver in production
 	testRuntimeOnly 'org.xerial:sqlite-jdbc:3.46.0.0'
+	// Test-only: PzPasswordHash borrows the game's BCrypt in production
+	testImplementation 'org.mindrot:jbcrypt:0.4'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

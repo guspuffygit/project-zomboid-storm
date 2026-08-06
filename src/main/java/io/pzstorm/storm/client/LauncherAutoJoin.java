@@ -22,9 +22,14 @@ import zombie.Lua.LuaManager;
  * credential handoff ({@link java.util.Properties} format: {@code host}, {@code port}, {@code
  * username}, {@code password}, {@code serverPassword}) and passes its path to the game JVM as
  * {@code -Dstorm.autojoin.file=<path>}. At the first main menu this class reads and immediately
- * deletes the file, then fills and submits the vanilla {@code ServerConnectPopup} — the exact same
- * path a human clicking CONNECT takes, so version checks, workshop checks and all failure UI still
- * work.
+ * deletes the file, fills the vanilla {@code ServerConnectPopup}, and starts the connect through
+ * {@code ConnectToServer} — so version checks, workshop checks and all failure UI still work.
+ *
+ * <p>{@code password} arrives in the game's stored form — {@code BCrypt(md5hex(plain))}, the exact
+ * string in {@code ServerListSteam.db} and the one the server compares — so the connect uses {@code
+ * doHash=false}, the same as the in-game browser's saved-credentials join ({@code
+ * MultiplayerUI:connectToServer}). Clicking the popup's own CONNECT button instead would apply
+ * {@code doHash=true} and double-hash a stored credential into a guaranteed "incorrect password".
  *
  * <p>Without the system property the class is never even registered, so a stale handoff file can
  * never fire on a manually started game; the property dies with the launcher-spawned process.
@@ -54,7 +59,8 @@ public final class LauncherAutoJoin {
             local host, port, username, password, serverPassword = ...
             local popup = ServerConnectPopup and ServerConnectPopup.instance
             local mainScreen = MainScreen and MainScreen.instance
-            if not popup or not mainScreen then
+            local connectScreen = ConnectToServer and ConnectToServer.instance
+            if not popup or not mainScreen or not connectScreen then
                 return "not-ready"
             end
             if mainScreen.bottomPanel then
@@ -65,7 +71,14 @@ public final class LauncherAutoJoin {
             popup.passwordEntry:setText(password)
             popup.serverPasswordEntry:setText(serverPassword)
             popup:setVisible(true)
-            popup:onOptionMouseDown(popup.connectBtn)
+            local useSteamRelay = false
+            if getSteamModeActive() and popup.connectTypeEntry and popup.connectTypeEntry.selected[1] then
+                useSteamRelay = true
+            end
+            -- the popup CONNECT branch, but with doHash=false: the password is already the
+            -- stored form the server compares against (see the class javadoc)
+            connectScreen:connect(popup, "", username, password, host, "", port,
+                serverPassword, useSteamRelay, false, 1)
             return "ok"
             """;
 

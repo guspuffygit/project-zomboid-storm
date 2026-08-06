@@ -39,11 +39,15 @@ public final class ServerStore {
                 return;
             }
             List<ServerProfile> composed = VanillaServerDb.readProfiles(dbFile, borrowed.driver);
+            for (ServerProfile profile : composed) {
+                healAccountPassword(config, profile, dbFile, borrowed);
+            }
             for (ServerProfile entry : config.servers) {
                 ServerProfile match = find(composed, entry);
                 if (match != null) {
                     applyExtras(entry, match);
                 } else if (!entry.inGameDb) {
+                    hashAccountPassword(config, entry);
                     try {
                         VanillaServerDb.upsert(dbFile, borrowed.driver, entry);
                         Log.info("Migrated '" + entry + "' into the game's saved-server list.");
@@ -84,6 +88,16 @@ public final class ServerStore {
                                 + "' is kept in the launcher only and will be written to the"
                                 + " game's saved-server list once the game install is found.");
                 return;
+            }
+            if (!hashAccountPassword(config, profile)) {
+                // a raw password in the database would fail every login (the game and the
+                // server only ever compare the hashed form) — better to not store it at all
+                Log.warn(
+                        "Could not hash the account password for '"
+                                + profile
+                                + "' — not saving it; re-enter it once the game install is"
+                                + " configured.");
+                profile.accountPassword = "";
             }
             VanillaServerDb.upsert(
                     VanillaServerDb.databaseFile(zomboidDir), borrowed.driver, profile);
@@ -146,9 +160,66 @@ public final class ServerStore {
         return null;
     }
 
-    private static VanillaServerDb.BorrowedDriver driver(LauncherConfig config) {
+    /**
+     * Brings the profile's account password into the game's stored form ({@link PzPasswordHash}).
+     * Plaintext can enter through the edit dialog or a legacy launcher.json; the game only ever
+     * compares the hashed form, so it must never reach the database raw. Returns false when the
+     * value is plaintext but hashing is unavailable.
+     */
+    private static boolean hashAccountPassword(LauncherConfig config, ServerProfile profile) {
+        if (profile.accountPassword.isEmpty() || PzPasswordHash.isHashed(profile.accountPassword)) {
+            return true;
+        }
+        String hashed = PzPasswordHash.hash(profile.accountPassword, gameJar(config));
+        if (hashed == null) {
+            return false;
+        }
+        profile.accountPassword = hashed;
+        return true;
+    }
+
+    /**
+     * Repairs a database row holding a raw password (written by launcher versions that predate
+     * {@link PzPasswordHash}): the game itself only ever writes the hashed form, so a raw value can
+     * only be the launcher's own doing — and it fails every login until rehashed.
+     */
+    private static void healAccountPassword(
+            LauncherConfig config,
+            ServerProfile profile,
+            Path dbFile,
+            VanillaServerDb.BorrowedDriver borrowed) {
+        if (profile.accountPassword.isEmpty() || PzPasswordHash.isHashed(profile.accountPassword)) {
+            return;
+        }
+        if (!hashAccountPassword(config, profile)) {
+            Log.warn(
+                    "Account password for '"
+                            + profile
+                            + "' is stored raw and could not be hashed — logins will fail until"
+                            + " it is re-entered.");
+            return;
+        }
+        try {
+            VanillaServerDb.upsert(dbFile, borrowed.driver, profile);
+            Log.info(
+                    "Re-hashed the stored account password for '"
+                            + profile
+                            + "' (was written raw by an older launcher).");
+        } catch (Exception e) {
+            Log.warn(
+                    "Could not write the re-hashed account password for '"
+                            + profile
+                            + "': "
+                            + e.getMessage());
+        }
+    }
+
+    private static Path gameJar(LauncherConfig config) {
         Path gameDir = config.resolveGameDir();
-        return VanillaServerDb.loadDriver(
-                gameDir == null ? null : gameDir.resolve("projectzomboid.jar"));
+        return gameDir == null ? null : gameDir.resolve("projectzomboid.jar");
+    }
+
+    private static VanillaServerDb.BorrowedDriver driver(LauncherConfig config) {
+        return VanillaServerDb.loadDriver(gameJar(config));
     }
 }

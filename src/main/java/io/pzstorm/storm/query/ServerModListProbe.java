@@ -21,11 +21,9 @@ import zombie.core.raknet.RakNetPeerInterface;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.raknet.UdpEngine;
 import zombie.core.random.RandStandard;
-import zombie.core.secure.PZcrypt;
 import zombie.core.znet.SteamUtils;
 import zombie.network.GameClient;
 import zombie.network.PacketTypes;
-import zombie.network.ServerWorldDatabase;
 import zombie.network.ZomboidNetData;
 import zombie.network.packets.RequestDataPacket;
 import zombie.network.packets.connection.LoginPacket;
@@ -357,9 +355,10 @@ public final class ServerModListProbe {
 
         private void sendLogin(UdpConnection connection, String username, String accountPassword) {
             GameClient.username = username;
-            // The account password never travels in the clear: ConnectionManager.doServerConnect
-            // hashes it for the real client, and the server compares against the hash.
-            GameClient.password = PZcrypt.hash(ServerWorldDatabase.encrypt(accountPassword));
+            // The launcher hands the password over in the game's stored form (BCrypt-of-md5,
+            // io.pzstorm.launcher.PzPasswordHash) — already exactly what the server compares
+            // against; hashing again here would double-hash it into a guaranteed auth failure.
+            GameClient.password = accountPassword;
             GameClient.authType = 1;
             GameClient.startAuth = java.util.Calendar.getInstance();
 

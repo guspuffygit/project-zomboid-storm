@@ -30,13 +30,16 @@ class JoinFlowTest {
         System.clearProperty("storm.launcher.zomboidDir");
     }
 
+    /** A stored-form account password, as {@link ServerStore} guarantees by the time joins run. */
+    private static final String HASHED_PASSWORD =
+            PzPasswordHash.GAME_SALT + "0123456789012345678901234567890";
+
     private ServerProfile profile() {
         ServerProfile profile = new ServerProfile();
         profile.host = "play.example.org";
         profile.port = 16261;
         profile.username = "gus";
-        // Properties escaping must survive what the old key=value lines could not
-        profile.accountPassword = "se=cret\nwith:newline";
+        profile.accountPassword = HASHED_PASSWORD;
         profile.serverPassword = "spw";
         profile.autoConnect = true;
         return profile;
@@ -65,7 +68,11 @@ class JoinFlowTest {
 
     @Test
     void writesHandoffAsJavaProperties() throws IOException {
-        assertTrue(JoinFlow.writeAutoJoinHandoff(profile()));
+        ServerProfile profile = profile();
+        // Properties escaping must survive what the old key=value lines could not; the server
+        // access password is the one field that stays raw
+        profile.serverPassword = "se=cret\nwith:newline";
+        assertTrue(JoinFlow.writeAutoJoinHandoff(profile));
 
         Properties read = new Properties();
         try (Reader reader =
@@ -75,10 +82,20 @@ class JoinFlowTest {
         assertEquals("play.example.org", read.getProperty("host"));
         assertEquals("16261", read.getProperty("port"));
         assertEquals("gus", read.getProperty("username"));
-        assertEquals("se=cret\nwith:newline", read.getProperty("password"));
-        assertEquals("spw", read.getProperty("serverPassword"));
+        assertEquals(HASHED_PASSWORD, read.getProperty("password"));
+        assertEquals("se=cret\nwith:newline", read.getProperty("serverPassword"));
 
         JoinFlow.clearAutoJoinHandoff();
+        assertFalse(Files.exists(LauncherPaths.autoJoinFile()));
+    }
+
+    @Test
+    void prepareFallsBackWhenThePasswordIsNotInStoredForm() throws IOException {
+        // a raw password would be submitted unhashed and fail auth; the popup fallback hashes
+        LauncherConfig config = configWithStorm("42.20.2_2.5.1-SNAPSHOT");
+        ServerProfile raw = profile();
+        raw.accountPassword = "my-actual-password";
+        assertFalse(JoinFlow.prepareAutoJoin(config, raw));
         assertFalse(Files.exists(LauncherPaths.autoJoinFile()));
     }
 

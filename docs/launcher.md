@@ -77,10 +77,14 @@ workshop updates.
    format), passes its path to the game JVM as `-Dstorm.autojoin.file=<path>`,
    and suppresses the vanilla `+connect` args. Storm-core client Java
    (`io.pzstorm.storm.client.LauncherAutoJoin`) reads and immediately deletes
-   the file at the first main menu — credentials never linger — then fills and
-   submits the vanilla `ServerConnectPopup` exactly like a human clicking
-   CONNECT (`doHash=true`, so the launcher stores/passes the plaintext the
-   player would have typed). Zero clicks from launcher to in-game. Because the
+   the file at the first main menu — credentials never linger — then fills the
+   vanilla `ServerConnectPopup` and starts the connect through
+   `ConnectToServer` with `doHash=false`, exactly like the in-game browser's
+   saved-credentials join: the handoff password is the game's **stored form**
+   (BCrypt over MD5-hex with PZ's fixed salt, `PzPasswordHash`), never the
+   plaintext. Clicking the popup's own CONNECT button instead would apply
+   `doHash=true` and double-hash a stored credential into a guaranteed
+   "incorrect password". Zero clicks from launcher to in-game. Because the
    handoff only fires when the property is present, a stale file can never
    auto-join a manually started game; the launcher also deletes handoffs older
    than ten minutes on startup. Any missing prerequisite falls back to the
@@ -124,6 +128,14 @@ Vanilla PZ behavior notes:
   opt-in the in-game connect popup uses, so both UIs always agree. Unticking
   it clears only the opt-in flag; a password the game stored for its own use
   is left alone. `launcher.json` never contains passwords.
+- The database never holds the plaintext: the game stores
+  `PZcrypt.hash(ServerWorldDatabase.encrypt(password))` (BCrypt over MD5-hex,
+  fixed salt) and the server compares that string byte-for-byte at login. The
+  launcher hashes a typed password into that form on save
+  (`io.pzstorm.launcher.PzPasswordHash`, BCrypt borrowed from
+  `projectzomboid.jar` like the SQLite driver) and re-hashes any raw value an
+  older launcher left in the database on load — a raw stored password fails
+  every saved-credentials login until healed.
 - Steam mode comes from the game's own vmArgs (`-Dzomboid.steam=1`); the
   launcher is Steam-only — non-Steam servers are not supported.
 - Workshop pre-update **subscribes** the player's Steam account to the
@@ -235,10 +247,10 @@ real login: `io.pzstorm.storm.query.ServerModListProbe` (Storm core) in a child
 JVM, driven by `io.pzstorm.launcher.ServerModList`.
 
 - **It is a real client.** Steam mode, PZ's own `UdpEngine`, a real
-  `LoginPacket` with the account password hashed exactly as
-  `ConnectionManager.doServerConnect(doHash=true)` hashes it (MD5-hex, then
-  BCrypt with PZ's fixed salt). Anything less and the server answers
-  `InvalidUsernamePassword`. It disconnects the moment the payload is complete,
+  `LoginPacket` carrying the account password in the game's stored form
+  (MD5-hex, then BCrypt with PZ's fixed salt — the launcher hands it over
+  already hashed, `PzPasswordHash`; the probe must not hash again). Anything
+  else and the server answers `InvalidUsernamePassword`. It disconnects the moment the payload is complete,
   so it holds a slot for a few seconds, not a session.
 - **It suppresses the client half it does not need.** The probe's `UdpEngine`
   subclass overrides `connected()`, which in vanilla fires a voice-connect

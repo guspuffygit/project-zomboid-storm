@@ -141,7 +141,9 @@ public final class ServerModList {
 
     /**
      * {@link Properties} format so the child gets the password back byte-exact whatever is in it.
-     * The pipe must be closed: the child blocks reading stdin to end-of-stream.
+     * {@code accountPassword} is the game's stored form ({@link PzPasswordHash}); the child sends
+     * it on the wire unchanged. The pipe must be closed: the child blocks reading stdin to
+     * end-of-stream.
      */
     private static void writeCredentials(Process child, ServerProfile profile) throws IOException {
         Properties credentials = new Properties();

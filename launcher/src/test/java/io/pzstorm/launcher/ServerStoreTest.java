@@ -31,7 +31,14 @@ class ServerStoreTest {
         return db;
     }
 
+    /** What the game itself stores: the hashed form, never the plaintext. */
+    private static final String HASHED_PWD = PzPasswordHash.hash("pwd", null);
+
     private void seedServerWithAccount() throws Exception {
+        seedServerWithAccount(HASHED_PWD);
+    }
+
+    private void seedServerWithAccount(String storedPassword) throws Exception {
         Path db = createDatabase();
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + db)) {
             try (PreparedStatement statement =
@@ -43,7 +50,8 @@ class ServerStoreTest {
             try (PreparedStatement statement =
                     conn.prepareStatement(
                             "INSERT INTO account (serverId, username, password, isSavePassword)"
-                                    + " VALUES (1, 'Gus', 'pwd', 1)")) {
+                                    + " VALUES (1, 'Gus', ?, 1)")) {
+                statement.setString(1, storedPassword);
                 statement.executeUpdate();
             }
         }
@@ -78,7 +86,7 @@ class ServerStoreTest {
         assertEquals("ATF", p.name);
         assertEquals("sp", p.serverPassword);
         assertEquals("Gus", p.username);
-        assertEquals("pwd", p.accountPassword);
+        assertEquals(HASHED_PWD, p.accountPassword);
         assertFalse(p.autoConnect);
         assertFalse(p.updateWorkshopMods);
         assertEquals(List.of("-Dmarker=hand-tuned"), p.extraVmArgs);
@@ -109,11 +117,27 @@ class ServerStoreTest {
         assertFalse(config.servers.get(0).toMap().containsKey("accountPassword"));
         assertFalse(config.servers.get(0).toMap().containsKey("serverPassword"));
 
-        // second load round-trips through the database instead of re-migrating
+        // second load round-trips through the database instead of re-migrating; the legacy
+        // raw password was brought into the game's stored form on the way in
         ServerStore.load(config, zomboidDir);
         assertEquals(1, count(db, "server"));
         assertEquals(1, config.servers.size());
-        assertEquals("ap", config.servers.get(0).accountPassword);
+        assertEquals(PzPasswordHash.hash("ap", null), config.servers.get(0).accountPassword);
+    }
+
+    @Test
+    void loadRehashesRawPasswordsOlderLaunchersWroteToTheDatabase() throws Exception {
+        seedServerWithAccount("pwd"); // raw, as pre-PzPasswordHash launchers stored it
+        LauncherConfig config = new LauncherConfig();
+
+        ServerStore.load(config, zomboidDir);
+
+        assertEquals(1, config.servers.size());
+        assertEquals(HASHED_PWD, config.servers.get(0).accountPassword);
+        // healed in the database too, not just in memory
+        LauncherConfig reloaded = new LauncherConfig();
+        ServerStore.load(reloaded, zomboidDir);
+        assertEquals(HASHED_PWD, reloaded.servers.get(0).accountPassword);
     }
 
     @Test
@@ -165,6 +189,7 @@ class ServerStoreTest {
         LauncherConfig reloaded = new LauncherConfig();
         ServerStore.load(reloaded, zomboidDir);
         assertEquals(1, reloaded.servers.size());
-        assertEquals("pw", reloaded.servers.get(0).accountPassword);
+        // the typed password went into the database in the game's stored form
+        assertEquals(PzPasswordHash.hash("pw", null), reloaded.servers.get(0).accountPassword);
     }
 }

@@ -25,9 +25,11 @@ import java.util.Properties;
  * <p>The game ({@code zombie.savefile.AccountDBHelper}) persists every server it has connected to
  * in {@code <Zomboid>/db/ServerListSteam.db}: a {@code server} table (name, ip, port, server access
  * password) and an {@code account} table (per-server usernames, passwords and the isSavePassword
- * opt-in). The launcher handles Steam connections exclusively, so the non-Steam {@code
- * ServerList.db} is never touched. The DDL below is copied verbatim from AccountDBHelper so a
- * launcher started before the game's first run creates exactly the database the game will adopt.
+ * opt-in). The account password column holds the game's stored form ({@link PzPasswordHash}), never
+ * the plaintext; {@link ServerStore} guarantees profiles are in that form before they get here. The
+ * launcher handles Steam connections exclusively, so the non-Steam {@code ServerList.db} is never
+ * touched. The DDL below is copied verbatim from AccountDBHelper so a launcher started before the
+ * game's first run creates exactly the database the game will adopt.
  *
  * <p>Concurrency: the game opens the database per operation and closes it right after, and the
  * launcher's writes happen before the game process exists, so contention is rare; a busy timeout

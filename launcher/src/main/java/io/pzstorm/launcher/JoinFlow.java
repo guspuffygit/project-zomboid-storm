@@ -156,6 +156,19 @@ public final class JoinFlow {
             clearAutoJoinHandoff();
             return false;
         }
+        if (!profile.accountPassword.isEmpty()
+                && !PzPasswordHash.isHashed(profile.accountPassword)) {
+            // Storm submits the handoff password unhashed (doHash=false), so a raw value is a
+            // guaranteed "incorrect password". The popup fallback hashes whatever the game's
+            // database pre-fills, so it still works against the same raw stored value.
+            Log.warn(
+                    "Account password for "
+                            + profile.connectAddress()
+                            + " is not in the game's stored form — falling back to the connect"
+                            + " popup.");
+            clearAutoJoinHandoff();
+            return false;
+        }
         String stormVersion = localStormVersion(config);
         if (!supportsLauncherIntegration(stormVersion)) {
             Log.info(
@@ -213,6 +226,10 @@ public final class JoinFlow {
     /**
      * {@link Properties} format because both sides are Java and its escaping survives any password.
      * The client deletes the file on first read; stale leftovers are cleared on launcher start.
+     *
+     * <p>{@code password} carries the game's stored form ({@link PzPasswordHash}, never the
+     * plaintext); Storm submits it unhashed, exactly like the in-game browser's saved-credentials
+     * join. {@code serverPassword} is the raw server access password — the game sends it as-is.
      */
     static boolean writeAutoJoinHandoff(ServerProfile profile) {
         Properties handoff = new Properties();
