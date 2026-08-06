@@ -41,6 +41,12 @@ public class StormBootstrapper {
 
     private static final Boolean isServer = Boolean.getBoolean("storm.server");
 
+    /**
+     * Keep in sync with io.pzstorm.launcher.GameLaunch#HANDOFF_PROPERTY. The launcher sets it to
+     * false on the game JVM it spawns; players set it to false to keep the old direct-boot behavior.
+     */
+    private static final String LAUNCHER_HANDOFF_PROPERTY = "storm.launcher.handoff";
+
     /** Stored from premain so Storm core can retrieve it via reflection. */
     public static volatile Instrumentation instrumentation;
 
@@ -57,6 +63,10 @@ public class StormBootstrapper {
         System.out.println("[StormAgent] Agent initializing...");
         instrumentation = inst;
 
+        if (!isServer && handOffToLauncher()) {
+            System.exit(0);
+        }
+
         String targetMainClass = isServer
                 ? "zombie.network.GameServer"
                 : "zombie.gameStates.MainScreenState";
@@ -64,6 +74,63 @@ public class StormBootstrapper {
 
         HijackTransformer transformer = new HijackTransformer(targetMainClass, inst);
         inst.addTransformer(transformer);
+    }
+
+    /**
+     * Steam's Launch Options paste is the only hook players have, so the agent line that used to
+     * boot the game with Storm boots the Storm Launcher instead: spawn the launcher jar shipped
+     * next to this bootstrap in the workshop item, then exit before any game code runs. The
+     * launcher starts the real game itself with -Dstorm.launcher.handoff=false, so that JVM boots
+     * straight into Storm. Fails soft: any problem here means "no launcher", never "no game".
+     */
+    private static boolean handOffToLauncher() {
+        if ("false".equalsIgnoreCase(System.getProperty(LAUNCHER_HANDOFF_PROPERTY))) {
+            return false;
+        }
+        try {
+            Path launcherJar = getJarDirectory().resolve("../launcher/storm-launcher.jar").normalize();
+            if (!Files.isRegularFile(launcherJar)) {
+                System.out.println("[StormAgent] No launcher jar at " + launcherJar
+                        + " — starting the game directly.");
+                return false;
+            }
+            List<String> command = new ArrayList<>();
+            command.add(launcherJvm());
+            command.add("-jar");
+            command.add(launcherJar.toString());
+            // the launcher must not touch Steam while this JVM still maps agentlib.dll
+            command.add("--parent-pid=" + ProcessHandle.current().pid());
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(launcherJar.getParent().toFile());
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(handOffLog());
+            pb.start();
+            System.out.println("[StormAgent] Handed off to Storm Launcher: " + launcherJar);
+            return true;
+        } catch (Exception e) {
+            System.err.println("[StormAgent] Launcher hand-off failed — starting the game directly.");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /** javaw on Windows so the launcher window never owns a console. */
+    private static String launcherJvm() {
+        Path bin = Paths.get(System.getProperty("java.home"), "bin");
+        for (String exe : new String[] {"javaw.exe", "java.exe", "java"}) {
+            Path candidate = bin.resolve(exe);
+            if (Files.isRegularFile(candidate)) {
+                return candidate.toString();
+            }
+        }
+        return "java";
+    }
+
+    private static File handOffLog() throws IOException {
+        Path logDir = Paths.get(System.getProperty("user.home"), "Zomboid", "storm", "launcher", "logs");
+        Files.createDirectories(logDir);
+        return logDir.resolve("handoff.log").toFile();
     }
 
     static class HijackTransformer implements ClassFileTransformer {
@@ -228,11 +295,11 @@ public class StormBootstrapper {
             Runtime rt = Runtime.getRuntime();
             try {
                 if (os.contains("win")) {
-                    rt.exec("rundll32 url.dll,FileProtocolHandler " + STORM_BOOTSTRAP_PAGE);
+                    rt.exec(new String[] {"rundll32", "url.dll,FileProtocolHandler", STORM_BOOTSTRAP_PAGE});
                 } else if (os.contains("mac")) {
-                    rt.exec("open " + STORM_BOOTSTRAP_PAGE);
+                    rt.exec(new String[] {"open", STORM_BOOTSTRAP_PAGE});
                 } else if (os.contains("nix") || os.contains("nux")) {
-                    rt.exec("xdg-open " + STORM_BOOTSTRAP_PAGE);
+                    rt.exec(new String[] {"xdg-open", STORM_BOOTSTRAP_PAGE});
                 } else {
                     System.out.println("Unsupported operating system.");
                 }

@@ -249,8 +249,9 @@ public final class LauncherStage {
     }
 
     /**
-     * The parent still holds the item jar for a moment after spawning us; no Steam call may run
-     * before it dies.
+     * The parent — a staging launcher holding the item jar, or the game JVM the bootstrap agent
+     * handed off from, which maps agentlib.dll — still holds files inside the item for a moment
+     * after spawning us; no Steam call may run before it dies.
      */
     static void awaitParentExit(long pid) {
         if (pid <= 0) {
@@ -266,7 +267,7 @@ public final class LauncherStage {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             Log.warn(
-                    "Parent launcher (pid "
+                    "Parent process (pid "
                             + pid
                             + ") is still alive — the Storm update may fail this once.");
         }

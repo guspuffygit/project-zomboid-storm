@@ -107,6 +107,18 @@ class GameLaunchTest {
         GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
         assertEquals(1, plan.warnings.size());
         assertTrue(plan.command.stream().noneMatch(a -> a.startsWith("-javaagent")));
+        assertTrue(
+                plan.command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.HANDOFF_PROPERTY)),
+                "no agent means nothing to suppress");
+    }
+
+    @Test
+    void agentLaunchSuppressesBootstrapHandoff() throws IOException {
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null);
+        assertTrue(
+                plan.command.contains("-D" + GameLaunch.HANDOFF_PROPERTY + "=false"),
+                "the spawned game must boot the game, not another launcher");
     }
 
     @Test
@@ -143,6 +155,24 @@ class GameLaunchTest {
         List<String> cmd = GameLaunch.plan(userOverride, null, null).command;
         assertFalse(cmd.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=true"));
         assertTrue(cmd.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=false"));
+    }
+
+    @Test
+    void skipMenusDefaultOnAndOverridable() throws IOException {
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null);
+        assertTrue(plan.command.contains("-D" + GameLaunch.SKIP_MENUS_PROPERTY + "=true"));
+
+        LauncherConfig off = config();
+        off.skipMenus = false;
+        assertTrue(
+                GameLaunch.plan(off, null, null).command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.SKIP_MENUS_PROPERTY)));
+
+        LauncherConfig userOverride = config();
+        userOverride.globalVmArgs.add("-D" + GameLaunch.SKIP_MENUS_PROPERTY + "=false");
+        List<String> cmd = GameLaunch.plan(userOverride, null, null).command;
+        assertFalse(cmd.contains("-D" + GameLaunch.SKIP_MENUS_PROPERTY + "=true"));
+        assertTrue(cmd.contains("-D" + GameLaunch.SKIP_MENUS_PROPERTY + "=false"));
     }
 
     @Test

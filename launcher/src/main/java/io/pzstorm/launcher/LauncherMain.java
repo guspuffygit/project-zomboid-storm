@@ -27,6 +27,11 @@ public final class LauncherMain {
         }
         LauncherStage.Context stage = LauncherStage.parse(args);
         Log.init(LauncherPaths.logFile());
+        if (!stage.staged() && stage.parentPid > 0) {
+            // spawned by the bootstrap agent: the exiting game JVM still maps agentlib.dll,
+            // and any Steam update of the item fails while it does
+            LauncherStage.awaitParentExit(stage.parentPid);
+        }
         LauncherStage.handOffIfInsideWorkshopItem(stage);
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
         config.setStagedOrigin(stage.stagedFrom);

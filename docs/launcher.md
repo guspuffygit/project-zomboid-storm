@@ -313,19 +313,51 @@ lives at `<home>/Zomboid/storm/launcher/launcher.json`; the launcher log at
 ### Starting from Steam
 
 Make Steam's Play button open the launcher: right-click Project Zomboid →
-*Properties…* → *General* → *Launch Options*:
+*Properties…* → *General* → *Launch Options*, and paste the Storm agent line
+for your OS (workshop item `3670772371`):
 
 ```
-"<steam library>\steamapps\workshop\content\108600\<storm id>\mods\storm\launcher\StormLauncher.bat" %command%
+Windows: -agentpath:../../workshop/content/108600/3670772371/mods/storm/bootstrap/agentlib.dll=storm-bootstrap.jar --
+Linux:   -javaagent:../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
+macOS:   -javaagent:../../../../../workshop/content/108600/3670772371/mods/storm/bootstrap/storm-bootstrap.jar --
+```
+
+This is the same paste that has always enabled Storm, and it stays the
+recommended one: the paths are **relative to the game directory**, so one line
+works for every player no matter which drive their Steam library lives on.
+What changed is what it boots. At JVM startup — before any game code runs —
+the bootstrap agent spawns `mods/storm/launcher/storm-launcher.jar` from the
+same workshop item (passing `--parent-pid` so the launcher waits for the
+agent-mapped files to be released before touching Steam) and exits the game
+process. The launcher does its update work and starts the real game with
+`-Dstorm.launcher.handoff=false`, which tells the agent in that JVM to boot
+straight into the game. Fail-soft: on a server JVM (`-Dstorm.server=true`), or
+if the launcher jar is missing or won't spawn, the agent boots the game with
+Storm directly, exactly as before the launcher existed. Early hand-off output
+lands in `<home>/Zomboid/storm/launcher/logs/handoff.log`.
+
+To keep the old direct boot (game with Storm, no launcher), put the opt-out in
+front of the agent flag in the same paste:
+
+```
+-Dstorm.launcher.handoff=false -javaagent:… --
+```
+
+The `%command%` interposition form still works as an alternative (absolute
+path required, so it is per-machine):
+
+```
+"<steam library>\steamapps\workshop\content\108600\3670772371\mods\storm\launcher\StormLauncher.bat" %command%
 ```
 
 With `%command%` present, Steam runs the quoted program **instead of** the
 game, appending the vanilla game command — which the launcher deliberately
 ignores (it builds its own command from the game's json and starts the game
 itself when you hit Join). Insert `--join <server>` before `%command%` to skip
-the UI and go straight to a saved server. Two caveats: Steam's green "In-Game"
-status follows the process it launched, not the game the launcher spawns, and
-accepting a Steam invite bypasses Launch Options entirely (see above).
+the UI and go straight to a saved server. Two caveats for both forms: Steam's
+green "In-Game" status follows the process it launched, not the game the
+launcher spawns, and accepting a Steam invite bypasses Launch Options entirely
+(see above).
 
 Alternatively, *Add a Non-Steam Game* pointing at `StormLauncher.bat` gives
 the launcher its own library entry; the game still authenticates through the

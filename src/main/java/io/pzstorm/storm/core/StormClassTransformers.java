@@ -206,6 +206,8 @@ import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
 import io.pzstorm.storm.patch.rendering.EpilepsyWarningSkipPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
+import io.pzstorm.storm.patch.rendering.TISLogoStateSkipPatch;
+import io.pzstorm.storm.patch.rendering.TermsOfServiceStateSkipPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch;
 import io.pzstorm.storm.util.StormEnv;
@@ -240,7 +242,13 @@ public class StormClassTransformers {
     static {
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
-        registerTransformer(new EpilepsyWarningSkipPatch());
+        // Launcher "Skip menus" toggle (default on): straight to the main menu. Keep the
+        // property name in sync with io.pzstorm.launcher.GameLaunch#SKIP_MENUS_PROPERTY.
+        if (Boolean.getBoolean("storm.skipmenus")) {
+            registerTransformer(new EpilepsyWarningSkipPatch());
+            registerTransformer(new TISLogoStateSkipPatch());
+            registerTransformer(new TermsOfServiceStateSkipPatch());
+        }
         registerTransformer(new LuaEventManagerPatch());
         registerTransformer(new LuaManagerPatch());
         registerTransformer(new LuaExposerDumpPatch());

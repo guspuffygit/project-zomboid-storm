@@ -30,6 +30,22 @@ public final class GameLaunch {
      */
     public static final String CLIENT_PERF_PROPERTY = "storm.experimental.clientperf";
 
+    /**
+     * Skips the intro screens (photosensitivity warning, TIS/attribution/Storm logos, TOS) so the
+     * game boots straight to the main menu; the launcher passes it by default. Keep in sync with
+     * the gate in {@code io.pzstorm.storm.core.StormClassTransformers}.
+     */
+    public static final String SKIP_MENUS_PROPERTY = "storm.skipmenus";
+
+    /**
+     * A game JVM started with the Storm agent but without this property set to false hands itself
+     * off to the launcher and exits — that is how the Steam Launch Options paste opens the
+     * launcher. The game the launcher spawns must boot the game, not another launcher, so this is
+     * always passed alongside the agent flag. Doubles as the player opt-out for direct boots. Keep
+     * in sync with {@code io.pzstorm.storm.StormBootstrapper}.
+     */
+    public static final String HANDOFF_PROPERTY = "storm.launcher.handoff";
+
     public static final class LaunchPlan {
         public final List<String> command;
         public final Path workingDir;
@@ -102,11 +118,15 @@ public final class GameLaunch {
         Path bootstrapDir = config.resolveBootstrapDir(gameDir);
         if (bootstrapDir != null) {
             command.add(agentArg(bootstrapDir, jvm));
+            command.add("-D" + HANDOFF_PROPERTY + "=false");
             if (LauncherConfig.isLocalDevBootstrap(bootstrapDir)) {
                 command.add("-DstormType=local");
             }
             if (config.clientPerfFixes && !specifiesClientPerf(config, profile)) {
                 command.add("-D" + CLIENT_PERF_PROPERTY + "=true");
+            }
+            if (config.skipMenus && !specifiesSkipMenus(config, profile)) {
+                command.add("-D" + SKIP_MENUS_PROPERTY + "=true");
             }
         } else {
             warnings.add(
@@ -146,6 +166,11 @@ public final class GameLaunch {
     /** User args win: an explicit -Dstorm.experimental.clientperf=… suppresses the default. */
     static boolean specifiesClientPerf(LauncherConfig config, ServerProfile profile) {
         return anyUserArgStartsWith(config, profile, "-D" + CLIENT_PERF_PROPERTY);
+    }
+
+    /** User args win: an explicit -Dstorm.skipmenus=… suppresses the default. */
+    static boolean specifiesSkipMenus(LauncherConfig config, ServerProfile profile) {
+        return anyUserArgStartsWith(config, profile, "-D" + SKIP_MENUS_PROPERTY);
     }
 
     /** User args win: an explicit -Xmx in either JVM-args field suppresses the managed heap. */

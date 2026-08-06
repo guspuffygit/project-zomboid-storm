@@ -29,6 +29,9 @@ public final class LauncherConfig {
     /** Storm's experimental client-side performance patches; on by default. */
     public boolean clientPerfFixes = true;
 
+    /** Skip intro screens (photosensitivity warning, logos, TOS); on by default. */
+    public boolean skipMenus = true;
+
     /** Size the game's -Xmx automatically from system RAM ({@link GameMemory#autoGb}). */
     public boolean autoMemory = true;
 
@@ -94,6 +97,7 @@ public final class LauncherConfig {
         map.put("jvmPath", jvmPath);
         map.put("bootstrapDir", bootstrapDir);
         map.put("clientPerfFixes", clientPerfFixes);
+        map.put("skipMenus", skipMenus);
         map.put("autoMemory", autoMemory);
         map.put("memoryGb", (long) memoryGb);
         map.put("globalVmArgs", new ArrayList<Object>(globalVmArgs));
@@ -112,6 +116,7 @@ public final class LauncherConfig {
         config.jvmPath = ServerProfile.str(map.get("jvmPath"), "");
         config.bootstrapDir = ServerProfile.str(map.get("bootstrapDir"), "");
         config.clientPerfFixes = ServerProfile.bool(map.get("clientPerfFixes"), true);
+        config.skipMenus = ServerProfile.bool(map.get("skipMenus"), true);
         config.autoMemory = ServerProfile.bool(map.get("autoMemory"), true);
         config.memoryGb = (int) ServerProfile.num(map.get("memoryGb"), 8);
         Object args = map.get("globalVmArgs");

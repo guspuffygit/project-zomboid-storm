@@ -177,6 +177,17 @@ class LauncherConfigTest {
     }
 
     @Test
+    void skipMenusPersistsAndDefaultsOn() throws IOException {
+        LauncherConfig config = new LauncherConfig();
+        assertTrue(config.skipMenus);
+        config.skipMenus = false;
+        Path file = tmp.resolve("launcher.json");
+        config.save(file);
+        assertTrue(!LauncherConfig.load(file).skipMenus);
+        assertTrue(LauncherConfig.load(tmp.resolve("missing.json")).skipMenus);
+    }
+
+    @Test
     void memorySettingsPersistAndDefaultToAuto() throws IOException {
         LauncherConfig config = new LauncherConfig();
         assertTrue(config.autoMemory);
