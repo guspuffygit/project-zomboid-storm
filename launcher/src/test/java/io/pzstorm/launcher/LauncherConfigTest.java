@@ -172,6 +172,29 @@ class LauncherConfigTest {
     }
 
     @Test
+    void memorySettingsPersistAndDefaultToAuto() throws IOException {
+        LauncherConfig config = new LauncherConfig();
+        assertTrue(config.autoMemory);
+        assertEquals(8, config.memoryGb);
+
+        config.autoMemory = false;
+        config.memoryGb = 12;
+        Path file = tmp.resolve("launcher.json");
+        config.save(file);
+        LauncherConfig loaded = LauncherConfig.load(file);
+        assertTrue(!loaded.autoMemory);
+        assertEquals(12, loaded.memoryGb);
+        assertEquals(12, loaded.resolveMemoryGb());
+        assertTrue(LauncherConfig.load(tmp.resolve("missing.json")).autoMemory);
+
+        // out-of-range manual values (hand-edited json) clamp on resolve
+        loaded.memoryGb = 2;
+        assertEquals(4, loaded.resolveMemoryGb());
+        loaded.memoryGb = 99;
+        assertEquals(32, loaded.resolveMemoryGb());
+    }
+
+    @Test
     void serverKeyIsFilesystemSafe() {
         ServerProfile profile = new ServerProfile();
         profile.host = "play.example.org";

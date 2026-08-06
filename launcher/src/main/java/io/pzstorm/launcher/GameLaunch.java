@@ -102,6 +102,12 @@ public final class GameLaunch {
         }
         command.addAll(gameJson.effectiveVmArgs(osName, osVersion));
 
+        // placed after the game json's stock -Xmx because the later -Xmx wins in HotSpot
+        int memoryGb = config.resolveMemoryGb();
+        if (memoryGb > 0 && !specifiesXmx(config, profile)) {
+            command.add("-Xmx" + memoryGb + "g");
+        }
+
         Path bootstrapDir = config.resolveBootstrapDir(gameDir);
         if (bootstrapDir != null) {
             command.add(agentArg(bootstrapDir, jvm));
@@ -156,12 +162,22 @@ public final class GameLaunch {
 
     /** User args win: an explicit -Dstorm.experimental.clientperf=… suppresses the default. */
     static boolean specifiesClientPerf(LauncherConfig config, ServerProfile profile) {
+        return anyUserArgStartsWith(config, profile, "-D" + CLIENT_PERF_PROPERTY);
+    }
+
+    /** User args win: an explicit -Xmx in either JVM-args field suppresses the managed heap. */
+    static boolean specifiesXmx(LauncherConfig config, ServerProfile profile) {
+        return anyUserArgStartsWith(config, profile, "-Xmx");
+    }
+
+    private static boolean anyUserArgStartsWith(
+            LauncherConfig config, ServerProfile profile, String prefix) {
         List<String> args = new ArrayList<>(config.globalVmArgs);
         if (profile != null) {
             args.addAll(profile.extraVmArgs);
         }
         for (String arg : args) {
-            if (arg.startsWith("-D" + CLIENT_PERF_PROPERTY)) {
+            if (arg.startsWith(prefix)) {
                 return true;
             }
         }

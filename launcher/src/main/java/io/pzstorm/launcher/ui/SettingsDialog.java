@@ -1,6 +1,8 @@
 package io.pzstorm.launcher.ui;
 
+import io.pzstorm.launcher.GameMemory;
 import io.pzstorm.launcher.LauncherConfig;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -17,8 +19,10 @@ import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
 
 /** Global launcher settings. Empty fields mean auto-detect; hints show the result. */
 public final class SettingsDialog extends JDialog {
@@ -28,6 +32,11 @@ public final class SettingsDialog extends JDialog {
     private final JTextField bootstrapDir = new JTextField(36);
     private final JCheckBox clientPerfFixes =
             new JCheckBox("Experimental client performance fixes");
+    private final JCheckBox autoMemory = new JCheckBox("Automatic");
+    private final JSpinner memoryGb =
+            new JSpinner(
+                    new SpinnerNumberModel(
+                            8, GameMemory.MANUAL_MIN_GB, GameMemory.MANUAL_MAX_GB, 1));
     private final JTextArea globalVmArgs = new JTextArea(4, 36);
     private boolean accepted;
 
@@ -39,6 +48,16 @@ public final class SettingsDialog extends JDialog {
         clientPerfFixes.setSelected(config.clientPerfFixes);
         clientPerfFixes.setToolTipText(
                 "Passes -Dstorm.experimental.clientperf=true to the game (default on)");
+        int autoGb = GameMemory.autoGb();
+        if (autoGb > 0) {
+            autoMemory.setText("Automatic (" + autoGb + " GB)");
+        }
+        autoMemory.setToolTipText(
+                "Half of system RAM + 1 GB, up to " + GameMemory.AUTO_MAX_GB + " GB");
+        autoMemory.setSelected(config.autoMemory);
+        autoMemory.addActionListener(e -> memoryGb.setEnabled(!autoMemory.isSelected()));
+        memoryGb.setValue(GameMemory.clampManualGb(config.memoryGb));
+        memoryGb.setEnabled(!config.autoMemory);
         globalVmArgs.setText(String.join("\n", config.globalVmArgs));
 
         Path detectedGame = config.resolveGameDir();
@@ -55,6 +74,12 @@ public final class SettingsDialog extends JDialog {
         row = addRow(form, row, "Storm bootstrap dir", withBrowse(bootstrapDir, true));
         row = addHint(form, row, detectedBootstrap, "Storm bootstrap");
         row = addRow(form, row, null, clientPerfFixes);
+        JPanel memoryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        memoryRow.add(autoMemory);
+        memoryRow.add(memoryGb);
+        memoryRow.add(new JLabel("GB"));
+        row = addRow(form, row, "Game memory", memoryRow);
+        row = addHintText(form, row, memoryHint(autoGb), autoGb > 0);
         row = addRow(form, row, "Global JVM args", new JScrollPane(globalVmArgs));
         row =
                 addRow(
@@ -62,8 +87,8 @@ public final class SettingsDialog extends JDialog {
                         row,
                         null,
                         new JLabel(
-                                "<html><i>One arg per line, e.g. -Xmx16g. Empty path fields"
-                                        + " auto-detect.</i></html>"));
+                                "<html><i>One arg per line; an explicit -Xmx here overrides Game"
+                                        + " memory. Empty path fields auto-detect.</i></html>"));
 
         JButton ok = new JButton("OK");
         ok.addActionListener(
@@ -72,6 +97,8 @@ public final class SettingsDialog extends JDialog {
                     config.jvmPath = jvmPath.getText().trim();
                     config.bootstrapDir = bootstrapDir.getText().trim();
                     config.clientPerfFixes = clientPerfFixes.isSelected();
+                    config.autoMemory = autoMemory.isSelected();
+                    config.memoryGb = ((Number) memoryGb.getValue()).intValue();
                     config.globalVmArgs = new ArrayList<>();
                     Arrays.stream(globalVmArgs.getText().split("\\s+"))
                             .filter(s -> !s.isEmpty())
@@ -129,14 +156,34 @@ public final class SettingsDialog extends JDialog {
         return row + 1;
     }
 
+    private static String memoryHint(int autoGb) {
+        if (autoGb <= 0) {
+            return "RAM detection failed — Automatic keeps the game's own -Xmx";
+        }
+        long totalGb = Math.round((double) GameMemory.totalSystemBytes() / (1L << 30));
+        return "auto: half of "
+                + totalGb
+                + " GB RAM + 1 GB, capped at "
+                + GameMemory.AUTO_MAX_GB
+                + " GB; manual range "
+                + GameMemory.MANUAL_MIN_GB
+                + "–"
+                + GameMemory.MANUAL_MAX_GB
+                + " GB";
+    }
+
     private static int addHint(JPanel form, int row, Path detected, String what) {
         String text =
                 detected != null
                         ? "auto: " + detected
                         : "auto-detect failed — set the " + what + " path";
+        return addHintText(form, row, text, detected != null);
+    }
+
+    private static int addHintText(JPanel form, int row, String text, boolean ok) {
         JLabel hint = new JLabel(text);
         hint.setFont(hint.getFont().deriveFont(hint.getFont().getSize2D() - 1f));
-        hint.setForeground(detected != null ? java.awt.Color.GRAY : java.awt.Color.RED.darker());
+        hint.setForeground(ok ? java.awt.Color.GRAY : java.awt.Color.RED.darker());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(0, 4, 4, 4);
         gbc.gridx = 1;

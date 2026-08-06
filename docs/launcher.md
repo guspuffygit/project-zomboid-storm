@@ -73,6 +73,12 @@ workshop updates.
    (Storm's experimental client performance patches are **on by default**;
    untick *"Experimental client performance fixes"* in Settings or pass your
    own `-Dstorm.experimental.clientperf=…` to override),
+   a managed `-Xmx` replacing the game json's stock 3 GB heap (*Game memory*
+   in Settings, identical on all three OSes: *Automatic* — the default —
+   allocates half the system RAM plus 1 GB, capped at 16 GB, and shows the
+   resulting size next to the checkbox; untick it for a manual 4–32 GB value;
+   an explicit `-Xmx` among the user JVM args wins and suppresses the managed
+   one),
    `-Dstorm.launcher.mods=<synced dir>`, any user JVM args, and — unless the
    auto-join handoff is armed — the vanilla `+connect host:port`
    (`+password <serverPassword>`) args, then spawns the JVM with the game

@@ -29,7 +29,15 @@ public final class LauncherConfig {
     /** Storm's experimental client-side performance patches; on by default. */
     public boolean clientPerfFixes = true;
 
-    /** Extra JVM args applied to every launch (e.g. -Xmx16g). */
+    /** Size the game's -Xmx automatically from system RAM ({@link GameMemory#autoGb}). */
+    public boolean autoMemory = true;
+
+    /** Manual max heap in GB when {@link #autoMemory} is off; clamped by {@link GameMemory}. */
+    public int memoryGb = 8;
+
+    /**
+     * Extra JVM args applied to every launch; an explicit -Xmx here wins over the memory setting.
+     */
     public List<String> globalVmArgs = new ArrayList<>();
 
     public List<ServerProfile> servers = new ArrayList<>();
@@ -69,6 +77,8 @@ public final class LauncherConfig {
         map.put("jvmPath", jvmPath);
         map.put("bootstrapDir", bootstrapDir);
         map.put("clientPerfFixes", clientPerfFixes);
+        map.put("autoMemory", autoMemory);
+        map.put("memoryGb", (long) memoryGb);
         map.put("globalVmArgs", new ArrayList<Object>(globalVmArgs));
         List<Object> serverList = new ArrayList<>();
         for (ServerProfile server : servers) {
@@ -85,6 +95,8 @@ public final class LauncherConfig {
         config.jvmPath = ServerProfile.str(map.get("jvmPath"), "");
         config.bootstrapDir = ServerProfile.str(map.get("bootstrapDir"), "");
         config.clientPerfFixes = ServerProfile.bool(map.get("clientPerfFixes"), true);
+        config.autoMemory = ServerProfile.bool(map.get("autoMemory"), true);
+        config.memoryGb = (int) ServerProfile.num(map.get("memoryGb"), 8);
         Object args = map.get("globalVmArgs");
         if (args instanceof List) {
             for (Object arg : (List<?>) args) {
@@ -107,6 +119,14 @@ public final class LauncherConfig {
     // ------------------------------------------------------------------
     // Resolution (configured value first, then auto-detection)
     // ------------------------------------------------------------------
+
+    /**
+     * Max heap for the game JVM in GB, or 0 to keep the game json's own -Xmx (auto mode on a
+     * runtime where RAM cannot be detected).
+     */
+    public int resolveMemoryGb() {
+        return autoMemory ? GameMemory.autoGb() : GameMemory.clampManualGb(memoryGb);
+    }
 
     public Path resolveGameDir() {
         if (!gameDir.isEmpty()) {

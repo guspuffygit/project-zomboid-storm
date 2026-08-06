@@ -150,6 +150,51 @@ class GameLaunchTest {
     }
 
     @Test
+    void managedXmxFollowsAutoAndManualModes() throws IOException {
+        assumeTrue(GameMemory.autoGb() > 0, "RAM detection");
+        LauncherConfig config = config();
+        config.globalVmArgs.clear(); // config() seeds a user -Xmx16g which would suppress it
+
+        List<String> cmd = GameLaunch.plan(config, null, null).command;
+        String autoArg = "-Xmx" + GameMemory.autoGb() + "g";
+        assertTrue(cmd.contains(autoArg), cmd.toString());
+        assertTrue(
+                cmd.indexOf(autoArg) > cmd.indexOf("-Dzomboid.steam=1"),
+                "managed -Xmx must follow the game json's args so it wins in HotSpot");
+
+        config.autoMemory = false;
+        config.memoryGb = 8;
+        assertTrue(GameLaunch.plan(config, null, null).command.contains("-Xmx8g"));
+
+        config.memoryGb = 64;
+        assertTrue(
+                GameLaunch.plan(config, null, null).command.contains("-Xmx32g"),
+                "manual value must clamp to the 32 GB max");
+        config.memoryGb = 1;
+        assertTrue(
+                GameLaunch.plan(config, null, null).command.contains("-Xmx4g"),
+                "manual value must clamp to the 4 GB min");
+    }
+
+    @Test
+    void userXmxSuppressesTheManagedHeapArg() throws IOException {
+        // config() carries a global -Xmx16g: it must stay the one and only -Xmx
+        List<String> cmd = GameLaunch.plan(config(), null, null).command;
+        assertEquals(1, cmd.stream().filter(a -> a.startsWith("-Xmx")).count());
+        assertTrue(cmd.contains("-Xmx16g"));
+
+        LauncherConfig config = config();
+        config.globalVmArgs.clear();
+        ServerProfile profile = new ServerProfile();
+        profile.host = "play.example.org";
+        profile.port = 16261;
+        profile.extraVmArgs.add("-Xmx6g");
+        List<String> cmd2 = GameLaunch.plan(config, profile, null).command;
+        assertEquals(1, cmd2.stream().filter(a -> a.startsWith("-Xmx")).count());
+        assertTrue(cmd2.contains("-Xmx6g"));
+    }
+
+    @Test
     void missingBootstrapOmitsClientPerfFlag() throws IOException {
         LauncherConfig config = config();
         config.bootstrapDir = tmp.resolve("nope").toString();
