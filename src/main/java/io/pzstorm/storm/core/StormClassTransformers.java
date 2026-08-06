@@ -14,6 +14,7 @@ import io.pzstorm.storm.patch.debugging.ThreadPatch;
 import io.pzstorm.storm.patch.events.ChatManagerPatch;
 import io.pzstorm.storm.patch.events.ChatServerSendMessagePatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
+import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
@@ -292,6 +293,8 @@ public class StormClassTransformers {
             registerTransformer(new IsoAnimalUpdateTimingPatch());
             registerTransformer(new IsoChunkRemoveFromWorldPatch());
             registerTransformer(new IsoObjectRemoveFromWorldPatch());
+            registerTransformer(new OnDeathTriggerPatch("zombie.characters.IsoGameCharacter"));
+            registerTransformer(new OnDeathTriggerPatch("zombie.characters.animals.IsoAnimal"));
         }
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new ServerLOSUpdatePatch());

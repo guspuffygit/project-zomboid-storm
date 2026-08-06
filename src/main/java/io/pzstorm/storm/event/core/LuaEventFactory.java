@@ -120,6 +120,8 @@ public class LuaEventFactory {
                             OnPlayerDeathEvent.class,
                             OnZombieDeadEvent.class,
                             OnCharacterDeathEvent.class,
+                            OnDeathEvent.class,
+                            OnAnimalDeathEvent.class,
                             OnCharacterMeetEvent.class,
                             OnSpawnRegionsLoadedEvent.class,
                             OnPostMapLoadEvent.class,
