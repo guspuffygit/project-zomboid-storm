@@ -31,7 +31,7 @@ public final class LauncherMain {
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
         config.setStagedOrigin(stage.stagedFrom);
         clearStaleAutoJoin();
-        importVanillaServersOnFirstRun(config);
+        importVanillaServers(config);
 
         args = effectiveArgs(stage.args);
         if (args.length > 0) {
@@ -129,14 +129,11 @@ public final class LauncherMain {
     }
 
     /**
-     * An empty server list means a fresh install (or a wiped config), so the servers already set up
-     * in the game itself are pulled in once. A non-empty list is user-curated — re-importing into
-     * it only happens through the explicit UI action.
+     * Every start pulls in whatever servers and characters were set up in the game itself since
+     * last time. Only new (address, character) pairs are added — profiles already in the config
+     * stay exactly as the user left them.
      */
-    private static void importVanillaServersOnFirstRun(LauncherConfig config) {
-        if (!config.servers.isEmpty()) {
-            return;
-        }
+    private static void importVanillaServers(LauncherConfig config) {
         try {
             if (VanillaServerImport.importInto(config) > 0) {
                 config.save(LauncherPaths.configFile());

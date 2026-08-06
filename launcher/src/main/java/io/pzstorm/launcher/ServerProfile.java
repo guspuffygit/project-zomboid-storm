@@ -87,6 +87,7 @@ public final class ServerProfile {
     @Override
     public String toString() {
         String label = name.isEmpty() ? connectAddress() : name;
-        return label + "  (" + connectAddress() + ")";
+        String character = username.isEmpty() ? "" : " — " + username;
+        return label + character + "  (" + connectAddress() + ")";
     }
 }

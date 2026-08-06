@@ -10,7 +10,6 @@ import java.sql.Driver;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +31,13 @@ import java.util.Properties;
  */
 public final class VanillaServerImport {
 
+    // lastLogon is 'yyyy-MM-dd HH:mm:ss' text, so DESC puts the most recently used character
+    // first per server (SQLite sorts NULLs last under DESC)
     private static final String QUERY =
             "SELECT s.name, s.ip, s.port, s.serverPassword,"
-                    + " a.username, a.password, a.isSavePassword, a.lastLogon"
+                    + " a.username, a.password, a.isSavePassword"
                     + " FROM server s LEFT JOIN account a ON a.serverId = s.id"
-                    + " ORDER BY s.id";
+                    + " ORDER BY s.id, a.lastLogon DESC";
 
     private VanillaServerImport() {}
 
@@ -85,18 +86,18 @@ public final class VanillaServerImport {
     }
 
     /**
-     * One profile per distinct ip:port; the most recently used account (max lastLogon, a {@code
-     * yyyy-MM-dd HH:mm:ss} string, so text order is time order) fills the credentials. The account
-     * password is only carried over when the user already opted into saving it in-game, and
-     * autoConnect turns on only when the credentials are complete.
+     * One profile per (server, character): every account the game knows becomes its own entry, the
+     * most recently used character first per server. The account password is only carried over when
+     * the user already opted into saving it in-game, and autoConnect turns on only when the
+     * credentials are complete. A server with no accounts still imports once, with empty
+     * credentials.
      */
     static List<ServerProfile> readProfiles(Path dbFile, Driver driver) throws Exception {
         Path tempDir = Files.createTempDirectory("storm-server-import");
         List<Path> copies = new ArrayList<>();
         try {
             Path copy = copyDatabase(dbFile, tempDir, copies);
-            Map<String, ServerProfile> byAddress = new LinkedHashMap<>();
-            Map<String, String> bestLogon = new HashMap<>();
+            Map<String, ServerProfile> byKey = new LinkedHashMap<>();
             try (Connection conn = driver.connect("jdbc:sqlite:" + copy, new Properties());
                     Statement statement = conn.createStatement();
                     ResultSet rs = statement.executeQuery(QUERY)) {
@@ -106,34 +107,26 @@ public final class VanillaServerImport {
                         continue;
                     }
                     int port = rs.getInt("port");
-                    String key = host.toLowerCase() + ":" + port;
-                    ServerProfile profile = byAddress.get(key);
-                    if (profile == null) {
-                        profile = new ServerProfile();
-                        profile.name = orEmpty(rs.getString("name"));
-                        profile.host = host;
-                        profile.port = port;
-                        profile.serverPassword = orEmpty(rs.getString("serverPassword"));
-                        byAddress.put(key, profile);
-                    }
-                    String username = rs.getString("username");
-                    if (username == null || username.isEmpty()) {
+                    String username = orEmpty(rs.getString("username"));
+                    String key = host.toLowerCase() + ":" + port + ":" + username.toLowerCase();
+                    if (byKey.containsKey(key)) {
                         continue;
                     }
-                    String logon = orEmpty(rs.getString("lastLogon"));
-                    String best = bestLogon.get(key);
-                    if (best == null || logon.compareTo(best) > 0) {
-                        bestLogon.put(key, logon);
-                        profile.username = username;
-                        profile.accountPassword =
-                                rs.getInt("isSavePassword") == 1
-                                        ? orEmpty(rs.getString("password"))
-                                        : "";
-                        profile.autoConnect = !profile.accountPassword.isEmpty();
-                    }
+                    ServerProfile profile = new ServerProfile();
+                    profile.name = orEmpty(rs.getString("name"));
+                    profile.host = host;
+                    profile.port = port;
+                    profile.serverPassword = orEmpty(rs.getString("serverPassword"));
+                    profile.username = username;
+                    profile.accountPassword =
+                            rs.getInt("isSavePassword") == 1
+                                    ? orEmpty(rs.getString("password"))
+                                    : "";
+                    profile.autoConnect = !username.isEmpty() && !profile.accountPassword.isEmpty();
+                    byKey.put(key, profile);
                 }
             }
-            return new ArrayList<>(byAddress.values());
+            return new ArrayList<>(byKey.values());
         } finally {
             for (Path copy : copies) {
                 Files.deleteIfExists(copy);
@@ -163,12 +156,14 @@ public final class VanillaServerImport {
     }
 
     /**
-     * Adds profiles for addresses the config doesn't know yet; existing profiles are never touched.
+     * Adds characters the config doesn't know yet, matched by address + username; existing profiles
+     * are never touched. A candidate without a character only fills a gap — any existing profile
+     * for that address covers it.
      */
     static int merge(LauncherConfig config, List<ServerProfile> imported) {
         int added = 0;
         for (ServerProfile candidate : imported) {
-            if (!hasAddress(config, candidate.host, candidate.port)) {
+            if (!hasProfile(config, candidate)) {
                 config.servers.add(candidate);
                 added++;
                 Log.info("Imported from game: " + candidate);
@@ -177,9 +172,12 @@ public final class VanillaServerImport {
         return added;
     }
 
-    private static boolean hasAddress(LauncherConfig config, String host, int port) {
+    private static boolean hasProfile(LauncherConfig config, ServerProfile candidate) {
         for (ServerProfile profile : config.servers) {
-            if (profile.port == port && profile.host.equalsIgnoreCase(host)) {
+            if (profile.port == candidate.port
+                    && profile.host.equalsIgnoreCase(candidate.host)
+                    && (candidate.username.isEmpty()
+                            || profile.username.equalsIgnoreCase(candidate.username))) {
                 return true;
             }
         }

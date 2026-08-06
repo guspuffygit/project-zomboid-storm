@@ -14,7 +14,12 @@ workshop updates.
 ## What it does
 
 1. **Server list** — add/edit/remove saved servers (`host`, game port, server
-   access password, in-game account credentials).
+   access password, in-game account credentials). On every start the launcher
+   also imports the servers and characters already set up in the game itself
+   (`<Zomboid>/db/ServerListSteam.db`) — one profile per server + character,
+   most recently played character first. Only new (address, character) pairs
+   are added; profiles you have edited or created are never overwritten. The
+   *Import from game* toolbar button runs the same import on demand.
 2. **Workshop query over the game port** — the launcher asks the server for
    its required workshop items directly over the port it is already joining.
    See [Workshop query over UDP](#workshop-query-over-udp). A server with no

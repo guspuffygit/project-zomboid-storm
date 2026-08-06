@@ -93,7 +93,7 @@ class VanillaServerImportTest {
     }
 
     @Test
-    void importsServerWithMostRecentlyUsedAccount() throws Exception {
+    void importsEveryCharacterMostRecentlyUsedFirst() throws Exception {
         Path db = createDatabase("ServerListSteam.db");
         insertServer(db, 1, "After The Fall", "40.160.20.9", 16261, "sekrit");
         insertAccount(db, 1, "OldTimer", "oldpwd", 1, "2026-01-01 10:00:00");
@@ -102,7 +102,7 @@ class VanillaServerImportTest {
 
         List<ServerProfile> profiles = read(db);
 
-        assertEquals(1, profiles.size());
+        assertEquals(3, profiles.size());
         ServerProfile p = profiles.get(0);
         assertEquals("After The Fall", p.name);
         assertEquals("40.160.20.9", p.host);
@@ -111,6 +111,10 @@ class VanillaServerImportTest {
         assertEquals("Fresh", p.username);
         assertEquals("newpwd", p.accountPassword);
         assertTrue(p.autoConnect);
+        assertEquals("MiddleChild", profiles.get(1).username);
+        assertEquals("midpwd", profiles.get(1).accountPassword);
+        assertEquals("OldTimer", profiles.get(2).username);
+        assertEquals("After The Fall", profiles.get(2).name);
     }
 
     @Test
@@ -139,22 +143,27 @@ class VanillaServerImportTest {
     }
 
     @Test
-    void nullLastLogonLosesToAnyTimestamp() throws Exception {
+    void characterWithNullLastLogonSortsLast() throws Exception {
         Path db = createDatabase("ServerListSteam.db");
         insertServer(db, 1, "s", "10.0.0.1", 16261, "");
         insertAccount(db, 1, "NeverLoggedOn", "a", 1, null);
         insertAccount(db, 1, "LoggedOn", "b", 1, "2026-01-01 00:00:00");
 
-        assertEquals("LoggedOn", read(db).get(0).username);
+        List<ServerProfile> profiles = read(db);
+
+        assertEquals(2, profiles.size());
+        assertEquals("LoggedOn", profiles.get(0).username);
+        assertEquals("NeverLoggedOn", profiles.get(1).username);
     }
 
     @Test
-    void mergeSkipsAddressesTheConfigAlreadyHas() {
+    void mergeSkipsCharactersTheConfigAlreadyHas() {
         LauncherConfig config = new LauncherConfig();
         ServerProfile existing = new ServerProfile();
         existing.name = "mine, hand-tuned";
         existing.host = "40.160.20.9";
         existing.port = 16261;
+        existing.username = "Gus";
         existing.extraVmArgs.add("-Dmarker=hand-tuned");
         config.servers.add(existing);
 
@@ -162,18 +171,30 @@ class VanillaServerImportTest {
         duplicate.name = "After The Fall";
         duplicate.host = "40.160.20.9";
         duplicate.port = 16261;
+        duplicate.username = "gus"; // same character, case-insensitive
+        ServerProfile altCharacter = new ServerProfile();
+        altCharacter.name = "After The Fall";
+        altCharacter.host = "40.160.20.9";
+        altCharacter.port = 16261;
+        altCharacter.username = "AltGus";
+        ServerProfile bare = new ServerProfile();
+        bare.name = "After The Fall";
+        bare.host = "40.160.20.9";
+        bare.port = 16261; // no character: any profile for the address covers it
         ServerProfile fresh = new ServerProfile();
         fresh.name = "One Life";
         fresh.host = "209.192.192.36";
         fresh.port = 16261;
 
-        int added = VanillaServerImport.merge(config, List.of(duplicate, fresh));
+        int added =
+                VanillaServerImport.merge(config, List.of(duplicate, altCharacter, bare, fresh));
 
-        assertEquals(1, added);
-        assertEquals(2, config.servers.size());
+        assertEquals(2, added);
+        assertEquals(3, config.servers.size());
         assertEquals("mine, hand-tuned", config.servers.get(0).name);
         assertEquals(List.of("-Dmarker=hand-tuned"), config.servers.get(0).extraVmArgs);
-        assertEquals("One Life", config.servers.get(1).name);
+        assertEquals("AltGus", config.servers.get(1).username);
+        assertEquals("One Life", config.servers.get(2).name);
     }
 
     @Test

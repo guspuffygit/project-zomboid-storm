@@ -139,12 +139,16 @@ public final class LauncherWindow extends JFrame {
             detailLabel.setText("<html><i>Add a server to get started.</i></html>");
             return;
         }
+        String character =
+                p.username.isEmpty() ? "no character" : "character: " + escape(p.username);
         String extras = p.autoConnect ? "auto-connect on" : "auto-connect off";
         detailLabel.setText(
                 "<html><b>"
                         + escape(p.name.isEmpty() ? p.connectAddress() : p.name)
                         + "</b><br>"
                         + escape(p.connectAddress())
+                        + "<br>"
+                        + character
                         + "<br>"
                         + extras
                         + "</html>");
