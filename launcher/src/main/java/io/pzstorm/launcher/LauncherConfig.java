@@ -42,6 +42,22 @@ public final class LauncherConfig {
 
     public List<ServerProfile> servers = new ArrayList<>();
 
+    /**
+     * Item jar a staged copy was started from (never persisted; see {@link LauncherStage}). The
+     * staged jar itself lives outside every workshop item, so own-item identity — which item to
+     * keep updated, which steamapps to search — resolves through this instead.
+     */
+    private Path stagedOrigin;
+
+    public void setStagedOrigin(Path origin) {
+        this.stagedOrigin = origin;
+    }
+
+    /** Identity anchor for own-item resolution: the staging origin when staged, else the jar. */
+    Path effectiveOwnLocation() {
+        return stagedOrigin != null ? stagedOrigin : ownLocation();
+    }
+
     public static LauncherConfig load(Path file) {
         if (!Files.isRegularFile(file)) {
             return new LauncherConfig();
@@ -132,6 +148,12 @@ public final class LauncherConfig {
         if (!gameDir.isEmpty()) {
             return gameDirAt(Paths.get(gameDir));
         }
+        if (stagedOrigin != null) {
+            Path nearOrigin = gameDirNear(stagedOrigin);
+            if (nearOrigin != null) {
+                return nearOrigin;
+            }
+        }
         return detectGameDir();
     }
 
@@ -188,7 +210,7 @@ public final class LauncherConfig {
         if (!bootstrapDir.isEmpty()) {
             return workshopItemIdOf(resolveBootstrapDir(resolvedGameDir));
         }
-        String own = workshopItemIdOf(ownLocation());
+        String own = workshopItemIdOf(effectiveOwnLocation());
         if (own != null) {
             return own;
         }
@@ -203,7 +225,7 @@ public final class LauncherConfig {
     /** Baked ids (prod, stage, dev) with the item this launcher ships inside tried first. */
     List<String> orderedWorkshopIds() {
         List<String> ids = LauncherInfo.workshopIds();
-        String own = workshopItemIdOf(ownLocation());
+        String own = workshopItemIdOf(effectiveOwnLocation());
         if (own != null) {
             ids.remove(own);
             ids.add(0, own);
@@ -238,7 +260,7 @@ public final class LauncherConfig {
      */
     List<Path> steamappsCandidates(Path resolvedGameDir) {
         List<Path> roots = new ArrayList<>();
-        addSteamappsAbove(ownLocation(), roots);
+        addSteamappsAbove(effectiveOwnLocation(), roots);
         addSteamappsAbove(resolvedGameDir, roots);
         return roots;
     }
@@ -325,9 +347,12 @@ public final class LauncherConfig {
 
     static Path detectGameDir() {
         List<Path> candidates = new ArrayList<>();
-        Path jarRelative = gameDirRelativeToOwnJar();
+        Path jarRelative = ownJarLocation();
         if (jarRelative != null) {
-            candidates.add(jarRelative);
+            Path nearJar = gameDirNear(jarRelative);
+            if (nearJar != null) {
+                return nearJar;
+            }
         }
         String rel = "steamapps" + File.separator + "common" + File.separator + "ProjectZomboid";
         for (File root : File.listRoots()) {
@@ -350,11 +375,23 @@ public final class LauncherConfig {
     }
 
     /**
-     * When the launcher jar ships inside the Storm workshop item
-     * (…/steamapps/workshop/content/108600/&lt;id&gt;/mods/storm/launcher/storm-launcher.jar) the
-     * game install sits in the same Steam library.
+     * The game install in the same Steam library as the given path — a jar shipping inside the
+     * Storm workshop item (…/steamapps/workshop/content/108600/&lt;id&gt;/…) sits in the library
+     * that also holds the game. Returns a validated game dir or null.
      */
-    private static Path gameDirRelativeToOwnJar() {
+    static Path gameDirNear(Path start) {
+        for (Path cursor = start.toAbsolutePath().normalize();
+                cursor != null;
+                cursor = cursor.getParent()) {
+            if (cursor.getFileName() != null
+                    && cursor.getFileName().toString().equals("steamapps")) {
+                return gameDirAt(cursor.resolve("common").resolve("ProjectZomboid"));
+            }
+        }
+        return null;
+    }
+
+    private static Path ownJarLocation() {
         try {
             URI jar =
                     LauncherConfig.class
@@ -362,13 +399,7 @@ public final class LauncherConfig {
                             .getCodeSource()
                             .getLocation()
                             .toURI();
-            Path dir = Paths.get(jar).toAbsolutePath().normalize();
-            for (Path cursor = dir; cursor != null; cursor = cursor.getParent()) {
-                if (cursor.getFileName() != null
-                        && cursor.getFileName().toString().equals("steamapps")) {
-                    return cursor.resolve("common").resolve("ProjectZomboid");
-                }
-            }
+            return Paths.get(jar);
         } catch (Exception ignored) {
             // not running from a jar, or an opaque location — detection just moves on
         }

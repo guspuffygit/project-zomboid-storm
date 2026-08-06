@@ -32,6 +32,15 @@ public final class LauncherPaths {
         return launcherDir().resolve("mods").resolve(serverKey);
     }
 
+    /**
+     * Staged launcher copies ({@code stage/<hash>/storm-launcher.jar}) — the launcher runs from
+     * here, never from inside the workshop item, so Steam can always update the item. See {@link
+     * io.pzstorm.launcher.LauncherStage}.
+     */
+    public static Path stageDir() {
+        return launcherDir().resolve("stage");
+    }
+
     public static Path logFile() {
         return launcherDir().resolve("logs").resolve("launcher.log");
     }

@@ -1,6 +1,7 @@
 package io.pzstorm.launcher;
 
 import io.pzstorm.launcher.ui.LauncherWindow;
+import io.pzstorm.launcher.ui.StageSplash;
 import java.nio.file.Path;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -25,12 +26,18 @@ public final class LauncherMain {
             System.arraycopy(args, 1, ids, 0, ids.length);
             System.exit(SteamUpdateChild.run(ids));
         }
+        LauncherStage.Context stage = LauncherStage.parse(args);
         Log.init(LauncherPaths.logFile());
+        LauncherStage.handOffIfInsideWorkshopItem(stage);
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
+        config.setStagedOrigin(stage.stagedFrom);
         clearStaleAutoJoin();
 
-        args = effectiveArgs(args);
+        args = effectiveArgs(stage.args);
         if (args.length > 0) {
+            if (args[0].equals("--join")) {
+                LauncherStage.runStartupUpdate(config, stage);
+            }
             runHeadless(config, args);
             return;
         }
@@ -39,6 +46,14 @@ public final class LauncherMain {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {
             // default L&F is fine
+        }
+        StageSplash splash = stage.staged() ? StageSplash.open() : null;
+        try {
+            LauncherStage.runStartupUpdate(config, stage);
+        } finally {
+            if (splash != null) {
+                splash.close();
+            }
         }
         SwingUtilities.invokeLater(() -> new LauncherWindow(config).setVisible(true));
     }

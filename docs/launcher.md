@@ -115,6 +115,58 @@ Vanilla PZ behavior notes:
   `Subscribed|Installed`. Bonus: Steam then keeps those items updated by
   itself whenever the game isn't running.
 
+## Self-update: the staging loop
+
+The launcher ships *inside* the Storm workshop item
+(`<item>/mods/storm/launcher/`), and Steam fails an entire item update when
+*any* file in the item dir is held open — even a byte-identical one. A JVM
+holds its `-jar` open for the life of the process, so a launcher running in
+place could never update the very item it ships in. Updating is not optional:
+servers reject version-skewed clients.
+
+So the launcher never runs from the item. `LauncherStage` re-enters the item's
+own front door until the item stops changing:
+
+```
+[item jar]    copy self to <home>/Zomboid/storm/launcher/stage/<hash>/,
+              exec the copy, exit            (holds the item; no Steam calls)
+[staged jar]  wait for the parent to die  →  DownloadItem on the own item
+                                             (zero open handles in the item)
+              item's launcher jar == own jar →  settled: run normally
+              differs                        →  exec the item jar again, exit
+```
+
+While a staged launcher checks its item, the UI is a single message —
+*"Checking for updates and restarting..."* — so the window vanishing on a
+restart hop is explained before it happens; the settled launcher then opens
+the normal window (or continues a headless `--join`).
+
+Design points:
+
+- **Each version stages itself.** The restart goes through the *item's* jar
+  rather than copying the new jar from the old process, so old code never
+  needs to know what a newer launcher ships.
+- **The loop condition is a content hash**, not Steam's per-item result —
+  Steam reports "updated" even when nothing changed on disk. Three hops
+  without converging logs a warning and continues on the current version.
+- **Stage dirs are content-addressed** (`stage/<sha256-prefix>/`), so staging
+  is idempotent, racing instances converge on the same copy, and everything
+  but the running copy is swept at the next settle.
+- **Identity survives staging.** The staged copy resolves "which item is
+  mine" (own-item-first update order, steamapps discovery, game-dir
+  detection) through the `--staged-from` origin, not its own location —
+  otherwise a launcher staged from the dev or staging item would quietly
+  pre-update prod.
+- **Repo/dist builds never stage and never restart** — an explicit custom
+  install is not fought; those keep the join-time update flow only.
+- **Failure degrades to today's behavior.** If staging is impossible
+  (antivirus, full disk) the launcher runs in place with a warning and skips
+  self-update; if Steam is unreachable the join proceeds and the server's own
+  version gate has the last word. The game itself still maps
+  `bootstrap/agentlib.dll` while running, so item updates keep requiring the
+  game to be closed — the loop only guarantees the *launcher* is never the
+  thing in the way.
+
 ## Workshop query over UDP
 
 The mod manifest is only reachable where the Storm HTTP port is, and on real
