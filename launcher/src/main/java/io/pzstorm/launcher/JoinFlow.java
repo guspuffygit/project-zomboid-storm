@@ -19,7 +19,9 @@ import java.util.Properties;
  * <ol>
  *   <li>fetch the server's manifest (java mods + required workshop items)
  *   <li>failing that, ask the server for its workshop items over its game UDP port
- *   <li>either way, add every installed workshop item Steam considers stale ({@link
+ *   <li>failing that, read them out of the server's login response ({@link ServerModList}) — the
+ *       only source a stock server offers, and the only one that names items never installed here
+ *   <li>whichever answered, add every installed workshop item Steam considers stale ({@link
  *       WorkshopStaleScan}) — the set the game would otherwise interrupt the join for
  *   <li>have Steam update the workshop items (child process, Steam's own dirs)
  *   <li>mirror the server-published java mods (SHA-256 verified)
@@ -84,12 +86,7 @@ public final class JoinFlow {
             items.add(stormItem);
             Log.info("Storm workshop item " + stormItem + " added to the pre-update.");
         }
-        List<String> serverItems =
-                manifest == null ? Collections.emptyList() : manifest.workshopItems;
-        if (serverItems.isEmpty()) {
-            serverItems = queryWorkshopItems(config, profile);
-        }
-        for (String item : serverItems) {
+        for (String item : serverWorkshopItems(config, profile, manifest)) {
             if (!items.contains(item)) {
                 items.add(item);
             }
@@ -114,9 +111,36 @@ public final class JoinFlow {
     }
 
     /**
-     * Third source: installed items whose published version diverged from the local install —
+     * The server's own requirement list, from the cheapest source that answers. Each fallback costs
+     * more and reaches further:
+     *
+     * <ol>
+     *   <li>{@link ModManifest} over Storm's HTTP port — free, but that port is rarely open to
+     *       players
+     *   <li>{@link ServerQuery} over the game's UDP port — needs Storm on the server
+     *   <li>{@link ServerModList} — a real login, so it works against a stock server, but it needs
+     *       credentials and briefly occupies a slot
+     * </ol>
+     */
+    static List<String> serverWorkshopItems(
+            LauncherConfig config, ServerProfile profile, ModManifest manifest)
+            throws InterruptedException {
+        if (manifest != null && !manifest.workshopItems.isEmpty()) {
+            return manifest.workshopItems;
+        }
+        List<String> queried = queryWorkshopItems(config, profile);
+        if (!queried.isEmpty()) {
+            return queried;
+        }
+        ServerModList.Result probed = ServerModList.run(config, profile);
+        return probed == null ? Collections.emptyList() : probed.workshopItems;
+    }
+
+    /**
+     * Last source: installed items whose published version diverged from the local install —
      * exactly what would otherwise surface as the game's in-game "install workshop updates" dialog
-     * (see {@link WorkshopStaleScan}). Covers servers that expose no mod list at all.
+     * (see {@link WorkshopStaleScan}). Still needed even when a server states its list, because it
+     * also refreshes items the server never mentions.
      */
     static List<String> staleInstalledItems(LauncherConfig config) throws InterruptedException {
         try {

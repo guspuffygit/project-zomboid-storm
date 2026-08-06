@@ -260,6 +260,15 @@ public final class GameLaunch {
         return raw;
     }
 
+    /**
+     * Every child's output is read back as UTF-8. Without this a child on Windows writes its
+     * streams in the console codepage instead, and anything outside ASCII reaches the log mangled.
+     */
+    static void addChildEncodingArgs(List<String> command) {
+        command.add("-Dstdout.encoding=UTF-8");
+        command.add("-Dstderr.encoding=UTF-8");
+    }
+
     static boolean isWindowsJvm(Path jvm) {
         String path = jvm.toString().toLowerCase();
         if (path.endsWith(".exe")) {

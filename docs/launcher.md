@@ -18,7 +18,11 @@ workshop updates.
 2. **Workshop query over the game port** — when the manifest is unavailable or
    lists no items (the usual case: almost nobody exposes the Storm HTTP port to
    players), the launcher asks the server directly over the port it is already
-   joining. See [Workshop query over UDP](#workshop-query-over-udp).
+   joining. See [Workshop query over UDP](#workshop-query-over-udp). A server
+   with no Storm on it at all cannot answer that either, so there is a third
+   source: log in the way the game does and read the list the server sends
+   every joining client. See
+   [Mod list from the login handshake](#mod-list-from-the-login-handshake).
 3. **Steam workshop pre-update** — the server publishes its required workshop
    item ids in the manifest (`workshopItems`, from `server.ini`). Before
    launching, the launcher asks the running Steam client to subscribe + update
@@ -216,6 +220,66 @@ The result feeds the workshop pre-update only. It deliberately does **not**
 become a `ModManifest`: that object also drives java-mod sync, whose deletion
 pass would wipe the local mirror if handed a file list this query cannot
 produce.
+
+## Mod list from the login handshake
+
+Both sources above need Storm on the server. Against a stock server — or one
+whose Storm predates `StormQueryResponder` — neither answers, and
+`WorkshopStaleScan` can only refresh items that are already installed. That
+leaves the case a first-time player actually hits: **items the server requires
+and the player has never had.**
+
+Every PZ server already sends that list to every client that logs in. It is the
+`ConnectionDetails` payload — server name, map, player cap, then the workshop
+ids with their published timestamps, then the mod ids — pushed as a
+`RequestData` transfer right after login. So the launcher's last source is a
+real login: `io.pzstorm.storm.query.ServerModListProbe` (Storm core) in a child
+JVM, driven by `io.pzstorm.launcher.ServerModList`.
+
+- **It is a real client.** Steam mode, PZ's own `UdpEngine`, a real
+  `LoginPacket` with the account password hashed exactly as
+  `ConnectionManager.doServerConnect(doHash=true)` hashes it (MD5-hex, then
+  BCrypt with PZ's fixed salt). Anything less and the server answers
+  `InvalidUsernamePassword`. It disconnects the moment the payload is complete,
+  so it holds a slot for a few seconds, not a session.
+- **It suppresses the client half it does not need.** The probe's `UdpEngine`
+  subclass overrides `connected()`, which in vanilla fires a voice-connect
+  request and the automatic login; `askPing`/`sendQR`/`askCustomizationData`
+  stay false. Login is then sent by hand.
+- **Credentials go over stdin** as `java.util.Properties`
+  (`accountPassword`, `serverPassword`), never as arguments — arguments are
+  visible in every process listing on the machine. The child reads stdin to
+  end-of-stream, so the launcher must close the pipe.
+- **Steam-mode traps, all three found by live failure** (they are cheap to
+  re-break):
+  - The Steam handshake only advances while `SteamUtils.runLoop()` is pumped —
+    vanilla pumps it per frame. Blocking on a latch without pumping looks
+    exactly like a dead server ("RakNet handshake timed out").
+  - `RakNetPeerInterface.connectionStateChangedCallback` fires
+    `LuaEventManager.triggerEvent` when it runs on the thread that called
+    `RakNetPeerInterface.init()` — which NPEs with no Lua environment. The probe
+    calls `init()` on a throwaway thread so the callback always takes its
+    off-main branch, which only logs and still calls `connected()`.
+  - In Steam mode the native callback reaches the engine through
+    `GameClient.instance.udpEngine`, not through whichever engine owns the
+    socket, so the probe assigns itself there.
+- **Chunked payload.** ATF's list arrives as ~2.3 MB in 1024-byte `PartData`
+  frames; the server bursts 200 KB then waits for an ACK. The probe ACKs
+  mid-transfer only — vanilla's `RequestDataManager.ACKWasReceived` walks its
+  request list with an `i <= size` bound and throws server-side if an ACK
+  arrives after the transfer is done.
+- **Failures are all soft**: no username on the profile, no Steam, wrong
+  password (`AccessDenied`/`Kicked` are reported and dropped), no Storm jar to
+  run. Each ends as "no mod list" with the game's own workshop flow still to
+  come. And nothing is trusted without the child's `STORM_MODLIST_OK` marker,
+  so a child that crashes halfway through printing can never read as "this
+  server requires no mods".
+
+Ordering in `JoinFlow.serverWorkshopItems`: manifest → UDP query → login probe,
+each only if the one before produced nothing. The probe is last because it is
+the only one that costs a login. Its ids are unioned with `WorkshopStaleScan`'s,
+which still runs: the server states what it needs, the scan catches everything
+else on disk that Steam has since republished.
 
 ## Player setup
 

@@ -3,81 +3,80 @@ package io.pzstorm.launcher;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Asks a Storm server for its required workshop items over the game's own UDP port, before anything
- * connects. This is the path for servers whose Storm HTTP endpoint is not reachable from the
- * internet — the common case, since that port is meant for operators rather than players.
+ * Reads a server's required workshop items straight out of its login response, before the game
+ * starts. This is the only source that works against a stock server: {@link ServerQuery} needs
+ * Storm on the server, {@link ModSync} needs its HTTP port reachable, and {@link WorkshopStaleScan}
+ * can only refresh items that are already installed.
  *
- * <p>The launcher may not touch Project Zomboid classes, and the query rides Project Zomboid's own
- * RakNet transport, so the actual conversation happens in a CHILD JVM running {@code
- * io.pzstorm.storm.query.StormQueryClient} out of the installed Storm jar, with working directory =
- * the game install (so the game's relative classpath and {@code java.library.path} resolve, and the
- * RakNet natives load). The child prints {@code key=value} lines; this class parses them.
+ * <p>The launcher may not touch Project Zomboid classes, so the conversation happens in a CHILD JVM
+ * running {@code io.pzstorm.storm.query.ServerModListProbe} out of the installed Storm jar, with
+ * working directory = the game install so the RakNet and Steam natives load. Unlike {@link
+ * ServerQuery} this needs Steam mode, because it performs a real login.
  *
- * <p>Every failure is soft. No Storm on the server, an old Storm, a firewall, no Storm jar to run —
- * all end up as an empty result and the game's own in-game workshop flow still runs.
+ * <p>Credentials go to the child over stdin. Passing them as arguments would publish them to every
+ * process listing on the machine.
+ *
+ * <p>Every failure is soft: no credentials, wrong password, no Steam, no Storm jar to run — all end
+ * up as an empty result with the game's own in-game workshop flow still to come.
  */
-public final class ServerQuery {
+public final class ServerModList {
 
-    static final String CHILD_MAIN_CLASS = "io.pzstorm.storm.query.StormQueryClient";
-    static final String OK_MARKER = "STORM_QUERY_OK";
+    static final String CHILD_MAIN_CLASS = "io.pzstorm.storm.query.ServerModListProbe";
+    static final String OK_MARKER = "STORM_MODLIST_OK";
 
-    /** Handshake plus reply, per port the child tries. Well above any plausible round trip. */
-    private static final long QUERY_TIMEOUT_MILLIS = 12_000L;
+    /** RakNet handshake, login, and a multi-megabyte chunked payload over a real internet hop. */
+    private static final long PROBE_TIMEOUT_MILLIS = 30_000L;
 
     /** Ceiling on the whole child process; the child enforces its own, this is the backstop. */
-    private static final long CHILD_TIMEOUT_SECONDS = 60;
+    private static final long CHILD_TIMEOUT_SECONDS = 75;
 
-    private ServerQuery() {}
+    private ServerModList() {}
 
     public static final class Result {
-        public final String stormVersion;
-        public final String gameVersion;
-        public final String serverName;
+        public final String gameMap;
         public final int maxPlayers;
-        public final int players;
         public final List<String> workshopItems;
         public final List<String> mods;
 
-        Result(
-                String stormVersion,
-                String gameVersion,
-                String serverName,
-                int maxPlayers,
-                int players,
-                List<String> workshopItems,
-                List<String> mods) {
-            this.stormVersion = stormVersion;
-            this.gameVersion = gameVersion;
-            this.serverName = serverName;
+        Result(String gameMap, int maxPlayers, List<String> workshopItems, List<String> mods) {
+            this.gameMap = gameMap;
             this.maxPlayers = maxPlayers;
-            this.players = players;
             this.workshopItems = workshopItems;
             this.mods = mods;
         }
     }
 
-    /** Queries the server, or returns null when the query could not be run or was not answered. */
+    /** The server's mod list, or null when the probe could not be run or was refused. */
     public static Result run(LauncherConfig config, ServerProfile profile)
             throws InterruptedException {
-        Path gameDir = config.resolveGameDir();
-        if (gameDir == null) {
-            Log.warn("Game directory not found — skipping the server mod query.");
+        if (profile.noSteam) {
+            return null; // the probe logs in over Steam networking or not at all
+        }
+        if (profile.username.isEmpty()) {
+            Log.info(
+                    "No username configured for "
+                            + profile.connectAddress()
+                            + " — skipping the server mod list probe.");
             return null;
         }
-        Path stormLibDir = stormLibDir(config, gameDir);
+        Path gameDir = config.resolveGameDir();
+        if (gameDir == null) {
+            Log.warn("Game directory not found — skipping the server mod list probe.");
+            return null;
+        }
+        Path stormLibDir = ServerQuery.stormLibDir(config, gameDir);
         if (stormLibDir == null) {
-            Log.warn(
-                    "Storm jar not found next to the bootstrap directory — skipping the server"
-                            + " mod query.");
+            Log.warn("Storm jar not found — skipping the server mod list probe.");
             return null;
         }
         PzGameJson gameJson;
@@ -95,15 +94,16 @@ public final class ServerQuery {
                         stormLibDir,
                         profile.host,
                         profile.port,
-                        profile.serverPassword,
-                        QUERY_TIMEOUT_MILLIS);
+                        profile.username,
+                        PROBE_TIMEOUT_MILLIS);
 
-        Log.info("Asking " + profile.connectAddress() + " for its mod list …");
+        Log.info("Reading the mod list from " + profile.connectAddress() + " …");
         List<String> lines = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(gameDir.toFile());
             Process child = pb.start();
+            writeCredentials(child, profile);
             drainDiagnostics(child);
             try (BufferedReader reader =
                     new BufferedReader(
@@ -116,32 +116,44 @@ public final class ServerQuery {
             }
             if (!child.waitFor(CHILD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 child.destroyForcibly();
-                Log.warn("Server mod query timed out.");
+                Log.warn("Server mod list probe timed out.");
                 return null;
             }
         } catch (IOException e) {
-            Log.warn("Server mod query could not be started: " + e.getMessage());
+            Log.warn("Server mod list probe could not be started: " + e.getMessage());
             return null;
         }
         Result result = parse(lines);
         if (result == null) {
             Log.info(
-                    "No Storm mod list from "
+                    "No mod list from "
                             + profile.connectAddress()
-                            + " (server may not run Storm, or the query port is blocked).");
+                            + " — the game's own workshop flow will handle items.");
             return null;
         }
         Log.info(
-                "Server reports "
+                "Server requires "
                         + result.workshopItems.size()
-                        + " workshop item(s), "
+                        + " workshop item(s) and "
                         + result.mods.size()
-                        + " mod id(s) — Storm "
-                        + result.stormVersion
-                        + ", game "
-                        + result.gameVersion
+                        + " mod(s)"
+                        + (result.gameMap.isEmpty() ? "" : " on map " + result.gameMap)
                         + ".");
         return result;
+    }
+
+    /**
+     * {@link Properties} format so the child gets the password back byte-exact whatever is in it.
+     * The pipe must be closed: the child blocks reading stdin to end-of-stream.
+     */
+    private static void writeCredentials(Process child, ServerProfile profile) throws IOException {
+        Properties credentials = new Properties();
+        credentials.setProperty("accountPassword", profile.accountPassword);
+        credentials.setProperty("serverPassword", profile.serverPassword);
+        try (OutputStream out = child.getOutputStream();
+                Writer writer = new java.io.OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+            credentials.store(writer, null);
+        }
     }
 
     /**
@@ -159,28 +171,25 @@ public final class ServerQuery {
                                                     StandardCharsets.UTF_8))) {
                                 String line;
                                 while ((line = reader.readLine()) != null) {
-                                    Log.info("  [query] " + line);
+                                    Log.info("  [modlist] " + line);
                                 }
                             } catch (IOException ignored) {
                                 // the child is gone; nothing left to report
                             }
                         },
-                        "storm-query-stderr");
+                        "storm-modlist-stderr");
         thread.setDaemon(true);
         thread.start();
     }
 
     /**
-     * Parses the child's stdout. Returns null unless the child announced a successful query, so a
-     * crashed or chatty child can never be mistaken for "this server requires no mods".
+     * Parses the child's stdout. Returns null unless the child announced success, so a crashed or
+     * chatty child can never be mistaken for "this server requires no mods".
      */
     static Result parse(List<String> lines) {
         boolean ok = false;
-        String stormVersion = "";
-        String gameVersion = "";
-        String serverName = "";
+        String gameMap = "";
         int maxPlayers = 0;
-        int players = 0;
         List<String> workshopItems = new ArrayList<>();
         List<String> mods = new ArrayList<>();
 
@@ -196,20 +205,11 @@ public final class ServerQuery {
             String key = line.substring(0, eq);
             String value = line.substring(eq + 1);
             switch (key) {
-                case "stormVersion":
-                    stormVersion = value;
-                    break;
-                case "gameVersion":
-                    gameVersion = value;
-                    break;
-                case "serverName":
-                    serverName = value;
+                case "gameMap":
+                    gameMap = value;
                     break;
                 case "maxPlayers":
                     maxPlayers = parseInt(value);
-                    break;
-                case "players":
-                    players = parseInt(value);
                     break;
                 case "workshop":
                     // A server can name anything it likes; only real ids reach Steam.
@@ -226,11 +226,7 @@ public final class ServerQuery {
                     break;
             }
         }
-        if (!ok) {
-            return null;
-        }
-        return new Result(
-                stormVersion, gameVersion, serverName, maxPlayers, players, workshopItems, mods);
+        return ok ? new Result(gameMap, maxPlayers, workshopItems, mods) : null;
     }
 
     static List<String> buildCommand(
@@ -239,13 +235,13 @@ public final class ServerQuery {
             Path stormLibDir,
             String host,
             int port,
-            String serverPassword,
+            String username,
             long timeoutMillis) {
         boolean windows = GameLaunch.isWindowsJvm(jvm);
         List<String> command = new ArrayList<>();
         command.add(jvm.toString());
-        // The game's own vmArgs carry java.library.path, which is what lets the RakNet natives
-        // load; the child clears zomboid.steam itself so the connect stays a plain UDP one.
+        // The game's own vmArgs carry java.library.path and zomboid.steam, which is what lets the
+        // RakNet and Steam natives load.
         command.addAll(gameJson.effectiveVmArgs(windows ? "Windows" : "", "10.0.99999"));
         GameLaunch.addChildEncodingArgs(command);
         command.add("-cp");
@@ -255,26 +251,9 @@ public final class ServerQuery {
         command.add(CHILD_MAIN_CLASS);
         command.add(host);
         command.add(String.valueOf(port));
-        command.add(serverPassword);
+        command.add(username);
         command.add(String.valueOf(timeoutMillis));
         return command;
-    }
-
-    /** The {@code 42/lib} directory holding {@code storm-<version>.jar} and its deps, or null. */
-    static Path stormLibDir(LauncherConfig config, Path gameDir) {
-        Path bootstrapDir = config.resolveBootstrapDir(gameDir);
-        if (bootstrapDir == null || bootstrapDir.getParent() == null) {
-            return null;
-        }
-        Path libDir = bootstrapDir.getParent().resolve("42").resolve("lib");
-        if (!Files.isDirectory(libDir)) {
-            return null;
-        }
-        try (DirectoryStream<Path> jars = Files.newDirectoryStream(libDir, "storm-*.jar")) {
-            return jars.iterator().hasNext() ? libDir : null;
-        } catch (IOException e) {
-            return null;
-        }
     }
 
     private static int parseInt(String value) {

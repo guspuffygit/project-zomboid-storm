@@ -55,6 +55,7 @@ public final class WorkshopUpdate {
         List<String> command = new ArrayList<>();
         command.add(jvm.toString());
         command.add("--enable-native-access=ALL-UNNAMED");
+        GameLaunch.addChildEncodingArgs(command);
         command.add("-jar");
         command.add(GameLaunch.pathArgFor(jvm, ownJar));
         command.add("--steam-update");
