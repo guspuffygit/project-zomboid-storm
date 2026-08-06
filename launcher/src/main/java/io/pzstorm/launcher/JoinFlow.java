@@ -19,6 +19,8 @@ import java.util.Properties;
  * <ol>
  *   <li>fetch the server's manifest (java mods + required workshop items)
  *   <li>failing that, ask the server for its workshop items over its game UDP port
+ *   <li>either way, add every installed workshop item Steam considers stale ({@link
+ *       WorkshopStaleScan}) — the set the game would otherwise interrupt the join for
  *   <li>have Steam update the workshop items (child process, Steam's own dirs)
  *   <li>mirror the server-published java mods (SHA-256 verified)
  *   <li>write the credential handoff for Storm's client Java (optional)
@@ -92,6 +94,11 @@ public final class JoinFlow {
                 items.add(item);
             }
         }
+        for (String item : staleInstalledItems(config)) {
+            if (!items.contains(item)) {
+                items.add(item);
+            }
+        }
         if (items.isEmpty()) {
             Log.info("Server did not publish workshop items to pre-update.");
             return;
@@ -103,6 +110,31 @@ public final class JoinFlow {
                     "Workshop pre-update failed: "
                             + e.getMessage()
                             + " — the game's own join flow will handle items.");
+        }
+    }
+
+    /**
+     * Third source: installed items whose published version diverged from the local install —
+     * exactly what would otherwise surface as the game's in-game "install workshop updates" dialog
+     * (see {@link WorkshopStaleScan}). Covers servers that expose no mod list at all.
+     */
+    static List<String> staleInstalledItems(LauncherConfig config) throws InterruptedException {
+        try {
+            List<String> stale = WorkshopStaleScan.run(config);
+            if (!stale.isEmpty()) {
+                Log.info(
+                        stale.size()
+                                + " installed workshop item(s) have published updates —"
+                                + " pre-updating: "
+                                + String.join(", ", stale));
+            }
+            return stale;
+        } catch (IOException | RuntimeException e) {
+            Log.warn(
+                    "Could not scan installed workshop items for updates: "
+                            + e.getMessage()
+                            + " — the game may prompt in-game.");
+            return Collections.emptyList();
         }
     }
 

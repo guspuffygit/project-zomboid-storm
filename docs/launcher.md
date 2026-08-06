@@ -38,6 +38,16 @@ workshop updates.
    item as current. Runs in a child JVM with cwd = game dir (where
    `steam_appid.txt` lives); Steam not running degrades gracefully to the
    vanilla in-game flow.
+   When the server's own item list is unreachable (no manifest, no UDP reply),
+   the launcher still pre-updates **every installed workshop item whose
+   published version diverged from the local install** (`WorkshopStaleScan`):
+   local install timestamps come from Steam's
+   `steamapps/workshop/appworkshop_108600.acf`, published timestamps from the
+   anonymous `GetPublishedFileDetails` Web API, and the comparison is the same
+   `!=` the game's `ConnectToServerState.WorkshopConfirm` uses to force its
+   "install workshop updates" dialog — so anything that dialog would catch is
+   already fresh before the game boots. Items the player never installed are
+   the one remaining first-join case the in-game subscribe flow still covers.
    (An explicitly configured bootstrap dir outside any workshop item turns the
    Storm self-update off — a pinned custom install is not fought.)
 4. **Java mod sync** — fetches `GET /storm/client/manifest` and mirrors the
