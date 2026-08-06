@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One saved server. Account username/password are deliberately NOT stored here: the game client
- * cannot accept them on the command line — it reads them from its own saved-servers database and
- * pre-fills the connect dialog. The launcher only carries the server access password ({@code
- * +password}).
+ * One saved server, composed from two stores (see {@link ServerStore}): connection info and
+ * credentials come from the game's own saved-servers database — the single source of truth, shared
+ * with the in-game server browser — and launcher-only extras from launcher.json. Passwords are
+ * never written to launcher.json; {@link #toMap} persists only the extras plus the
+ * host/port/username join key (and the name, as a display fallback for when the database is
+ * unreachable).
  */
 public final class ServerProfile {
 
@@ -17,13 +19,30 @@ public final class ServerProfile {
     public String host = "";
     public int port = 16261;
 
+    /** Server ACCESS password ({@code +password}); lives in the game database only. */
     public String serverPassword = "";
 
     /** In-game account credentials for full auto-join (handed to Storm's client Java). */
     public String username = "";
 
-    /** Only persisted when the user opts in; plain text in launcher.json. */
+    /** Lives in the game database only, and only when the user opted into saving it. */
     public String accountPassword = "";
+
+    /**
+     * Row ids in the game database, filled on read/write so edits update in place; -1 = not yet
+     * known. Never persisted — ids may change under the game's own compaction.
+     */
+    public int dbServerId = -1;
+
+    public int dbAccountId = -1;
+
+    /**
+     * True once this profile has a row in the game database. Persisted: it is how a launcher.json
+     * entry with no matching database row is told apart — {@code true} means the user deleted the
+     * server in-game (drop the entry), {@code false} means it was added while the database was
+     * unreachable (write it there on the next sync).
+     */
+    public boolean inGameDb = false;
 
     /** Fill + submit the vanilla connect popup via Storm's client Java. */
     public boolean autoConnect = false;
@@ -42,12 +61,11 @@ public final class ServerProfile {
         map.put("name", name);
         map.put("host", host);
         map.put("port", (long) port);
-        map.put("serverPassword", serverPassword);
         map.put("username", username);
-        map.put("accountPassword", accountPassword);
         map.put("autoConnect", autoConnect);
         map.put("updateWorkshopMods", updateWorkshopMods);
         map.put("extraVmArgs", new ArrayList<Object>(extraVmArgs));
+        map.put("inGameDb", inGameDb);
         return map;
     }
 
@@ -56,11 +74,14 @@ public final class ServerProfile {
         p.name = str(map.get("name"), "");
         p.host = str(map.get("host"), "");
         p.port = (int) num(map.get("port"), 16261);
+        // password fields are read but never written back: a pre-single-source-of-truth
+        // launcher.json still carries them, and the first sync migrates them into the game database
         p.serverPassword = str(map.get("serverPassword"), "");
         p.username = str(map.get("username"), "");
         p.accountPassword = str(map.get("accountPassword"), "");
         p.autoConnect = bool(map.get("autoConnect"), false);
         p.updateWorkshopMods = bool(map.get("updateWorkshopMods"), true);
+        p.inGameDb = bool(map.get("inGameDb"), false);
         Object args = map.get("extraVmArgs");
         if (args instanceof List) {
             for (Object arg : (List<?>) args) {

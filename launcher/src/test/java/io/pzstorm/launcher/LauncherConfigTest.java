@@ -25,7 +25,10 @@ class LauncherConfigTest {
         profile.host = "play.example.org";
         profile.port = 16261;
         profile.serverPassword = "pw";
+        profile.accountPassword = "secret";
+        profile.username = "Gus";
         profile.autoConnect = true;
+        profile.inGameDb = true;
         profile.extraVmArgs.add("-DstormType=local");
         config.servers.add(profile);
 
@@ -41,10 +44,14 @@ class LauncherConfigTest {
         assertEquals("ATF", p.name);
         assertEquals("play.example.org", p.host);
         assertEquals(16261, p.port);
-        assertEquals("pw", p.serverPassword);
+        assertEquals("Gus", p.username);
         assertTrue(p.autoConnect);
         assertTrue(p.updateWorkshopMods);
+        assertTrue(p.inGameDb);
         assertEquals(java.util.List.of("-DstormType=local"), p.extraVmArgs);
+        // passwords live in the game's saved-server database, never in launcher.json
+        assertEquals("", p.serverPassword);
+        assertEquals("", p.accountPassword);
     }
 
     @Test

@@ -14,12 +14,20 @@ workshop updates.
 ## What it does
 
 1. **Server list** — add/edit/remove saved servers (`host`, game port, server
-   access password, in-game account credentials). On every start the launcher
-   also imports the servers and characters already set up in the game itself
-   (`<Zomboid>/db/ServerListSteam.db`) — one profile per server + character,
-   most recently played character first. Only new (address, character) pairs
-   are added; profiles you have edited or created are never overwritten. The
-   *Import from game* toolbar button runs the same import on demand.
+   access password, in-game account credentials). Connection info and
+   credentials live in the game's own saved-server database
+   (`<Zomboid>/db/ServerListSteam.db`, the same SQLite file
+   `zombie.savefile.AccountDBHelper` maintains) — the launcher reads it on
+   every start and writes edits straight back, so the in-game server browser
+   and the launcher always show the same servers, characters, and passwords.
+   One profile per server + character, most recently played character first.
+   Launcher-only extras (auto-connect, workshop pre-update, extra JVM args)
+   stay in `launcher.json`, joined by `host:port:username`; a pre-existing
+   `launcher.json` entry carrying credentials is migrated into the game
+   database on first start and the json copy of the passwords is dropped. The
+   *Refresh from game* toolbar button re-reads the database on demand (e.g.
+   after adding a server in-game while the launcher is open). Removing a
+   server in the launcher removes it from the game's list too.
 2. **Workshop query over the game port** — the launcher asks the server for
    its required workshop items directly over the port it is already joining.
    See [Workshop query over UDP](#workshop-query-over-udp). A server with no
@@ -111,10 +119,11 @@ Vanilla PZ behavior notes:
   Java instead, which drives the same popup with the credentials filled in.
   Without auto-join, the first join of a new server needs one manual CONNECT
   click in-game.
-- The account password is saved in `launcher.json` **in plain text and only
-  when "Save account password" is ticked** (the game's own ServerList DB
-  stores an unsalted MD5-based hash — not meaningfully safer). Leave it
-  unticked to keep auto-fill of everything except the password.
+- The account password is saved **in the game's own saved-server database and
+  only when "Save account password" is ticked** — the same `isSavePassword`
+  opt-in the in-game connect popup uses, so both UIs always agree. Unticking
+  it clears only the opt-in flag; a password the game stored for its own use
+  is left alone. `launcher.json` never contains passwords.
 - Steam mode comes from the game's own vmArgs (`-Dzomboid.steam=1`); the
   launcher is Steam-only — non-Steam servers are not supported.
 - Workshop pre-update **subscribes** the player's Steam account to the

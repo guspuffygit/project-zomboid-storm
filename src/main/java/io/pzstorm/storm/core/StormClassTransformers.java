@@ -203,6 +203,7 @@ import io.pzstorm.storm.patch.performance.ZombiePopManRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.ZombieVehicleOcclusionPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
+import io.pzstorm.storm.patch.rendering.EpilepsyWarningSkipPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.UIWorldMapPatch;
@@ -239,6 +240,7 @@ public class StormClassTransformers {
     static {
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
+        registerTransformer(new EpilepsyWarningSkipPatch());
         registerTransformer(new LuaEventManagerPatch());
         registerTransformer(new LuaManagerPatch());
         registerTransformer(new LuaExposerDumpPatch());

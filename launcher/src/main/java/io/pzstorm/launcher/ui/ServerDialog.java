@@ -28,7 +28,7 @@ public final class ServerDialog extends JDialog {
     private final JTextField username = new JTextField(24);
     private final JPasswordField accountPassword = new JPasswordField(24);
     private final JCheckBox savePassword =
-            new JCheckBox("Save account password (plain text in launcher.json)");
+            new JCheckBox("Save account password (in the game's saved-server list)");
     private final JCheckBox autoConnect =
             new JCheckBox("Auto-connect in-game (requires Storm mod enabled on this client)");
     private final JCheckBox updateWorkshopMods =

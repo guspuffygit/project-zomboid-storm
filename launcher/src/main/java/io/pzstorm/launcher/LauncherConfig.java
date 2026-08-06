@@ -87,8 +87,9 @@ public final class LauncherConfig {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put(
                 "_note",
-                "Storm Launcher config. serverPassword is the server ACCESS password"
-                        + " (stored in plain text); account credentials never live here.");
+                "Storm Launcher config. Servers and all passwords live in the game's own"
+                        + " saved-server database (Zomboid/db/ServerListSteam.db); entries here"
+                        + " only carry launcher extras, joined by host:port:username.");
         map.put("gameDir", gameDir);
         map.put("jvmPath", jvmPath);
         map.put("bootstrapDir", bootstrapDir);

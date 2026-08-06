@@ -31,7 +31,7 @@ public final class LauncherMain {
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
         config.setStagedOrigin(stage.stagedFrom);
         clearStaleAutoJoin();
-        importVanillaServers(config);
+        syncServersWithGameDb(config);
 
         args = effectiveArgs(stage.args);
         if (args.length > 0) {
@@ -129,17 +129,20 @@ public final class LauncherMain {
     }
 
     /**
-     * Every start pulls in whatever servers and characters were set up in the game itself since
-     * last time. Only new (address, character) pairs are added — profiles already in the config
-     * stay exactly as the user left them.
+     * Every start rebuilds the server list from the game's own saved-server database (the source of
+     * truth for connection info and credentials — see {@link ServerStore}), joined with the
+     * launcher-only extras kept in launcher.json. The json is rewritten only when reconciliation
+     * actually changed it (first-run credential migration, servers added or removed in-game).
      */
-    private static void importVanillaServers(LauncherConfig config) {
+    private static void syncServersWithGameDb(LauncherConfig config) {
         try {
-            if (VanillaServerImport.importInto(config) > 0) {
+            String before = Json.write(config.toMap());
+            ServerStore.load(config);
+            if (!Json.write(config.toMap()).equals(before)) {
                 config.save(LauncherPaths.configFile());
             }
         } catch (Exception e) {
-            Log.warn("Could not import the game's saved servers: " + e.getMessage());
+            Log.warn("Could not sync with the game's saved servers: " + e.getMessage());
         }
     }
 

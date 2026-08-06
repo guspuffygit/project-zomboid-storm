@@ -7,7 +7,7 @@ import io.pzstorm.launcher.LauncherInfo;
 import io.pzstorm.launcher.LauncherPaths;
 import io.pzstorm.launcher.Log;
 import io.pzstorm.launcher.ServerProfile;
-import io.pzstorm.launcher.VanillaServerImport;
+import io.pzstorm.launcher.ServerStore;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -78,7 +78,7 @@ public final class LauncherWindow extends JFrame {
         toolbar.add(button("Add", this::onAdd));
         toolbar.add(button("Edit", this::onEdit));
         toolbar.add(button("Remove", this::onRemove));
-        toolbar.add(button("Import from game", this::onImportFromGame));
+        toolbar.add(button("Refresh from game", this::onRefreshFromGame));
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(button("Settings", this::onSettings));
 
@@ -161,6 +161,7 @@ public final class LauncherWindow extends JFrame {
     private void onAdd() {
         ServerProfile profile = new ServerProfile();
         if (ServerDialog.edit(this, profile)) {
+            ServerStore.save(config, profile);
             config.servers.add(profile);
             model.addElement(profile);
             serverList.setSelectedValue(profile, true);
@@ -171,6 +172,7 @@ public final class LauncherWindow extends JFrame {
     private void onEdit() {
         ServerProfile profile = serverList.getSelectedValue();
         if (profile != null && ServerDialog.edit(this, profile)) {
+            ServerStore.save(config, profile);
             serverList.repaint();
             refreshDetail();
             saveConfig();
@@ -184,29 +186,26 @@ public final class LauncherWindow extends JFrame {
         }
         if (JOptionPane.showConfirmDialog(
                         this,
-                        "Remove '" + profile + "'?",
+                        "Remove '"
+                                + profile
+                                + "' from the launcher and the game's saved-server list?",
                         "Remove server",
                         JOptionPane.OK_CANCEL_OPTION)
                 == JOptionPane.OK_OPTION) {
-            config.servers.remove(profile);
+            ServerStore.remove(config, profile);
             model.removeElement(profile);
             saveConfig();
         }
     }
 
-    private void onImportFromGame() {
-        int added = VanillaServerImport.importInto(config);
-        if (added == 0) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "No new servers found in the game's saved-server list.",
-                    "Import from game",
-                    JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
+    /** Re-reads the game's saved-server database, e.g. after adding a server in-game. */
+    private void onRefreshFromGame() {
+        ServerStore.load(config);
         model.clear();
         config.servers.forEach(model::addElement);
-        serverList.setSelectedIndex(model.size() - added);
+        if (!model.isEmpty()) {
+            serverList.setSelectedIndex(0);
+        }
         saveConfig();
     }
 
