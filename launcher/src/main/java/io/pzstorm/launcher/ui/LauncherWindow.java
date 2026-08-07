@@ -39,6 +39,7 @@ public final class LauncherWindow extends JFrame {
     private final DefaultListModel<ServerProfile> model = new DefaultListModel<>();
     private final JList<ServerProfile> serverList = new JList<>(model);
     private final JTextArea logArea = new JTextArea(10, 80);
+    private final JButton joinForceButton = new JButton("Join Server Force Mod Updates");
     private final JButton joinButton = new JButton("Join Server");
     private final JButton launchOnlyButton = new JButton("Launch to Main Menu");
     private final JLabel detailLabel = new JLabel(" ");
@@ -92,23 +93,36 @@ public final class LauncherWindow extends JFrame {
                     @Override
                     public void mouseClicked(MouseEvent e) {
                         if (e.getClickCount() == 2) {
-                            onJoin();
+                            onJoin(true);
                         }
                     }
                 });
 
-        joinButton.setFont(joinButton.getFont().deriveFont(Font.BOLD, 16f));
-        joinButton.addActionListener(e -> onJoin());
+        joinForceButton.setFont(joinForceButton.getFont().deriveFont(Font.BOLD, 16f));
+        joinForceButton.setToolTipText(
+                "<html>Asks Steam to check and update <b>every</b> server mod before launching."
+                        + "<br>Slower, but the most thorough — use this if Join Server still hits"
+                        + "<br>the in-game mod update screen.</html>");
+        joinForceButton.addActionListener(e -> onJoin(true));
+        joinButton.setFont(joinButton.getFont().deriveFont(Font.PLAIN, 16f));
+        joinButton.setToolTipText(
+                "<html>Compares all mods against the Steam Workshop in a single request and only"
+                        + "<br>updates the ones that actually changed — much faster when"
+                        + "<br>everything is already up to date.</html>");
+        joinButton.addActionListener(e -> onJoin(false));
         launchOnlyButton.addActionListener(e -> onLaunchOnly());
 
         JPanel right = new JPanel();
         right.setLayout(new javax.swing.BoxLayout(right, javax.swing.BoxLayout.Y_AXIS));
         right.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         detailLabel.setAlignmentX(LEFT_ALIGNMENT);
+        joinForceButton.setAlignmentX(LEFT_ALIGNMENT);
         joinButton.setAlignmentX(LEFT_ALIGNMENT);
         launchOnlyButton.setAlignmentX(LEFT_ALIGNMENT);
         right.add(detailLabel);
         right.add(Box.createVerticalStrut(16));
+        right.add(joinForceButton);
+        right.add(Box.createVerticalStrut(8));
         right.add(joinButton);
         right.add(Box.createVerticalStrut(8));
         right.add(launchOnlyButton);
@@ -137,6 +151,7 @@ public final class LauncherWindow extends JFrame {
 
     private void refreshDetail() {
         ServerProfile p = serverList.getSelectedValue();
+        joinForceButton.setEnabled(p != null);
         joinButton.setEnabled(p != null);
         if (p == null) {
             detailLabel.setText("<html><i>Add a server to get started.</i></html>");
@@ -269,12 +284,12 @@ public final class LauncherWindow extends JFrame {
         }
     }
 
-    private void onJoin() {
+    private void onJoin(boolean forceModUpdates) {
         ServerProfile profile = serverList.getSelectedValue();
         if (profile == null) {
             return;
         }
-        runLaunch(() -> JoinFlow.join(config, profile));
+        runLaunch(() -> JoinFlow.join(config, profile, forceModUpdates));
     }
 
     private void onLaunchOnly() {
@@ -323,7 +338,9 @@ public final class LauncherWindow extends JFrame {
     }
 
     private void setBusy(boolean busy) {
-        joinButton.setEnabled(!busy && serverList.getSelectedValue() != null);
+        boolean joinable = !busy && serverList.getSelectedValue() != null;
+        joinForceButton.setEnabled(joinable);
+        joinButton.setEnabled(joinable);
         launchOnlyButton.setEnabled(!busy);
         serverList.setEnabled(!busy);
     }

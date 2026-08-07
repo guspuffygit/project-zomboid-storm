@@ -36,6 +36,22 @@ public final class WorkshopUpdate {
 
     public static Result run(LauncherConfig config, List<String> workshopItemIds)
             throws IOException, InterruptedException {
+        return run(config, workshopItemIds, List.of());
+    }
+
+    /**
+     * {@code updateItemIds} get the full per-item DownloadItem confirm; {@code verifyItemIds} were
+     * already proven current against the published workshop metadata (see {@link
+     * WorkshopStaleScan.Scan#isCurrent}) and only get an instant local state check — the child
+     * escalates any of them that turn out not join-ready.
+     */
+    public static Result run(
+            LauncherConfig config, List<String> updateItemIds, List<String> verifyItemIds)
+            throws IOException, InterruptedException {
+        List<String> workshopItemIds = new ArrayList<>(updateItemIds);
+        for (String id : verifyItemIds) {
+            workshopItemIds.add(SteamUpdateChild.VERIFY_PREFIX + id);
+        }
         if (workshopItemIds.isEmpty()) {
             return new Result(true, 0);
         }
@@ -67,7 +83,14 @@ public final class WorkshopUpdate {
         pb.environment().put("SteamGameId", "108600");
         pb.redirectErrorStream(true);
 
-        Log.info("Updating " + workshopItemIds.size() + " workshop item(s) via Steam …");
+        Log.info(
+                "Updating "
+                        + updateItemIds.size()
+                        + " workshop item(s) via Steam"
+                        + (verifyItemIds.isEmpty()
+                                ? ""
+                                : " (+" + verifyItemIds.size() + " quick state check(s))")
+                        + " …");
         Process child = pb.start();
         int failures = 0;
         try (BufferedReader reader =

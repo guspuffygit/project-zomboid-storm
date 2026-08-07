@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -46,18 +47,59 @@ public final class WorkshopStaleScan {
 
     private WorkshopStaleScan() {}
 
-    /** Stale installed item ids, sorted. Empty when no acf exists or everything matches. */
-    public static List<String> run(LauncherConfig config) throws IOException, InterruptedException {
+    /**
+     * Both sides of the freshness comparison, for the installed superset plus any extra candidate
+     * ids — still a single Web API request. Beyond the stale-installed list, this lets the join
+     * flow prove specific items current and skip their per-item Steam confirm round-trip.
+     */
+    public static final class Scan {
+        private final Map<String, Long> installed;
+        private final Map<String, Long> published;
+
+        Scan(Map<String, Long> installed, Map<String, Long> published) {
+            this.installed = installed;
+            this.published = published;
+        }
+
+        /** Stale installed item ids, sorted. Empty when no acf exists or everything matches. */
+        public List<String> staleInstalled() {
+            return staleItems(installed, published);
+        }
+
+        /**
+         * Provably current: installed locally with the published timestamp equal to the install
+         * timestamp — the exact comparison the game's join gate makes. An installed item with no
+         * published details (hidden or deleted) also counts: the game skips those too. Anything not
+         * installed here is never current.
+         */
+        public boolean isCurrent(String itemId) {
+            Long local = installed.get(itemId);
+            if (local == null) {
+                return false;
+            }
+            Long publishedTime = published.get(itemId);
+            return publishedTime == null || publishedTime.equals(local);
+        }
+    }
+
+    /**
+     * One acf read plus one batched Web API request covering every installed item and every
+     * candidate id. Without an acf nothing can be proven current, so the fetch is skipped and the
+     * scan reports everything as needing the full update path.
+     */
+    public static Scan run(LauncherConfig config, Collection<String> candidateIds)
+            throws IOException, InterruptedException {
         Path acf = findAppWorkshopAcf(config);
-        if (acf == null) {
-            return Collections.emptyList();
-        }
         Map<String, Long> installed =
-                parseInstalledTimestamps(Files.readString(acf, StandardCharsets.UTF_8));
+                acf == null
+                        ? Collections.emptyMap()
+                        : parseInstalledTimestamps(Files.readString(acf, StandardCharsets.UTF_8));
         if (installed.isEmpty()) {
-            return Collections.emptyList();
+            return new Scan(Collections.emptyMap(), Collections.emptyMap());
         }
-        return staleItems(installed, fetchPublishedTimestamps(installed.keySet()));
+        Collection<String> query = new LinkedHashSet<>(installed.keySet());
+        query.addAll(candidateIds);
+        return new Scan(installed, fetchPublishedTimestamps(query));
     }
 
     static Path findAppWorkshopAcf(LauncherConfig config) {

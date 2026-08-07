@@ -41,8 +41,19 @@ public final class JoinFlow {
     /** Runs the full pre-launch pipeline and starts the game. */
     public static Process join(LauncherConfig config, ServerProfile profile)
             throws IOException, InterruptedException {
+        return join(config, profile, true);
+    }
+
+    /**
+     * Runs the full pre-launch pipeline and starts the game. With {@code forceModUpdates} every
+     * item goes through Steam's per-item DownloadItem confirm; without it, items the batched
+     * workshop scan proves current only get an instant local state check.
+     */
+    public static Process join(
+            LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
+            throws IOException, InterruptedException {
         GameProcessTracker.reapLeftover();
-        updateWorkshopItems(config, profile);
+        updateWorkshopItems(config, profile, forceModUpdates);
         boolean handoffActive = prepareAutoJoin(config, profile);
         return launch(config, profile, handoffActive);
     }
@@ -52,7 +63,8 @@ public final class JoinFlow {
      * item is always first in the list — clients get (and keep) Storm from the workshop by default,
      * even when the server publishes no items of its own.
      */
-    public static void updateWorkshopItems(LauncherConfig config, ServerProfile profile)
+    public static void updateWorkshopItems(
+            LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
             throws InterruptedException {
         if (!profile.updateWorkshopMods) {
             return;
@@ -68,17 +80,43 @@ public final class JoinFlow {
                 items.add(item);
             }
         }
-        for (String item : staleInstalledItems(config)) {
-            if (!items.contains(item)) {
-                items.add(item);
+        WorkshopStaleScan.Scan scan = scanInstalledItems(config, items);
+        if (scan != null) {
+            List<String> stale = scan.staleInstalled();
+            if (!stale.isEmpty()) {
+                Log.info(
+                        stale.size()
+                                + " installed workshop item(s) have published updates —"
+                                + " pre-updating: "
+                                + String.join(", ", stale));
+            }
+            for (String item : stale) {
+                if (!items.contains(item)) {
+                    items.add(item);
+                }
             }
         }
         if (items.isEmpty()) {
             Log.info("Server did not publish workshop items to pre-update.");
             return;
         }
+        List<String> update = new ArrayList<>();
+        List<String> verify = new ArrayList<>();
+        for (String item : items) {
+            if (!forceModUpdates && scan != null && scan.isCurrent(item)) {
+                verify.add(item);
+            } else {
+                update.add(item);
+            }
+        }
+        if (!verify.isEmpty()) {
+            Log.info(
+                    verify.size()
+                            + " item(s) already match the published workshop version —"
+                            + " quick state check only.");
+        }
         try {
-            WorkshopUpdate.run(config, items);
+            WorkshopUpdate.run(config, update, verify);
         } catch (IOException e) {
             Log.warn(
                     "Workshop pre-update failed: "
@@ -112,28 +150,22 @@ public final class JoinFlow {
     }
 
     /**
-     * Last source: installed items whose published version diverged from the local install —
-     * exactly what would otherwise surface as the game's in-game "install workshop updates" dialog
-     * (see {@link WorkshopStaleScan}). Still needed even when a server states its list, because it
-     * also refreshes items the server never mentions.
+     * One batched scan serving two purposes: it names installed items whose published version
+     * diverged from the local install — exactly what would otherwise surface as the game's in-game
+     * "install workshop updates" dialog (see {@link WorkshopStaleScan}) — and it proves the rest
+     * current so the non-forced join can skip their per-item Steam confirm. Null when the scan
+     * failed; the caller then sends everything through the full update path.
      */
-    static List<String> staleInstalledItems(LauncherConfig config) throws InterruptedException {
+    static WorkshopStaleScan.Scan scanInstalledItems(
+            LauncherConfig config, List<String> candidateItems) throws InterruptedException {
         try {
-            List<String> stale = WorkshopStaleScan.run(config);
-            if (!stale.isEmpty()) {
-                Log.info(
-                        stale.size()
-                                + " installed workshop item(s) have published updates —"
-                                + " pre-updating: "
-                                + String.join(", ", stale));
-            }
-            return stale;
+            return WorkshopStaleScan.run(config, candidateItems);
         } catch (IOException | RuntimeException e) {
             Log.warn(
                     "Could not scan installed workshop items for updates: "
                             + e.getMessage()
-                            + " — the game may prompt in-game.");
-            return Collections.emptyList();
+                            + " — updating every item via Steam.");
+            return null;
         }
     }
 

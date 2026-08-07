@@ -391,6 +391,24 @@ public final class SteamUgc implements AutoCloseable {
         }
     }
 
+    /**
+     * Fast path for an item the caller already proved current against the published workshop
+     * metadata (acf install timestamp equals published {@code time_updated} — the game's own join
+     * gate comparison). Only the LOCAL user state still needs confirming: the subscribed/installed
+     * bits are user state, not the cached published metadata that makes {@link #updateItem}
+     * distrust GetItemState, so join-ready here is instant and authoritative. Anything else
+     * escalates to the full update path — never a worse outcome, just slower.
+     */
+    public boolean verifyItem(long itemId, Consumer<String> progress) throws InterruptedException {
+        int state = itemState(itemId);
+        if (isJoinReady(state)) {
+            progress.accept("item " + itemId + " up to date");
+            return true;
+        }
+        progress.accept("item " + itemId + " not join-ready (state=" + state + ") — updating …");
+        return updateItem(itemId, progress);
+    }
+
     private boolean reportFinalState(long itemId, boolean sawDownload, Consumer<String> progress) {
         int state = itemState(itemId);
         boolean ok = isJoinReady(state);

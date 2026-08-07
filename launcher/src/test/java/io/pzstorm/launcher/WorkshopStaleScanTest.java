@@ -1,6 +1,7 @@
 package io.pzstorm.launcher;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -78,6 +79,18 @@ class WorkshopStaleScanTest {
     void publishedTimestampsTolerateUnexpectedShape() {
         assertTrue(WorkshopStaleScan.parsePublishedTimestamps("{\"response\":{}}").isEmpty());
         assertTrue(WorkshopStaleScan.parsePublishedTimestamps("{}").isEmpty());
+    }
+
+    @Test
+    void scanProvesCurrentOnlyForInstalledMatchingItems() {
+        Map<String, Long> installed = Map.of("100", 50L, "200", 50L, "400", 50L);
+        Map<String, Long> published = Map.of("100", 50L, "200", 60L, "999", 1L);
+        WorkshopStaleScan.Scan scan = new WorkshopStaleScan.Scan(installed, published);
+        assertTrue(scan.isCurrent("100"), "installed with matching published timestamp");
+        assertFalse(scan.isCurrent("200"), "installed but published diverged");
+        assertTrue(scan.isCurrent("400"), "hidden/deleted upstream — the game skips these too");
+        assertFalse(scan.isCurrent("999"), "never installed locally");
+        assertEquals(List.of("200"), scan.staleInstalled());
     }
 
     @Test

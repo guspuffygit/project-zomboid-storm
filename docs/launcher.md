@@ -50,13 +50,22 @@ workshop updates.
    brought to the exact state the game's join gate demands
    (`Subscribed|Installed`, no update pending), so the in-game "workshop
    items" download screen never appears and joins don't wedge on locked
-   files. Every item gets a real `DownloadItem` call and the launcher waits
-   for Steam's per-item download result callback — Steam's cached item state
-   is stale from the moment a new version is published until Steam happens to
-   re-poll, so trusting `GetItemState` alone would happily report an outdated
-   item as current. Runs in a child JVM with cwd = game dir (where
-   `steam_appid.txt` lives); Steam not running degrades gracefully to the
-   vanilla in-game flow.
+   files. The UI offers two join modes. **Join Server Force Mod Updates**
+   (the default — double-clicking a server uses it, as does headless
+   `--join`): every item gets a real `DownloadItem` call and the launcher
+   waits for Steam's per-item download result callback — Steam's cached item
+   state is stale from the moment a new version is published until Steam
+   happens to re-poll, so trusting `GetItemState` alone would happily report
+   an outdated item as current. **Join Server** (fast path): one batched
+   `GetPublishedFileDetails` request covers every installed and required item;
+   items whose published `time_updated` equals the acf install timestamp — the
+   game's own join-gate comparison — are proven current and only get an
+   instant local `GetItemState` check (the subscribed/installed bits are user
+   state, not the stale cached metadata), escalating back to the full
+   `DownloadItem` confirm if anything is off. Only changed or never-installed
+   items pay the per-item Steam round-trip. Either mode runs in a child JVM
+   with cwd = game dir (where `steam_appid.txt` lives); Steam not running
+   degrades gracefully to the vanilla in-game flow.
    When the server's own item list is unreachable (no UDP reply, no login
    probe),
    the launcher still pre-updates **every installed workshop item whose
