@@ -41,6 +41,7 @@ public final class JoinFlow {
     /** Runs the full pre-launch pipeline and starts the game. */
     public static Process join(LauncherConfig config, ServerProfile profile)
             throws IOException, InterruptedException {
+        GameProcessTracker.reapLeftover();
         updateWorkshopItems(config, profile);
         boolean handoffActive = prepareAutoJoin(config, profile);
         return launch(config, profile, handoffActive);
@@ -282,6 +283,7 @@ public final class JoinFlow {
         Log.info("Game JVM args: " + GameLaunch.describeJvmArgs(plan));
         try {
             Process process = plan.start(LauncherPaths.gameLogFile());
+            GameProcessTracker.record(process);
             Log.info(
                     "Game started (pid "
                             + process.pid()

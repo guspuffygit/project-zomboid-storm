@@ -1,6 +1,7 @@
 package io.pzstorm.launcher.ui;
 
 import io.pzstorm.launcher.GameLaunch;
+import io.pzstorm.launcher.GameProcessTracker;
 import io.pzstorm.launcher.JoinFlow;
 import io.pzstorm.launcher.LauncherConfig;
 import io.pzstorm.launcher.LauncherInfo;
@@ -279,11 +280,12 @@ public final class LauncherWindow extends JFrame {
     private void onLaunchOnly() {
         runLaunch(
                 () -> {
+                    GameProcessTracker.reapLeftover();
                     GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null);
                     plan.warnings.forEach(Log::warn);
                     Log.info("Launching: " + GameLaunch.describe(plan));
                     Log.info("Game JVM args: " + GameLaunch.describeJvmArgs(plan));
-                    plan.start(LauncherPaths.gameLogFile());
+                    GameProcessTracker.record(plan.start(LauncherPaths.gameLogFile()));
                 });
     }
 

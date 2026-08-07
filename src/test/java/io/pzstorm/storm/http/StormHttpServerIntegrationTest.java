@@ -38,6 +38,18 @@ class StormHttpServerIntegrationTest implements IntegrationTest {
     }
 
     @Test
+    void dispatcherThreadIsDaemon() {
+        // A non-daemon dispatcher keeps a closed game client's JVM alive forever: PZ's quit
+        // path never calls System.exit, so the zombie sits invisibly on workshop file locks.
+        Thread dispatcher =
+                Thread.getAllStackTraces().keySet().stream()
+                        .filter(t -> t.getName().equals("HTTP-Dispatcher"))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("HTTP-Dispatcher thread not found"));
+        Assertions.assertTrue(dispatcher.isDaemon(), "HTTP dispatcher must not pin the JVM");
+    }
+
+    @Test
     void healthEndpointReturnsOk() throws Exception {
         HttpResponse<String> response = get("/health");
 

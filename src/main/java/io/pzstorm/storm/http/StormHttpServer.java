@@ -32,12 +32,31 @@ public class StormHttpServer {
         try {
             HttpServer created = HttpServer.create(new InetSocketAddress(port), 0);
             created.createContext("/", HttpEndpointDispatcher::dispatch);
-            created.start();
+            startWithDaemonDispatcher(created);
             server = created;
             boundPort = created.getAddress().getPort();
             LOGGER.info("Storm HTTP server started on port {}", boundPort);
         } catch (IOException e) {
             LOGGER.error("Failed to start Storm HTTP server on port {}", port, e);
+        }
+    }
+
+    /**
+     * The JDK's HTTP-Dispatcher thread inherits daemon status from the thread that calls {@link
+     * HttpServer#start()} and must end up a daemon here: PZ's client quit path returns from the
+     * game thread without {@code System.exit} (GameWindow.exit → onGameThreadExited), so a
+     * non-daemon dispatcher keeps the dead game's JVM alive indefinitely — invisibly holding
+     * workshop-item file locks that fail every Steam update of the Storm item — and the shutdown
+     * hook that stops this server only runs once the JVM is already exiting.
+     */
+    private static void startWithDaemonDispatcher(HttpServer created) {
+        Thread starter = new Thread(created::start, "storm-http-start");
+        starter.setDaemon(true);
+        starter.start();
+        try {
+            starter.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
