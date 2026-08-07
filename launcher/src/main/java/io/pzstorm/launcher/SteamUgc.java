@@ -181,7 +181,9 @@ public final class SteamUgc implements AutoCloseable {
                         && dispatchGetNext != null
                         && dispatchFreeLast != null;
         if (manualDispatch) {
-            // must run BEFORE SteamAPI_Init to reroute callbacks to the manual queue
+            // current SDKs require this BEFORE SteamAPI_Init to reroute callbacks to the manual
+            // queue; the PZ mac depot's older steam_api rejects the pre-init call ("must init
+            // library first"), so it is repeated after init below
             dispatchInit.invoke();
         }
 
@@ -207,6 +209,11 @@ public final class SteamUgc implements AutoCloseable {
             if (!(boolean) initSafe.invoke()) {
                 throw new SteamException("SteamAPI_Init failed — is Steam running?");
             }
+        }
+        if (manualDispatch) {
+            // second call for the older mac steam_api, which only accepts it after init; on
+            // current SDKs the dispatch flag is already set and this is a no-op
+            dispatchInit.invoke();
         }
         this.ugc = (MemorySegment) ugcAccessor.invoke();
         if (ugc.equals(MemorySegment.NULL)) {
