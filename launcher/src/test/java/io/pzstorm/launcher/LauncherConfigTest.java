@@ -144,6 +144,37 @@ class LauncherConfigTest {
     }
 
     @Test
+    void macAppBundleLayoutIsDetected() throws IOException {
+        // the mac depot nests the game payload in the app bundle and ships no ProjectZomboid64.json
+        Path depot = tmp.resolve(Path.of("Steam", "steamapps", "common", "ProjectZomboid"));
+        Path javaDir = depot.resolve(Path.of("Project Zomboid.app", "Contents", "Java"));
+        Files.createDirectories(javaDir);
+        Files.write(javaDir.resolve("projectzomboid.jar"), new byte[] {1});
+
+        LauncherConfig config = new LauncherConfig();
+        config.gameDir = depot.toString();
+        assertEquals(javaDir, config.resolveGameDir());
+
+        // the steamapps walk-up still finds the workshop item from inside the app bundle
+        String id = LauncherInfo.workshopIds().get(0);
+        Path workshopBootstrap =
+                tmp.resolve(
+                        Path.of(
+                                "Steam",
+                                "steamapps",
+                                "workshop",
+                                "content",
+                                "108600",
+                                id,
+                                "mods",
+                                "storm",
+                                "bootstrap"));
+        Files.createDirectories(workshopBootstrap);
+        Files.write(workshopBootstrap.resolve("storm-bootstrap.jar"), new byte[] {1});
+        assertEquals(workshopBootstrap, config.resolveBootstrapDir(javaDir));
+    }
+
+    @Test
     void explicitCustomBootstrapDisablesSelfUpdate() throws IOException {
         Path custom = tmp.resolve("custom-bootstrap");
         Files.createDirectories(custom);

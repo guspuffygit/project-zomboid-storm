@@ -339,16 +339,29 @@ public final class LauncherConfig {
     }
 
     public static boolean isGameDir(Path dir) {
-        return dir != null && Files.isRegularFile(dir.resolve("ProjectZomboid64.json"));
+        // the mac depot ships no ProjectZomboid64.json — projectzomboid.jar marks its game dir
+        return dir != null
+                && (Files.isRegularFile(dir.resolve("ProjectZomboid64.json"))
+                        || Files.isRegularFile(dir.resolve("projectzomboid.jar")));
     }
 
-    /** The dir itself, or the {@code projectzomboid/} subdir the linux/mac depots nest under. */
+    /**
+     * The dir itself, or the nested payload dir: {@code projectzomboid/} on the linux depot, {@code
+     * Project Zomboid.app/Contents/Java} on the mac depot.
+     */
     static Path gameDirAt(Path dir) {
+        if (dir == null) {
+            return null;
+        }
         if (isGameDir(dir)) {
             return dir;
         }
-        Path nested = dir == null ? null : dir.resolve("projectzomboid");
-        return isGameDir(nested) ? nested : null;
+        Path nested = dir.resolve("projectzomboid");
+        if (isGameDir(nested)) {
+            return nested;
+        }
+        Path macJava = dir.resolve(Paths.get("Project Zomboid.app", "Contents", "Java"));
+        return isGameDir(macJava) ? macJava : null;
     }
 
     static Path detectGameDir() {
