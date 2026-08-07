@@ -286,6 +286,13 @@ public final class GameLaunch {
         return os.toLowerCase().contains("win");
     }
 
+    /** Just the JVM args (between the java binary and -cp) — the full command line buries them. */
+    public static String describeJvmArgs(LaunchPlan plan) {
+        int cpIdx = plan.command.indexOf("-cp");
+        int end = cpIdx >= 0 ? cpIdx : plan.command.size();
+        return String.join(" ", plan.command.subList(1, Math.max(1, end)));
+    }
+
     /** Render for logs with the server password masked. */
     public static String describe(LaunchPlan plan) {
         StringBuilder sb = new StringBuilder();

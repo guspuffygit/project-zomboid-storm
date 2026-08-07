@@ -234,6 +234,7 @@ public final class LauncherWindow extends JFrame {
                     GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null);
                     plan.warnings.forEach(Log::warn);
                     Log.info("Launching: " + GameLaunch.describe(plan));
+                    Log.info("Game JVM args: " + GameLaunch.describeJvmArgs(plan));
                     plan.start(LauncherPaths.gameLogFile());
                 });
     }

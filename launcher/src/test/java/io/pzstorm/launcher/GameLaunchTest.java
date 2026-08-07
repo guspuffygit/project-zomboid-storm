@@ -91,6 +91,15 @@ class GameLaunchTest {
         String described = GameLaunch.describe(plan);
         assertFalse(described.contains("sekrit"), "password must be masked in logs");
         assertTrue(described.contains("+password *****"));
+
+        String jvmArgs = GameLaunch.describeJvmArgs(plan);
+        assertTrue(jvmArgs.contains("-Dzomboid.steam=1"));
+        assertTrue(jvmArgs.contains("-Xmx16g"));
+        assertTrue(jvmArgs.contains("-Dstorm.http.port=8089"));
+        assertFalse(jvmArgs.contains(cmd.get(0)), "jvm binary is not a JVM arg");
+        assertFalse(jvmArgs.contains("-cp"), "classpath must not bury the JVM args");
+        assertFalse(jvmArgs.contains("projectzomboid.jar"));
+        assertFalse(jvmArgs.contains("+connect"), "program args are not JVM args");
     }
 
     @Test

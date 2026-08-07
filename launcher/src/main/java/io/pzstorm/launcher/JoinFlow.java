@@ -279,6 +279,7 @@ public final class JoinFlow {
             Log.warn(warning);
         }
         Log.info("Launching: " + GameLaunch.describe(plan));
+        Log.info("Game JVM args: " + GameLaunch.describeJvmArgs(plan));
         try {
             Process process = plan.start(LauncherPaths.gameLogFile());
             Log.info(
