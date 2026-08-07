@@ -181,6 +181,11 @@ public final class LauncherConfig {
                     return jvm;
                 }
             }
+            // the mac depot bundles its JRE in the app bundle's PlugIns, not gameDir/jre64
+            Path bundled = MacAppBundle.bundledJvm(resolvedGameDir);
+            if (bundled != null) {
+                return bundled;
+            }
         }
         return Paths.get("java");
     }

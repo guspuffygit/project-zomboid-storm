@@ -24,7 +24,7 @@ public final class PzGameJson {
     /** Windows-version-keyed extra vmArgs, e.g. "10.0.17134" -> [-XX:+UseZGC]. */
     public final Map<String, List<String>> windowsOverlays;
 
-    private PzGameJson(
+    PzGameJson(
             String mainClass,
             List<String> classpath,
             List<String> vmArgs,
@@ -37,6 +37,13 @@ public final class PzGameJson {
 
     public static PzGameJson read(Path gameDir) throws IOException {
         Path file = gameDir.resolve("ProjectZomboid64.json");
+        if (!Files.isRegularFile(file)) {
+            // the mac depot ships no json — the app bundle's Info.plist is the source of truth
+            PzGameJson mac = MacAppBundle.gameJson(gameDir);
+            if (mac != null) {
+                return mac;
+            }
+        }
         String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         return parse(text);
     }

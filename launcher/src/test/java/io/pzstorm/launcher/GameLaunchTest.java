@@ -103,6 +103,42 @@ class GameLaunchTest {
     }
 
     @Test
+    void macAppBundlePlanReadsInfoPlist() throws IOException {
+        // the mac depot ships no ProjectZomboid64.json — the bundle's Info.plist drives the launch
+        Path depot = tmp.resolve(Path.of("Steam", "steamapps", "common", "ProjectZomboid"));
+        Path contents = depot.resolve(Path.of("Project Zomboid.app", "Contents"));
+        Path javaDir = contents.resolve("Java");
+        Files.createDirectories(javaDir);
+        Files.write(javaDir.resolve("projectzomboid.jar"), new byte[] {1});
+        Files.write(
+                contents.resolve("Info.plist"),
+                ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                                + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\""
+                                + " \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                                + "<plist version=\"1.0\">\n<dict>\n"
+                                + "<key>CFBundleName</key><string>ProjectZomboid</string>\n"
+                                + "<key>JVMMainClassName</key>"
+                                + "<string>zombie.gameStates.MainScreenState</string>\n"
+                                + "<key>JVMOptions</key><array>\n"
+                                + "<string>-XstartOnFirstThread</string>\n"
+                                + "<string>-Dzomboid.steam=1</string>\n"
+                                + "</array>\n"
+                                + "<key>JVMRuntime</key><string>jre-$JRE_ARCH</string>\n"
+                                + "</dict>\n</plist>\n")
+                        .getBytes());
+
+        LauncherConfig config = config();
+        config.gameDir = depot.toString();
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
+
+        assertEquals(javaDir, plan.workingDir);
+        assertTrue(plan.command.contains("-XstartOnFirstThread"), plan.command.toString());
+        assertTrue(plan.command.contains("-Dzomboid.steam=1"));
+        assertTrue(plan.command.contains("zombie.gameStates.MainScreenState"));
+        assertEquals("projectzomboid.jar", plan.command.get(plan.command.indexOf("-cp") + 1));
+    }
+
+    @Test
     void launchWithoutServerHasNoConnectArgs() throws IOException {
         GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null);
         assertFalse(plan.command.contains("+connect"));

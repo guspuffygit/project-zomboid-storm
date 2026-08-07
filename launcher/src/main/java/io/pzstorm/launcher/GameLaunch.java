@@ -90,7 +90,8 @@ public final class GameLaunch {
         if (gameDir == null) {
             throw new IOException(
                     "Project Zomboid install not found — set the game directory"
-                            + " in Settings (needs ProjectZomboid64.json inside).");
+                            + " in Settings (needs ProjectZomboid64.json or"
+                            + " projectzomboid.jar inside).");
         }
         PzGameJson gameJson = PzGameJson.read(gameDir);
         Path jvm = config.resolveJvm(gameDir);

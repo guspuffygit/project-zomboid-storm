@@ -175,6 +175,31 @@ class LauncherConfigTest {
     }
 
     @Test
+    void macAppBundleJreIsResolved() throws IOException {
+        Path depot = tmp.resolve(Path.of("Steam", "steamapps", "common", "ProjectZomboid"));
+        Path contents = depot.resolve(Path.of("Project Zomboid.app", "Contents"));
+        Path javaDir = contents.resolve("Java");
+        Files.createDirectories(javaDir);
+        Files.write(javaDir.resolve("projectzomboid.jar"), new byte[] {1});
+        Files.write(contents.resolve("Info.plist"), "<plist/>".getBytes());
+        for (String jre : new String[] {"jre-aarch64", "jre-x86_64"}) {
+            Path java = contents.resolve(Path.of("PlugIns", jre, "Contents", "Home", "bin"));
+            Files.createDirectories(java);
+            Files.write(java.resolve("java"), new byte[] {1});
+        }
+
+        LauncherConfig config = new LauncherConfig();
+        config.gameDir = depot.toString();
+        Path jvm = config.resolveJvm(config.resolveGameDir());
+        assertTrue(jvm.startsWith(contents.resolve("PlugIns")), jvm.toString());
+        assertTrue(Files.isRegularFile(jvm));
+
+        // an explicit jvmPath still wins over the bundled JRE
+        config.jvmPath = tmp.resolve("custom/bin/java").toString();
+        assertEquals(tmp.resolve("custom/bin/java"), config.resolveJvm(config.resolveGameDir()));
+    }
+
+    @Test
     void explicitCustomBootstrapDisablesSelfUpdate() throws IOException {
         Path custom = tmp.resolve("custom-bootstrap");
         Files.createDirectories(custom);
