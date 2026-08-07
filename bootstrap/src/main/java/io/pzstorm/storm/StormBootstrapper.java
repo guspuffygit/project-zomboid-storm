@@ -105,6 +105,15 @@ public class StormBootstrapper {
             pb.directory(launcherJar.getParent().toFile());
             pb.redirectErrorStream(true);
             pb.redirectOutput(handOffLog());
+            // Steam injects its overlay into every process it launches via DYLD_INSERT_LIBRARIES
+            // (macOS); inherited into the launcher's Swing JVM, the overlay's Metal hook crashes
+            // it inside Java2D's MTLLayer blit. Keep the overlay out of the launcher but stash the
+            // value so the launcher can restore it for the game JVM, where the overlay belongs.
+            // Keep the stash name in sync with io.pzstorm.launcher.GameLaunch.
+            String overlay = pb.environment().remove("DYLD_INSERT_LIBRARIES");
+            if (overlay != null && !overlay.isEmpty()) {
+                pb.environment().put("STORM_GAME_DYLD_INSERT_LIBRARIES", overlay);
+            }
             pb.start();
             System.out.println("[StormAgent] Handed off to Storm Launcher: " + launcherJar);
             return true;

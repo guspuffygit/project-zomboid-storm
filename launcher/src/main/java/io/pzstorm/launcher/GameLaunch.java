@@ -224,6 +224,18 @@ public final class GameLaunch {
         if (!libDirs.isEmpty()) {
             env.put(var, String.join(":", libDirs));
         }
+        if (mac) {
+            // The bootstrap agent strips Steam's overlay injection (DYLD_INSERT_LIBRARIES) from
+            // the launcher process — the overlay's Metal hook crashes the Swing UI — and stashes
+            // it here. Restore it for the game JVM, where the overlay belongs. Keep the stash
+            // name in sync with io.pzstorm.storm.StormBootstrapper.
+            String overlay = System.getenv("STORM_GAME_DYLD_INSERT_LIBRARIES");
+            if (overlay != null
+                    && !overlay.isEmpty()
+                    && System.getenv("DYLD_INSERT_LIBRARIES") == null) {
+                env.put("DYLD_INSERT_LIBRARIES", overlay);
+            }
+        }
         if (!mac) {
             List<String> preloads = new ArrayList<>();
             String preloadExisting = System.getenv("LD_PRELOAD");
