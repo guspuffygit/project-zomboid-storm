@@ -41,12 +41,14 @@ class LauncherStageTest {
                             "--parent-pid=4242",
                             "atf",
                             "--stage-hop=2",
+                            "--cdn-updated",
                         });
         assertArrayEquals(new String[] {"--join", "atf"}, ctx.args);
         assertTrue(ctx.staged());
         assertEquals("storm-launcher.jar", ctx.stagedFrom.getFileName().toString());
         assertEquals(4242, ctx.parentPid);
         assertEquals(2, ctx.hop);
+        assertTrue(ctx.cdnUpdated);
     }
 
     @Test
@@ -57,6 +59,7 @@ class LauncherStageTest {
         assertNull(ctx.stagedFrom);
         assertEquals(-1, ctx.parentPid);
         assertEquals(0, ctx.hop);
+        assertFalse(ctx.cdnUpdated);
     }
 
     @Test
@@ -98,7 +101,7 @@ class LauncherStageTest {
         Path itemJar = fakeJar("item", "launcher".getBytes());
         Path stagedJar = LauncherStage.stage(itemJar);
         LauncherStage.Context ctx =
-                new LauncherStage.Context(new String[] {"--join", "atf"}, null, -1, 2);
+                new LauncherStage.Context(new String[] {"--join", "atf"}, null, -1, 2, false);
 
         List<String> command = LauncherStage.handOffCommand(stagedJar, itemJar, ctx);
 
@@ -116,7 +119,7 @@ class LauncherStageTest {
     void restartCommandReentersItemJarWithIncrementedHop() throws IOException {
         Path itemJar = fakeJar("item", "launcher".getBytes());
         LauncherStage.Context ctx =
-                new LauncherStage.Context(new String[] {"--join", "atf"}, itemJar, 4242, 1);
+                new LauncherStage.Context(new String[] {"--join", "atf"}, itemJar, 4242, 1, false);
 
         List<String> command = LauncherStage.restartCommand(ctx);
 
@@ -138,6 +141,59 @@ class LauncherStageTest {
         assertTrue(LauncherStage.shouldRestart("item", "own", LauncherStage.MAX_HOPS - 1));
         assertFalse(LauncherStage.shouldRestart("item", "own", LauncherStage.MAX_HOPS));
         assertTrue(LauncherStage.shouldRestart("item", null, 0), "unreadable own jar still hops");
+    }
+
+    @Test
+    void cdnHandOffCommandKeepsItemIdentityAndMarksChain() throws IOException {
+        Path itemJar = fakeJar("item", "launcher v1".getBytes());
+        Path downloaded = fakeJar("cdn", "launcher v2".getBytes());
+        LauncherStage.Context ctx =
+                new LauncherStage.Context(new String[] {"--join", "atf"}, itemJar, -1, 1, false);
+
+        List<String> command = LauncherStage.cdnHandOffCommand(downloaded, ctx);
+
+        int jarFlag = command.indexOf("-jar");
+        assertEquals(downloaded.toString(), command.get(jarFlag + 1), "runs the downloaded jar");
+        assertTrue(
+                command.contains(LauncherStage.STAGED_FROM_FLAG + itemJar),
+                "item identity survives the CDN upgrade");
+        assertTrue(command.contains(LauncherStage.PARENT_PID_FLAG + ProcessHandle.current().pid()));
+        assertTrue(command.contains(LauncherStage.HOP_FLAG + 2), "hop incremented");
+        assertTrue(
+                command.contains(LauncherStage.CDN_UPDATED_FLAG),
+                "child skips the already-run workshop update");
+        assertEquals("atf", command.get(command.size() - 1));
+        assertTrue(
+                command.contains(
+                        "-Dstorm.launcher.zomboidDir="
+                                + System.getProperty("storm.launcher.zomboidDir")),
+                "config overrides survive the restart");
+    }
+
+    @Test
+    void propagatedPropertiesForwardLauncherOverrides() {
+        System.setProperty("storm.launcher.updateUrl", "http://127.0.0.1:9/launcher.jar");
+        try {
+            List<String> props = LauncherStage.propagatedProperties();
+            assertTrue(
+                    props.contains(
+                            "-Dstorm.launcher.zomboidDir="
+                                    + System.getProperty("storm.launcher.zomboidDir")));
+            assertTrue(
+                    props.contains("-Dstorm.launcher.updateUrl=http://127.0.0.1:9/launcher.jar"));
+        } finally {
+            System.clearProperty("storm.launcher.updateUrl");
+        }
+    }
+
+    @Test
+    void shouldCdnUpdateOnlyOnStrictlyHigherVersionBelowHopCap() {
+        CdnUpdate.Remote newer = new CdnUpdate.Remote("1.2.0", "abc");
+        assertTrue(LauncherStage.shouldCdnUpdate(newer, "1.1.9", 0));
+        assertFalse(LauncherStage.shouldCdnUpdate(newer, "1.2.0", 0), "same version settles");
+        assertFalse(LauncherStage.shouldCdnUpdate(newer, "2.0.0", 0), "stale CDN never downgrades");
+        assertFalse(LauncherStage.shouldCdnUpdate(newer, "1.1.9", LauncherStage.MAX_HOPS));
+        assertFalse(LauncherStage.shouldCdnUpdate(null, "1.1.9", 0), "no CDN info, no update");
     }
 
     @Test

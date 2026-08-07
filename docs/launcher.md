@@ -196,6 +196,53 @@ Design points:
   game to be closed — the loop only guarantees the *launcher* is never the
   thing in the way.
 
+## Self-update: the CDN channel
+
+Launcher releases are decoupled from workshop publishes: the launcher has its
+own version (`launcherVersion` in `gradle.properties`, shown in the window
+title and by `--version`, independent of the Storm/game version) and its own
+release channel — an S3 object behind CloudFront at
+`https://guspuffy.com/storm/launcher/storm-launcher.jar`.
+
+Publishing a release is one task:
+
+```
+./gradlew :launcher:deployLauncher
+```
+
+which runs the tests, uploads the jar to `s3://guspuffy.com` (us-east-1) with
+the jar's SHA-256 and `launcherVersion` attached as object metadata — surfaced
+to clients as `x-amz-meta-sha256` / `x-amz-meta-version` response headers —
+and invalidates the path on CloudFront distribution `E1BN2YPHZPOE9D`, so the
+next launcher start anywhere sees the new build. It needs an AWS CLI with
+`s3:PutObject` on the bucket and `cloudfront:CreateInvalidation` on the
+distribution.
+
+On the client, the CDN check (`CdnUpdate`) runs *in addition to* the workshop
+loop, right after it settles, and costs one HEAD request:
+
+- Own jar's SHA-256 **equals** the published `x-amz-meta-sha256` → this is the
+  released build; settled — even when the workshop item still ships an older
+  launcher (the CDN only ever publishes upgrades over the item; converging
+  with the item as well would bounce between the two sources forever).
+- Published `x-amz-meta-version` is **strictly higher** (dotted-numeric
+  compare) than the running version → download into the same content-addressed
+  stage area (`stage/<sha256-prefix>/`), verify the bytes hash to exactly the
+  published metadata, and restart into the copy with `--cdn-updated` (the
+  chain already ran the workshop update once) and the `--staged-from` identity
+  preserved. A stale CDN object never downgrades a newer workshop launcher.
+- Anything else — no network, 404, missing metadata, hash mismatch, version
+  garbage — is soft: log and continue on the current version. The same
+  `MAX_HOPS` budget bounds CDN restarts, and a download that fails
+  verification is never executed.
+
+The workshop item keeps shipping a launcher jar as the front door (the
+bootstrap agent spawns it, and Storm-only players still get it from Steam);
+the CDN just means a launcher fix no longer waits for — or forces — a
+workshop item publish. Tests point the check elsewhere with
+`-Dstorm.launcher.updateUrl=<url>`; repo/dist builds never stage, so they
+never CDN-update either.
+
 ## Workshop query over UDP
 
 The launcher's primary source for the workshop list needs no extra port open:
@@ -383,6 +430,9 @@ workshop pre-update spawns with cwd = game dir.
 - Build: `./gradlew :launcher:jar` → `launcher/build/libs/storm-launcher.jar`
   (also copied into the workshop layout by `installStorm`).
 - Test: `./gradlew :launcher:test`.
+- Release: bump `launcherVersion` in `gradle.properties`, then
+  `./gradlew :launcher:deployLauncher` (see
+  [Self-update: the CDN channel](#self-update-the-cdn-channel)).
 - Bootstrap resolution is workshop-first: an installed Storm workshop item
   (the item the launcher jar itself ships inside is tried first, then
   prod/stage/dev) always wins over the local-dev install under

@@ -36,6 +36,12 @@ import java.util.stream.Stream;
  * "updated" even when nothing changed. {@link #MAX_HOPS} guards the pathological case of an item
  * that never converges.
  *
+ * <p>On top of the workshop loop sits the CDN self-update ({@link CdnUpdate}): once settled with
+ * the item, a strictly higher launcher version published on the CDN is downloaded into the same
+ * stage area and run instead, so launcher releases ship independently of workshop item publishes. A
+ * jar the CDN confirms as current (by hash) is settled outright, even against an older item —
+ * otherwise the two update sources would bounce off each other forever.
+ *
  * <p>Repo/dist builds outside any workshop item never stage and never restart — an explicit custom
  * install is not fought. When staging itself fails (antivirus, full disk), the launcher runs in
  * place with a warning: everything still works except self-update, exactly the pre-staging
@@ -46,6 +52,11 @@ public final class LauncherStage {
     static final String STAGED_FROM_FLAG = "--staged-from=";
     static final String PARENT_PID_FLAG = "--parent-pid=";
     static final String HOP_FLAG = "--stage-hop=";
+
+    /**
+     * Marks a jar the CDN update spawned: its parent already ran the workshop update this chain.
+     */
+    static final String CDN_UPDATED_FLAG = "--cdn-updated";
 
     /** Restarts before giving up on converging with the item's launcher jar. */
     static final int MAX_HOPS = 3;
@@ -65,11 +76,15 @@ public final class LauncherStage {
         final long parentPid;
         final int hop;
 
-        Context(String[] args, Path stagedFrom, long parentPid, int hop) {
+        /** This copy came off the CDN; the workshop update already ran earlier in the chain. */
+        final boolean cdnUpdated;
+
+        Context(String[] args, Path stagedFrom, long parentPid, int hop, boolean cdnUpdated) {
             this.args = args;
             this.stagedFrom = stagedFrom;
             this.parentPid = parentPid;
             this.hop = hop;
+            this.cdnUpdated = cdnUpdated;
         }
 
         boolean staged() {
@@ -82,6 +97,7 @@ public final class LauncherStage {
         Path stagedFrom = null;
         long parentPid = -1;
         int hop = 0;
+        boolean cdnUpdated = false;
         for (String arg : args) {
             if (arg.startsWith(STAGED_FROM_FLAG)) {
                 String value = arg.substring(STAGED_FROM_FLAG.length());
@@ -90,11 +106,13 @@ public final class LauncherStage {
                 parentPid = parseLong(arg.substring(PARENT_PID_FLAG.length()), -1);
             } else if (arg.startsWith(HOP_FLAG)) {
                 hop = (int) parseLong(arg.substring(HOP_FLAG.length()), 0);
+            } else if (arg.equals(CDN_UPDATED_FLAG)) {
+                cdnUpdated = true;
             } else {
                 rest.add(arg);
             }
         }
-        return new Context(rest.toArray(new String[0]), stagedFrom, parentPid, hop);
+        return new Context(rest.toArray(new String[0]), stagedFrom, parentPid, hop, cdnUpdated);
     }
 
     /**
@@ -128,7 +146,10 @@ public final class LauncherStage {
     /**
      * The mandatory own-item update, before any UI or join: DownloadItem with zero handles held in
      * the item, then either settle (item's launcher jar matches this one) or exec the item's jar —
-     * which stages itself and repeats the check.
+     * which stages itself and repeats the check. On top of that workshop loop sits the CDN
+     * self-update ({@link CdnUpdate}): once settled with the item, a strictly higher launcher
+     * version published on the CDN is downloaded into the stage area and run instead — launcher
+     * releases no longer wait for a workshop item publish.
      */
     static void runStartupUpdate(LauncherConfig config, Context ctx) {
         if (!ctx.staged()) {
@@ -143,49 +164,103 @@ public final class LauncherStage {
                             + ") — skipping the Storm self-update.");
             return;
         }
-        try {
-            WorkshopUpdate.run(config, List.of(itemId));
-        } catch (IOException e) {
-            Log.warn(
-                    "Storm self-update failed: "
-                            + e.getMessage()
-                            + " — continuing with the current version.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return;
+        if (!ctx.cdnUpdated) {
+            try {
+                WorkshopUpdate.run(config, List.of(itemId));
+            } catch (IOException e) {
+                Log.warn(
+                        "Storm self-update failed: "
+                                + e.getMessage()
+                                + " — continuing with the current version.");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
         Path ownJar = WorkshopUpdate.ownJar();
-        String itemHash = hashOrNull(ctx.stagedFrom);
         String ownHash = hashOrNull(ownJar);
+        CdnUpdate.Remote remote = CdnUpdate.fetch(LauncherInfo.updateUrl());
+        if (remote != null && ownHash != null && remote.sha256().equalsIgnoreCase(ownHash)) {
+            // This exact jar is the published launcher — settled, even when the workshop item
+            // still ships an older build (the CDN only ever publishes upgrades over the item;
+            // converging with the item here would bounce between the two forever).
+            gcStaleStages(ownJar);
+            return;
+        }
+        String itemHash = hashOrNull(ctx.stagedFrom);
         if (itemHash == null) {
             Log.warn(
                     "No launcher jar in the workshop item after the update ("
                             + ctx.stagedFrom
                             + ") — continuing.");
-            gcStaleStages(ownJar);
-            return;
-        }
-        if (!shouldRestart(itemHash, ownHash, ctx.hop)) {
-            if (!itemHash.equals(ownHash)) {
+        } else if (shouldRestart(itemHash, ownHash, ctx.hop)) {
+            Log.info(
+                    "Workshop item "
+                            + itemId
+                            + " ships a different launcher — restarting into it.");
+            try {
+                spawn(restartCommand(ctx));
+                System.exit(0);
+            } catch (IOException e) {
                 Log.warn(
-                        "Launcher update loop did not settle after "
-                                + ctx.hop
-                                + " restarts — continuing with the current version.");
+                        "Could not restart into the updated launcher ("
+                                + e.getMessage()
+                                + ") — continuing with the current version.");
             }
-            gcStaleStages(ownJar);
+        } else if (!itemHash.equals(ownHash)) {
+            Log.warn(
+                    "Launcher update loop did not settle after "
+                            + ctx.hop
+                            + " restarts — continuing with the current version.");
+        }
+        runCdnUpdate(remote, ctx);
+        gcStaleStages(ownJar);
+    }
+
+    /**
+     * Settled with the workshop item; upgrade over it when the CDN publishes a strictly higher
+     * launcher version. The download is hash-verified against the object's own metadata before
+     * anything is executed, and every failure continues on the current version.
+     */
+    private static void runCdnUpdate(CdnUpdate.Remote remote, Context ctx) {
+        if (!shouldCdnUpdate(remote, LauncherInfo.version(), ctx.hop)) {
             return;
         }
-        Log.info("Workshop item " + itemId + " ships a different launcher — restarting into it.");
+        Log.info(
+                "CDN publishes launcher "
+                        + remote.version()
+                        + " (installed: "
+                        + LauncherInfo.version()
+                        + ") — downloading.");
+        Path jar;
         try {
-            spawn(restartCommand(ctx));
-        } catch (IOException e) {
+            jar = CdnUpdate.download(LauncherInfo.updateUrl(), remote.sha256());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        } catch (Exception e) {
             Log.warn(
-                    "Could not restart into the updated launcher ("
+                    "Launcher CDN update failed ("
                             + e.getMessage()
                             + ") — continuing with the current version.");
             return;
         }
+        try {
+            spawn(cdnHandOffCommand(jar, ctx));
+        } catch (IOException e) {
+            Log.warn(
+                    "Could not restart into the downloaded launcher ("
+                            + e.getMessage()
+                            + ") — continuing with the current version.");
+            return;
+        }
+        Log.info("Restarting into launcher " + remote.version() + " from " + jar + ".");
         System.exit(0);
+    }
+
+    /** The CDN only upgrades: a strictly higher published version, within the restart budget. */
+    static boolean shouldCdnUpdate(CdnUpdate.Remote remote, String ownVersion, int hop) {
+        return remote != null && hop < MAX_HOPS && CdnUpdate.isNewer(remote.version(), ownVersion);
     }
 
     /**
@@ -222,11 +297,29 @@ public final class LauncherStage {
         return target;
     }
 
+    /**
+     * Launcher-config overrides that must survive a restart hop: a launcher started against a
+     * custom Zomboid dir (or update URL) has to restart into a launcher reading the same config,
+     * not silently fall back to the defaults.
+     */
+    static List<String> propagatedProperties() {
+        List<String> args = new ArrayList<>();
+        for (String property :
+                new String[] {"storm.launcher.zomboidDir", "storm.launcher.updateUrl"}) {
+            String value = System.getProperty(property);
+            if (value != null && !value.isEmpty()) {
+                args.add("-D" + property + "=" + value);
+            }
+        }
+        return args;
+    }
+
     /** {@code java -jar <staged> --staged-from=<item jar> --parent-pid=<self> --stage-hop=<hop>} */
     static List<String> handOffCommand(Path stagedJar, Path itemJar, Context ctx) {
         Path jvm = currentJvm();
         List<String> command = new ArrayList<>();
         command.add(jvm.toString());
+        command.addAll(propagatedProperties());
         command.add("-jar");
         command.add(GameLaunch.pathArgFor(jvm, stagedJar));
         command.add(STAGED_FROM_FLAG + GameLaunch.pathArgFor(jvm, itemJar));
@@ -236,11 +329,33 @@ public final class LauncherStage {
         return command;
     }
 
+    /**
+     * {@code java -jar <downloaded jar> --staged-from=<item jar> --parent-pid=<self>
+     * --stage-hop=<hop+1> --cdn-updated} — the downloaded copy keeps the item identity (so
+     * steamapps discovery and the own-item-first update order still resolve through the item it
+     * upgraded over) and skips the workshop update this chain already ran.
+     */
+    static List<String> cdnHandOffCommand(Path downloadedJar, Context ctx) {
+        Path jvm = currentJvm();
+        List<String> command = new ArrayList<>();
+        command.add(jvm.toString());
+        command.addAll(propagatedProperties());
+        command.add("-jar");
+        command.add(GameLaunch.pathArgFor(jvm, downloadedJar));
+        command.add(STAGED_FROM_FLAG + GameLaunch.pathArgFor(jvm, ctx.stagedFrom));
+        command.add(PARENT_PID_FLAG + ProcessHandle.current().pid());
+        command.add(HOP_FLAG + (ctx.hop + 1));
+        command.add(CDN_UPDATED_FLAG);
+        command.addAll(List.of(ctx.args));
+        return command;
+    }
+
     /** {@code java -jar <item jar> --stage-hop=<hop+1>} — fresh entry through the item's door. */
     static List<String> restartCommand(Context ctx) {
         Path jvm = currentJvm();
         List<String> command = new ArrayList<>();
         command.add(jvm.toString());
+        command.addAll(propagatedProperties());
         command.add("-jar");
         command.add(GameLaunch.pathArgFor(jvm, ctx.stagedFrom));
         command.add(HOP_FLAG + (ctx.hop + 1));

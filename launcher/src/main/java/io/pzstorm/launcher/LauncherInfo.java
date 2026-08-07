@@ -26,8 +26,22 @@ public final class LauncherInfo {
         return props;
     }
 
+    /** The launcher's own version, independent of the Storm/game version. */
     public static String version() {
         return PROPS.getProperty("version", "dev");
+    }
+
+    /**
+     * CloudFront URL of the published launcher jar for the CDN self-update; empty disables the
+     * check (dev builds run from class dirs, tests point this at a local server via {@code
+     * -Dstorm.launcher.updateUrl}).
+     */
+    public static String updateUrl() {
+        String override = System.getProperty("storm.launcher.updateUrl");
+        if (override != null) {
+            return override;
+        }
+        return PROPS.getProperty("updateUrl", "");
     }
 
     /** Storm workshop item IDs (prod, stage, dev) used to locate the bootstrap dir. */

@@ -40,17 +40,24 @@ test {
 	}
 }
 
+// The launcher versions and ships independently of the workshop item: bump launcherVersion in
+// gradle.properties and run deployLauncher — no workshop publish needed. Running launchers
+// self-update from this URL (see CdnUpdate); the path must match deployLauncher's upload key.
+def launcherUpdateUrl = "https://guspuffy.com/storm/launcher/storm-launcher.jar"
+
 def generateLauncherProperties = tasks.register('generateLauncherProperties') {
 	def outputDir = layout.buildDirectory.dir('generated/launcher-resources')
-	inputs.property 'version', project.version.toString()
+	inputs.property 'version', launcherVersion
 	inputs.property 'workshopIds', "${workshopIdProd},${workshopIdStage},${workshopIdDev}"
+	inputs.property 'updateUrl', launcherUpdateUrl
 	outputs.dir outputDir
 
 	doLast {
 		def f = new File(outputDir.get().asFile, 'storm-launcher.properties')
 		f.parentFile.mkdirs()
 		f.text = "version=${inputs.properties['version']}\n" +
-				"workshopIds=${inputs.properties['workshopIds']}\n"
+				"workshopIds=${inputs.properties['workshopIds']}\n" +
+				"updateUrl=${inputs.properties['updateUrl']}\n"
 	}
 }
 
@@ -61,7 +68,57 @@ jar {
 	manifest {
 		attributes(
 				'Main-Class': 'io.pzstorm.launcher.LauncherMain',
-				'Implementation-Version': project.version
+				'Implementation-Version': launcherVersion
 				)
+	}
+}
+
+// Publishes the launcher jar for the CDN self-update: upload to S3 with the jar's SHA-256 and
+// version attached as object metadata (surfaced to clients as x-amz-meta-sha256 /
+// x-amz-meta-version response headers), then invalidate the CloudFront path so the very next
+// launcher start sees the new build. Needs an AWS CLI with s3:PutObject on the bucket and
+// cloudfront:CreateInvalidation on the distribution.
+tasks.register('deployLauncher') {
+	dependsOn tasks.named('jar'), tasks.named('test')
+	def s3Key = 's3://guspuffy.com/storm/launcher/storm-launcher.jar'
+	def invalidationPath = '/storm/launcher/storm-launcher.jar'
+	def distributionId = 'E1BN2YPHZPOE9D'
+	def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+
+	doLast {
+		def run = { List<String> cmd ->
+			def proc = new ProcessBuilder(cmd*.toString()).redirectErrorStream(true).start()
+			proc.inputStream.eachLine { logger.lifecycle(it) }
+			if (proc.waitFor() != 0) {
+				throw new GradleException("Command failed: ${cmd.join(' ')}")
+			}
+		}
+		def jarPath = jarFile.get().asFile
+		def sha256 = java.security.MessageDigest.getInstance('SHA-256')
+				.digest(jarPath.bytes).collect { String.format('%02x', it) }.join()
+		logger.lifecycle("Uploading launcher ${launcherVersion} (sha256 ${sha256}) to ${s3Key}")
+		run([
+			'aws',
+			's3',
+			'cp',
+			jarPath.absolutePath,
+			s3Key,
+			'--region',
+			'us-east-1',
+			'--content-type',
+			'application/java-archive',
+			'--metadata',
+			"sha256=${sha256},version=${launcherVersion}"
+		])
+		logger.lifecycle("Invalidating ${invalidationPath} on distribution ${distributionId}")
+		run([
+			'aws',
+			'cloudfront',
+			'create-invalidation',
+			'--distribution-id',
+			distributionId,
+			'--paths',
+			invalidationPath
+		])
 	}
 }
