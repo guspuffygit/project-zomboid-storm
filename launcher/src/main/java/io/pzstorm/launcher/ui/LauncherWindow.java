@@ -6,6 +6,7 @@ import io.pzstorm.launcher.LauncherConfig;
 import io.pzstorm.launcher.LauncherInfo;
 import io.pzstorm.launcher.LauncherPaths;
 import io.pzstorm.launcher.Log;
+import io.pzstorm.launcher.LogReport;
 import io.pzstorm.launcher.ServerProfile;
 import io.pzstorm.launcher.ServerStore;
 import java.awt.BorderLayout;
@@ -38,7 +39,7 @@ public final class LauncherWindow extends JFrame {
     private final JList<ServerProfile> serverList = new JList<>(model);
     private final JTextArea logArea = new JTextArea(10, 80);
     private final JButton joinButton = new JButton("Join Server");
-    private final JButton launchOnlyButton = new JButton("Launch Game Only");
+    private final JButton launchOnlyButton = new JButton("Launch to Main Menu");
     private final JLabel detailLabel = new JLabel(" ");
 
     public LauncherWindow(LauncherConfig config) {
@@ -80,6 +81,7 @@ public final class LauncherWindow extends JFrame {
         toolbar.add(button("Remove", this::onRemove));
         toolbar.add(button("Refresh from game", this::onRefreshFromGame));
         toolbar.add(Box.createHorizontalGlue());
+        toolbar.add(button("Send Logs", this::onSendLogs));
         toolbar.add(button("Settings", this::onSettings));
 
         serverList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -207,6 +209,52 @@ public final class LauncherWindow extends JFrame {
             serverList.setSelectedIndex(0);
         }
         saveConfig();
+    }
+
+    /** Uploads metadata + zipped launcher/game/Zomboid/Storm logs to the Storm team's Discord. */
+    private void onSendLogs() {
+        JTextArea description = new JTextArea(5, 40);
+        description.setLineWrap(true);
+        description.setWrapStyleWord(true);
+        int choice =
+                JOptionPane.showConfirmDialog(
+                        this,
+                        new Object[] {
+                            "<html><b>Privacy Notice</b><br><br>"
+                                    + "You are about to send data to Gus Puffy (the developer).<br>"
+                                    + "Passwords are never included, and the data is deleted once"
+                                    + " it has been reviewed.<br><br>"
+                                    + "Data sent will include:<br>"
+                                    + "&nbsp;&nbsp;• Information about this PC (operating system,"
+                                    + " CPU, RAM, Java version)<br>"
+                                    + "&nbsp;&nbsp;• Launcher settings and launcher logs<br>"
+                                    + "&nbsp;&nbsp;• Logs from Project Zomboid and Storm"
+                                    + " (console.txt and the Logs folder)<br><br>"
+                                    + "Describe the problem (optional):</html>",
+                            new JScrollPane(description)
+                        },
+                        "Send logs to Gus Puffy",
+                        JOptionPane.OK_CANCEL_OPTION);
+        if (choice != JOptionPane.OK_OPTION) {
+            return;
+        }
+        String text = description.getText().trim();
+        Thread worker =
+                new Thread(
+                        () -> {
+                            try {
+                                String logId = LogReport.send(config, text);
+                                Log.info(
+                                        "Logs sent — mention report id "
+                                                + logId
+                                                + " when asking for help.");
+                            } catch (Exception e) {
+                                Log.error("Sending logs failed", e);
+                            }
+                        },
+                        "storm-log-report");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void onSettings() {
