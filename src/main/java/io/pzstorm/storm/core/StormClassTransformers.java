@@ -18,6 +18,8 @@ import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
+import io.pzstorm.storm.patch.fixes.BodyDamageSyncPatch;
+import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
 import io.pzstorm.storm.patch.fixes.ChatServerProcessWhisperPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
@@ -407,6 +409,14 @@ public class StormClassTransformers {
             registerTransformer(new RequestSaveCellSuppressPatch());
             registerTransformer(new ReceiveSandboxOptionsPatch());
             registerTransformer(new IsoZombieUpdateFixPatch());
+
+            // First-aid subscription race: the vanilla client sends BodyDamageUpdatePacket with
+            // its own online id still -1 during the connect/respawn/reconnect window. The parse
+            // patch repairs the id from the connection-resolved player; the sync patch refuses to
+            // register updaters for unresolvable ids (vanilla NPE / dead-updater leak).
+            registerTransformer(new BodyDamageUpdatePacketPatch());
+            registerTransformer(new BodyDamageSyncPatch());
+
             registerTransformer(new UdpConnectionRelevancePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
