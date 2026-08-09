@@ -391,6 +391,60 @@ tasks.register('installStorm', Sync) {
 	into destDir
 }
 
+// Publishes storm.jar for the bootstrap's CDN self-update (see StormCoreUpdate in :bootstrap):
+// upload to S3 with the jar's SHA-256 and stormVersion attached as object metadata (surfaced to
+// clients as x-amz-meta-sha256 / x-amz-meta-version response headers), then invalidate the
+// CloudFront path so the very next boot sees the new build. The key is versioned by game build so
+// a jar can never be offered to a client on a different PZ version. Bump stormVersion in
+// gradle.properties first — running bootstraps only upgrade past the workshop item's version, and
+// SNAPSHOT installs never CDN-update. Dependency changes still need a workshop publish: the CDN
+// channel replaces storm.jar only, not the 42/lib dist around it. Needs an AWS CLI with
+// s3:PutObject on the bucket and cloudfront:CreateInvalidation on the distribution.
+tasks.register('deployStormJar') {
+	dependsOn tasks.named('jar'), tasks.named('test')
+	def s3Key = "s3://guspuffy.com/storm/core/${pzVersion}/storm.jar"
+	def invalidationPath = "/storm/core/${pzVersion}/storm.jar"
+	def distributionId = 'E1BN2YPHZPOE9D'
+	def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+
+	doLast {
+		def run = { List<String> cmd ->
+			def proc = new ProcessBuilder(cmd*.toString()).redirectErrorStream(true).start()
+			proc.inputStream.eachLine { logger.lifecycle(it) }
+			if (proc.waitFor() != 0) {
+				throw new GradleException("Command failed: ${cmd.join(' ')}")
+			}
+		}
+		def jarPath = jarFile.get().asFile
+		def sha256 = java.security.MessageDigest.getInstance('SHA-256')
+				.digest(jarPath.bytes).collect { String.format('%02x', it) }.join()
+		logger.lifecycle("Uploading Storm core ${stormVersion} for PZ ${pzVersion} (sha256 ${sha256}) to ${s3Key}")
+		run([
+			'aws',
+			's3',
+			'cp',
+			jarPath.absolutePath,
+			s3Key,
+			'--region',
+			'us-east-1',
+			'--content-type',
+			'application/java-archive',
+			'--metadata',
+			"sha256=${sha256},version=${stormVersion}"
+		])
+		logger.lifecycle("Invalidating ${invalidationPath} on distribution ${distributionId}")
+		run([
+			'aws',
+			'cloudfront',
+			'create-invalidation',
+			'--distribution-id',
+			distributionId,
+			'--paths',
+			invalidationPath
+		])
+	}
+}
+
 def styluaVersion = '2.4.1'
 def styluaBinaryName = os.isWindows() ? 'stylua.exe' : 'stylua'
 def styluaCacheDir = layout.buildDirectory.dir("stylua/${styluaVersion}").get().asFile

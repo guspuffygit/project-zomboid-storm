@@ -174,3 +174,53 @@ On the next start the bootstrap agent attaches and Storm initializes. Verify by 
 #### Updating mods on a hosted server
 
 If Storm or a Storm mod updates, the server quits so the new files load on the next start.
+
+## Storm core self-update: the CDN channel
+
+Storm core releases are decoupled from workshop publishes the same way the
+launcher's are (see `docs/launcher.md`): the bootstrap can fetch a newer
+`storm.jar` from an S3 object behind CloudFront at
+`https://guspuffy.com/storm/core/<pzVersion>/storm.jar`. The key is versioned
+by game build — both versions are parsed from the workshop item's jar filename
+(`storm-<pzVersion>_<stormVersion>.jar`) — so a jar built against one PZ build
+can never be offered to a client or server on another, and a PZ update
+naturally moves everyone to a fresh key.
+
+Publishing a release: bump `stormVersion` in `gradle.properties`, then
+
+```
+./gradlew deployStormJar
+```
+
+which runs the tests, uploads the storm jar to `s3://guspuffy.com` (us-east-1)
+with its SHA-256 and `stormVersion` attached as object metadata
+(`x-amz-meta-sha256` / `x-amz-meta-version` response headers), and invalidates
+the path on CloudFront distribution `E1BN2YPHZPOE9D`. It needs an AWS CLI with
+`s3:PutObject` on the bucket and `cloudfront:CreateInvalidation` on the
+distribution.
+
+At boot, `StormCoreUpdate` (in the bootstrap jar) runs inside
+`StormBootstrapper.bootstrap()` **before any storm.jar class is loaded**, so
+unlike the launcher there is no restart hop — it costs one HEAD request and,
+at most, one download:
+
+- Published `x-amz-meta-version` is **strictly higher** (dotted-numeric
+  compare) than the item jar's `stormVersion` → download into a
+  content-addressed stage area outside the Steam-owned item
+  (`<zomboidDir>/storm/core/stage/<sha256-prefix>/storm.jar`), verify the
+  bytes hash to exactly the published metadata, and put the staged jar on the
+  classpath in place of the item's copy. Already-staged builds are reused
+  without downloading; stale stage dirs are swept.
+- Item jar's SHA-256 **equals** the published hash, or the published version
+  is not strictly higher → the item's jar loads as-is. A stale CDN object
+  never downgrades a newer workshop item.
+- Anything else — no network, 404, missing metadata, hash mismatch, an
+  unparseable jar name — is soft: log and boot the item's jar. `-SNAPSHOT`
+  installs (local dev via `installStorm`) never CDN-update, so a working-tree
+  build always wins on a dev machine.
+
+This applies to both clients and dedicated servers (both boot through the same
+bootstrap). Scope limit: the CDN channel replaces `storm.jar` only — a
+dependency change under `42/lib` still needs a workshop publish. Overrides:
+`-Dstorm.core.updateUrl=<url>` points the check elsewhere, and setting it
+empty disables the channel.

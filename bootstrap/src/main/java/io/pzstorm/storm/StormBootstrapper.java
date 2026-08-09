@@ -202,43 +202,52 @@ public class StormBootstrapper {
             }
 
             // 2. Discover all JARs in the media folder
-            List<URL> libraryUrls = new ArrayList<>();
+            List<Path> libraryJars = new ArrayList<>();
             try (Stream<Path> files = Files.list(libraryDir)) {
                 files.filter(p -> p.toString().endsWith(".jar"))
                         .forEach(p -> {
-                            try {
-                                System.out.println("[StormBootstrapper] Found library: " + p.getFileName());
-                                libraryUrls.add(p.toUri().toURL());
-                            } catch (Exception e) {
-                                System.err.println("Skipping invalid jar: " + p);
-                            }
+                            System.out.println("[StormBootstrapper] Found library: " + p.getFileName());
+                            libraryJars.add(p);
                         });
             }
 
-            if (libraryUrls.isEmpty()) {
+            if (libraryJars.isEmpty()) {
                 throw new RuntimeException("No JAR files found in Workshop directory.");
+            }
+
+            // Storm core self-updates from the CDN like the launcher does: when a newer
+            // storm.jar is published, load the SHA-verified staged copy instead of the item's.
+            Path stormJar = null;
+            for (Path jar : libraryJars) {
+                String fileName = jar.getFileName().toString().toLowerCase();
+                if (fileName.startsWith("storm-") && fileName.endsWith(".jar")) {
+                    stormJar = jar;
+                }
+            }
+            if (stormJar != null) {
+                Path resolved = StormCoreUpdate.resolve(stormJar);
+                if (!resolved.equals(stormJar)) {
+                    libraryJars.set(libraryJars.indexOf(stormJar), resolved);
+                    stormJar = resolved;
+                }
             }
 
             // Append logback jars to the system classloader so SLF4J's ServiceLoader
             // can discover LogbackServiceProvider. Without this, logback is only visible
             // in the child workshopLoader and SLF4J (loaded by the system classloader
             // from projectzomboid.jar) falls back to NOP.
-            String stormJarUrl = null;
-            for (URL url : libraryUrls) {
-                String fileName = url.toString().toLowerCase();
-                if (fileName.contains("logback")) {
-                    File jarFile = new File(url.toURI());
-                    System.out.println("[StormBootstrapper] Appending to system classloader: " + jarFile.getName());
-                    instrumentation.appendToSystemClassLoaderSearch(new JarFile(jarFile));
-                }
-                if (fileName.contains("storm-") && fileName.endsWith(".jar")) {
-                    stormJarUrl = url.toString();
+            List<URL> libraryUrls = new ArrayList<>();
+            for (Path jar : libraryJars) {
+                libraryUrls.add(jar.toUri().toURL());
+                if (jar.getFileName().toString().toLowerCase().contains("logback")) {
+                    System.out.println("[StormBootstrapper] Appending to system classloader: " + jar.getFileName());
+                    instrumentation.appendToSystemClassLoaderSearch(new JarFile(jar.toFile()));
                 }
             }
 
             // Point logback to our config inside storm.jar
-            if (stormJarUrl != null) {
-                String configUrl = "jar:" + stormJarUrl + "!/logback.xml";
+            if (stormJar != null) {
+                String configUrl = "jar:" + stormJar.toUri().toURL() + "!/logback.xml";
                 System.setProperty("logback.configurationFile", configUrl);
                 System.out.println("[StormBootstrapper] Set logback.configurationFile=" + configUrl);
             }
