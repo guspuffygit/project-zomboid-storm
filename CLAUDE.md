@@ -12,7 +12,7 @@ Source-only rule — never look in jars. Every Java class Storm and its consumer
 
 find tip: use -name '*.java' for basename, -path '*/storm/*' for directory — don't combine them as *storm*X*.java (different path components, won't match).
 
-Commands you can't guess. Build + install Storm into the local workshop dir: ./gradlew clean spotlessApply installStorm. Run local dedicated server: ./gradlew runProjectZomboidServer.
+Commands you can't guess. Build + install Storm into the local workshop dir: ./gradlew clean spotlessApply installStorm. Run local dedicated server: ./gradlew runProjectZomboidServer. Publish storm.jar to the CDN so bootstraps pick it up without a workshop publish (bump stormVersion first): ./gradlew deployStormJar; same channel as :launcher:deployLauncher — see docs/installation.md "Storm core self-update".
 
 installStorm fails with "Permission denied" on agentlib.dll / storm.jar while a client or dedicated server is running (the JVM memory-maps those files). Stop them first.
 
