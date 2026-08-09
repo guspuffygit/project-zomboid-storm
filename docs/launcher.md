@@ -62,8 +62,11 @@ workshop updates.
    game's own join-gate comparison — are proven current and only get an
    instant local `GetItemState` check (the subscribed/installed bits are user
    state, not the stale cached metadata), escalating back to the full
-   `DownloadItem` confirm if anything is off. Only changed or never-installed
-   items pay the per-item Steam round-trip. Either mode runs in a child JVM
+   `DownloadItem` confirm if anything is off. Only changed, never-installed,
+   or hidden items pay the per-item Steam round-trip — hidden workshop items
+   are invisible to the anonymous Web API (`result` 9) but the game's
+   logged-in join gate still sees and timestamp-checks them, so "no published
+   details" never counts as proven current. Either mode runs in a child JVM
    with cwd = game dir (where `steam_appid.txt` lives); Steam not running
    degrades gracefully to the vanilla in-game flow.
    When the server's own item list is unreachable (no UDP reply, no login

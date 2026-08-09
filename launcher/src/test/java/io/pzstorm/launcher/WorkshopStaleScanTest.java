@@ -88,7 +88,10 @@ class WorkshopStaleScanTest {
         WorkshopStaleScan.Scan scan = new WorkshopStaleScan.Scan(installed, published);
         assertTrue(scan.isCurrent("100"), "installed with matching published timestamp");
         assertFalse(scan.isCurrent("200"), "installed but published diverged");
-        assertTrue(scan.isCurrent("400"), "hidden/deleted upstream — the game skips these too");
+        assertFalse(
+                scan.isCurrent("400"),
+                "no anonymous published details (hidden upstream) — the game's logged-in query"
+                        + " still compares timestamps, so this must take the full confirm path");
         assertFalse(scan.isCurrent("999"), "never installed locally");
         assertEquals(List.of("200"), scan.staleInstalled());
     }

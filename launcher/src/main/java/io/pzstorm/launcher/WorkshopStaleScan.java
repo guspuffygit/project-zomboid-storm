@@ -32,8 +32,10 @@ import java.util.Map;
  * <p>Both sides of the comparison come without new Steam API bindings: the local install timestamp
  * is what Steam records per item in {@code steamapps/workshop/appworkshop_108600.acf} (the same
  * store {@code GetItemInstallTimeStamp} reads), and the published timestamp comes from the
- * anonymous {@code GetPublishedFileDetails} Web API. Hidden or deleted items return no published
- * timestamp and are skipped — the game skips them too (no completed details query, no dialog).
+ * anonymous {@code GetPublishedFileDetails} Web API. Items the anonymous API cannot see (hidden or
+ * deleted upstream, {@code result} 9) return no published timestamp here — but the game's join gate
+ * queries through the logged-in Steam client, which still sees hidden items and still compares
+ * their timestamps, so "no published details" proves nothing about freshness.
  *
  * <p>Items the server requires but the player never installed are out of reach here: nothing local
  * records them, so the in-game subscribe flow still covers that first-join case.
@@ -69,16 +71,16 @@ public final class WorkshopStaleScan {
         /**
          * Provably current: installed locally with the published timestamp equal to the install
          * timestamp — the exact comparison the game's join gate makes. An installed item with no
-         * published details (hidden or deleted) also counts: the game skips those too. Anything not
-         * installed here is never current.
+         * published details proves nothing: the anonymous Web API cannot see hidden items, but the
+         * game's logged-in UGC query can — and it still compares their timestamps. Those escalate
+         * to the full per-item Steam confirm, whose client-side query sees what the game sees.
          */
         public boolean isCurrent(String itemId) {
             Long local = installed.get(itemId);
             if (local == null) {
                 return false;
             }
-            Long publishedTime = published.get(itemId);
-            return publishedTime == null || publishedTime.equals(local);
+            return local.equals(published.get(itemId));
         }
     }
 
