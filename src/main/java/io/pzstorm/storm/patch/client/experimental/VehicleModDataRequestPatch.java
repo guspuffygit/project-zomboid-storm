@@ -20,9 +20,12 @@ import net.bytebuddy.pool.TypePool;
  *
  * <p>This patch hooks {@code MovingObject.getObject()} on exit. When the lookup returned {@code
  * null} for a vehicle (objectType=5), the advice fires a throttled {@code
- * VehicleManager.sendVehicleRequest(vehicleId, 16384)} so the client receives the missing vehicle
- * state immediately rather than waiting on the next periodic sweep. The {@code 16384} flag is PZ's
- * own "send me the full vehicle" sentinel (see {@code VehicleRequestPacket.parse}).
+ * VehicleManager.sendVehicleRequest(vehicleId, 1)} so the client receives the missing vehicle state
+ * immediately rather than waiting on the next periodic sweep. Flag {@code 1} is {@code
+ * BaseVehicle.UpdateFlags.Full} — the only flag that makes the server queue a {@code
+ * VehicleFullUpdate} ({@code VehicleRequestPacket.processServer} sets {@code state.flags |= flag};
+ * {@code ServerVehicleState.shouldSend} keeps only the Full bit across sends). Flag {@code 16384}
+ * (Passengers) is handled as a relevance probe whose only possible reply is {@code VehicleRemove}.
  */
 public class VehicleModDataRequestPatch extends StormClassTransformer {
 

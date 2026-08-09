@@ -265,6 +265,18 @@ caught it, and the fast path latched itself off permanently — grep the server 
 | `pz_entity_array_removes_total` | CounterWithCallback | `path={fast,scan,mismatch,vanilla}` | Removals from the global entity array: `fast` = indexed O(1) swap-with-last; `scan` = Storm's inline linear scan (index miss around a kill-switch toggle, or an equals-based call); `mismatch` = self-check failure (latches the fast path off); `vanilla` = fell through to the vanilla scan (kill switch off or failure latch). |
 | `storm_entity_index_size` | GaugeWithCallback | — | Entities currently tracked by the removal index — mirrors the global entity array size while the fast path is active. |
 
+### Net-data drain cap (NetDataMetrics)
+
+Counters for the per-spin inbound packet drain cap (`Storm.NetDataCapMs` sandbox option) wrapped
+around `GameServer.mainLoopDealWithNetData`. `pz_netdata_call_duration_seconds` /
+`pz_netdata_ticks_total` in the composite table above time the same advice.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_netdata_dropped_total` | Counter | — | Inbound packets dropped because the per-spin drain cap was exceeded. Dropped for good: the packet was already dequeued and ACKed by RakNet, is never processed, and is discarded back to the pool. Non-zero during a reconnect storm means the cap is engaging; a sustained non-zero rate under steady-state load means `Storm.NetDataCapMs` is too tight. |
+| `pz_netdata_deferred_total` | Counter | — | **Deprecated** misnomer for `pz_netdata_dropped_total` (nothing is deferred — the packet is dropped). Publishes the identical count for dashboard/alert backwards compatibility; migrate queries to the new name. |
+| `pz_netdata_vehicle_request_exempt_total` | Counter | — | `VehicleRequest` packets processed despite the engaged cap. VehicleRequest is the only inbound path that produces a `VehicleFullUpdate` for a client missing a vehicle, so the cap exempts it — dropping it strands invisible cars. Rate is bounded by the client-side 100 ms request batching. |
+
 ### BitHeader pool
 
 Volume counters for `zombie.util.io.BitHeader` pool operations.

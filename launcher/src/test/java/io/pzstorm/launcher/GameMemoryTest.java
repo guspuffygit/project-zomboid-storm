@@ -10,14 +10,22 @@ class GameMemoryTest {
     private static final long GIB = 1L << 30;
 
     @Test
-    void autoIsHalfRamPlusOneCappedAtSixteen() {
+    void autoIsHalfRamPlusOneCappedAtSixteenAndByNativeHeadroom() {
         assertEquals(0, GameMemory.autoGbFor(0));
         assertEquals(0, GameMemory.autoGbFor(-1));
-        assertEquals(2, GameMemory.autoGbFor(2 * GIB));
-        assertEquals(5, GameMemory.autoGbFor(8 * GIB));
-        assertEquals(9, GameMemory.autoGbFor(16 * GIB));
+        // small machines keep the game's own -Xmx (3 GB) — raising it starves the native side
+        assertEquals(0, GameMemory.autoGbFor(2 * GIB));
+        assertEquals(0, GameMemory.autoGbFor(8 * GIB));
+        assertEquals(0, GameMemory.autoGbFor(12 * GIB));
+        // headroom-capped: total minus NATIVE_HEADROOM_GB beats half+1
+        assertEquals(7, GameMemory.autoGbFor(16 * GIB));
         // the OS reports slightly under the nominal size; must still land on the nominal result
-        assertEquals(9, GameMemory.autoGbFor(16 * GIB - 120_000_000L));
+        assertEquals(7, GameMemory.autoGbFor(16 * GIB - 120_000_000L));
+        // a 16 GB machine with an iGPU carve-out reports ~15.4 GB — the shape that used to get
+        // -Xmx9g and die of native OOM
+        assertEquals(6, GameMemory.autoGbFor((long) (15.4 * GIB)));
+        // half+1-capped once the machine is big enough
+        assertEquals(13, GameMemory.autoGbFor(24 * GIB));
         assertEquals(16, GameMemory.autoGbFor(32 * GIB));
         assertEquals(16, GameMemory.autoGbFor(128 * GIB));
     }
@@ -34,6 +42,6 @@ class GameMemoryTest {
     @Test
     void detectsRamOnThisMachine() {
         assertTrue(GameMemory.totalSystemBytes() > 0, "platform bean should expose total RAM");
-        assertTrue(GameMemory.autoGb() > 0);
+        assertEquals(GameMemory.autoGbFor(GameMemory.totalSystemBytes()), GameMemory.autoGb());
     }
 }

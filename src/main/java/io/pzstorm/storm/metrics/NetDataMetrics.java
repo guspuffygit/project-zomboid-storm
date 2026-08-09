@@ -10,11 +10,17 @@ import io.prometheus.metrics.core.metrics.Histogram;
  * so no upper-bound choice is baked in. Requires a Prometheus server with native histograms
  * enabled.
  *
- * <p>{@link #DEFERRED_TOTAL} counts every {@code mainLoopDealWithNetData} invocation
- * short-circuited by {@link io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCapAdvice} because
- * its per-spin budget was exceeded. A non-zero rate during a reconnect storm confirms the cap is
- * engaging; a sustained non-zero rate under steady-state load indicates the cap (the {@code
+ * <p>{@link #DROPPED_TOTAL} counts every {@code mainLoopDealWithNetData} invocation short-circuited
+ * by {@link io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCapAdvice} because its per-spin
+ * budget was exceeded. The packet is gone for good: already dequeued and ACKed by RakNet, never
+ * processed, discarded back to the pool. A non-zero rate during a reconnect storm confirms the cap
+ * is engaging; a sustained non-zero rate under steady-state load indicates the cap (the {@code
  * Storm.NetDataCapMs} sandbox option) is too tight.
+ *
+ * <p>{@link #DEFERRED_TOTAL_DEPRECATED} publishes the identical count under the original {@code
+ * pz_netdata_deferred_total} name — a misnomer (nothing is deferred; the packet is dropped) kept
+ * only so existing dashboards and alerts keep working. New queries must use {@code
+ * pz_netdata_dropped_total}.
  */
 public final class NetDataMetrics {
 
@@ -25,13 +31,41 @@ public final class NetDataMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
-    private static final Counter DEFERRED_TOTAL =
+    private static final Counter DROPPED_TOTAL =
+            Counter.builder()
+                    .name("pz_netdata_dropped_total")
+                    .help(
+                            "Number of inbound packets dropped because the per-spin drain cap"
+                                    + " (Storm.NetDataCapMs sandbox option) was exceeded. Dropped"
+                                    + " for good: the packet was already dequeued and ACKed by"
+                                    + " RakNet, is never processed, and is discarded back to the"
+                                    + " pool.")
+                    .register(StormPrometheus.registry());
+
+    /**
+     * @deprecated Misnomer — nothing is deferred; the packet is dropped. Kept publishing the same
+     *     count as {@link #DROPPED_TOTAL} for dashboard/alert backwards compatibility. Use {@code
+     *     pz_netdata_dropped_total}.
+     */
+    @Deprecated
+    private static final Counter DEFERRED_TOTAL_DEPRECATED =
             Counter.builder()
                     .name("pz_netdata_deferred_total")
                     .help(
-                            "Number of GameServer.mainLoopDealWithNetData calls short-circuited"
-                                    + " because the per-spin drain cap (Storm.NetDataCapMs sandbox"
-                                    + " option) was exceeded.")
+                            "DEPRECATED: renamed to pz_netdata_dropped_total (these packets are"
+                                    + " dropped, not deferred). Publishes the identical count for"
+                                    + " backwards compatibility; migrate dashboards and alerts to"
+                                    + " the new name.")
+                    .register(StormPrometheus.registry());
+
+    private static final Counter VEHICLE_REQUEST_EXEMPT_TOTAL =
+            Counter.builder()
+                    .name("pz_netdata_vehicle_request_exempt_total")
+                    .help(
+                            "Number of VehicleRequest packets processed despite the engaged"
+                                    + " net-data drain cap. VehicleRequest is the only inbound path"
+                                    + " that produces a VehicleFullUpdate for a client missing a"
+                                    + " vehicle; dropping it strands invisible cars.")
                     .register(StormPrometheus.registry());
 
     private NetDataMetrics() {}
@@ -40,7 +74,12 @@ public final class NetDataMetrics {
         CALL_DURATION.observe(nanos / 1e9);
     }
 
-    public static void recordDeferred() {
-        DEFERRED_TOTAL.inc();
+    public static void recordDropped() {
+        DROPPED_TOTAL.inc();
+        DEFERRED_TOTAL_DEPRECATED.inc();
+    }
+
+    public static void recordVehicleRequestExempt() {
+        VEHICLE_REQUEST_EXEMPT_TOTAL.inc();
     }
 }

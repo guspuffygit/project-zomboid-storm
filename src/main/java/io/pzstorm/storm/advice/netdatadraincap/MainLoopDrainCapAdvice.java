@@ -3,6 +3,7 @@ package io.pzstorm.storm.advice.netdatadraincap;
 import io.pzstorm.storm.metrics.NetDataMetrics;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
+import zombie.network.PacketTypes;
 import zombie.network.ZomboidNetData;
 import zombie.network.ZomboidNetDataPool;
 
@@ -46,9 +47,20 @@ public class MainLoopDrainCapAdvice {
             MainLoopDrainCap.burstStartNanos = now;
         }
         if (now - MainLoopDrainCap.burstStartNanos > cap) {
-            NetDataMetrics.recordDeferred();
+            // VehicleRequest is the ONLY inbound path that makes the server queue a
+            // VehicleFullUpdate for a client that lost a vehicle (state.flags |= Full). Vanilla's
+            // own 70 ms shed drops nothing but the VehiclePhysics* queue and deliberately never
+            // touches requests; dropping one here leaves the car invisible until the client's
+            // next 1 Hz retry, which the same engaged cap is likely to drop again. Volume is
+            // bounded — one batched packet per client per 100 ms — so processing it under the cap
+            // is cheap.
+            if (data != null && data.type == PacketTypes.PacketType.VehicleRequest) {
+                NetDataMetrics.recordVehicleRequestExempt();
+                return false;
+            }
+            NetDataMetrics.recordDropped();
             // The skipped body's own drop paths end in ZomboidNetDataPool.instance.discard(d);
-            // without this every deferral strands a pooled 2 KB ZomboidNetData, so a sustained
+            // without this every drop strands a pooled 2 KB ZomboidNetData, so a sustained
             // burst drains the pool and turns every later packet into a fresh allocation.
             if (data != null) {
                 ZomboidNetDataPool.instance.discard(data);

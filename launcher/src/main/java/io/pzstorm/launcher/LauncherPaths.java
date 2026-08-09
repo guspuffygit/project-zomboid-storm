@@ -45,6 +45,11 @@ public final class LauncherPaths {
         return launcherDir().resolve("logs").resolve("game.log");
     }
 
+    /** The previous run's game output, rotated aside by {@link GameLaunch.LaunchPlan#start}. */
+    public static Path previousGameLogFile() {
+        return GameLaunch.previousLogOf(gameLogFile());
+    }
+
     /**
      * One-shot credential handoff, read and immediately deleted by Storm's client Java ({@code
      * io.pzstorm.storm.client.LauncherAutoJoin}) at the first main menu. The game JVM learns this

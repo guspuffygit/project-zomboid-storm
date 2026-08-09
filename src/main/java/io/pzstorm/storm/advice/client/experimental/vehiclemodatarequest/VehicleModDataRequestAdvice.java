@@ -10,7 +10,11 @@ public class VehicleModDataRequestAdvice {
 
     public static final byte OBJECT_TYPE_VEHICLE = 5;
 
-    public static final short REQUEST_FLAG_FULL_VEHICLE = 16384;
+    // BaseVehicle.UpdateFlags.Full. 16384 (Passengers) is NOT a full-update request: the
+    // server's flag==16384 branch only prunes out-of-relevance vehicles via VehicleRemove,
+    // which would erase the client's VehicleCache recovery hint for the very vehicle we're
+    // trying to recover. Every vanilla resend call site uses 1.
+    public static final short REQUEST_FLAG_FULL_VEHICLE = 1;
 
     public static final long THROTTLE_NANOS = 5_000_000_000L;
 

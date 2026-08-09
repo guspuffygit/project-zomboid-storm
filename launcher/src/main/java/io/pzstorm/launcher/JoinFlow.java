@@ -59,13 +59,15 @@ public final class JoinFlow {
     }
 
     /**
-     * Best-effort: failures fall back to the game's own in-game workshop flow. Storm's own workshop
-     * item is always first in the list — clients get (and keep) Storm from the workshop by default,
-     * even when the server publishes no items of its own.
+     * Best-effort: failures fall back to the game's own in-game workshop flow — except when Steam
+     * refused every single item ({@link WorkshopUpdate.Result#nothingUpdated}), which aborts the
+     * join: the in-game flow talks to the same stuck Steam client and can only strand the player at
+     * the workshop screen. Storm's own workshop item is always first in the list — clients get (and
+     * keep) Storm from the workshop by default, even when the server publishes no items of its own.
      */
     public static void updateWorkshopItems(
             LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
-            throws InterruptedException {
+            throws IOException, InterruptedException {
         if (!profile.updateWorkshopMods) {
             return;
         }
@@ -115,13 +117,25 @@ public final class JoinFlow {
                             + " item(s) already match the published workshop version —"
                             + " quick state check only.");
         }
+        WorkshopUpdate.Result result;
         try {
-            WorkshopUpdate.run(config, update, verify);
+            result = WorkshopUpdate.run(config, update, verify);
         } catch (IOException e) {
             Log.warn(
                     "Workshop pre-update failed: "
                             + e.getMessage()
                             + " — the game's own join flow will handle items.");
+            return;
+        }
+        if (result.nothingUpdated()) {
+            throw new IOException(
+                    "Steam refused to update all "
+                            + result.attempted
+                            + " workshop item(s) this server needs, so the join was cancelled —"
+                            + " the game would only get stuck at its workshop screen."
+                            + " Fully exit Steam (Steam menu → Exit), start it again, then"
+                            + " press Join. If this keeps happening, \"Launch to Main Menu\" and"
+                            + " join from inside the game.");
         }
     }
 
@@ -316,6 +330,7 @@ public final class JoinFlow {
         try {
             Process process = plan.start(LauncherPaths.gameLogFile());
             GameProcessTracker.record(process);
+            GameCrashWatch.arm(process, LauncherPaths.gameLogFile());
             Log.info(
                     "Game started (pid "
                             + process.pid()

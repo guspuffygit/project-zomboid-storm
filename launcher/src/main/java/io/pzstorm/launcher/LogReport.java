@@ -56,6 +56,9 @@ public final class LogReport {
      */
     static final int MAX_ZOMBOID_LOG_FILES = 12;
 
+    /** Newest-first cap on JVM fatal-error dumps (hs_err_pid*.log) pulled from the game dir. */
+    static final int MAX_HS_ERR_FILES = 3;
+
     /** Discord rejects message content over 2000 chars; sentient-sims trims to 1900. */
     private static final int MAX_CONTENT_CHARS = 1900;
 
@@ -70,7 +73,7 @@ public final class LogReport {
     public static String send(LauncherConfig config, String description) throws IOException {
         String logId = newLogId();
         String metadata = metadata(config, logId, description);
-        byte[] zip = buildZip(metadata);
+        byte[] zip = buildZip(metadata, config.resolveGameDir());
         String boundary = "----StormLauncher" + logId;
         byte[] body = multipartBody(boundary, truncate(metadata), zip);
         HttpRequest request =
@@ -147,25 +150,51 @@ public final class LogReport {
     }
 
     /**
-     * metadata.txt + launcher/game logs + Zomboid's console.txt + the newest files under
-     * Zomboid/Logs (which is also where Storm writes main.log/debug.log).
+     * metadata.txt + launcher/game logs (current and previous run) + Zomboid's console.txt + the
+     * newest files under Zomboid/Logs (which is also where Storm writes main.log/debug.log) + the
+     * newest JVM fatal-error dumps from the game dir — a crashed JVM's real diagnosis lives in
+     * hs_err_pid*.log, not in its truncated stdout.
      */
-    static byte[] buildZip(String metadata) {
+    static byte[] buildZip(String metadata, Path gameDir) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             putEntry(zip, "metadata.txt", metadata.getBytes(StandardCharsets.UTF_8));
             putFileTail(zip, "launcher/launcher.log", LauncherPaths.logFile());
             putFileTail(zip, "launcher/game.log", LauncherPaths.gameLogFile());
+            putFileTail(zip, "launcher/game-prev.log", LauncherPaths.previousGameLogFile());
             putFileTail(
                     zip, "zomboid/console.txt", LauncherPaths.zomboidDir().resolve("console.txt"));
             for (Path log : newestZomboidLogs()) {
                 putFileTail(zip, "zomboid/Logs/" + log.getFileName(), log);
+            }
+            for (Path dump : newestHsErrFiles(gameDir)) {
+                putFileTail(zip, "hs_err/" + dump.getFileName(), dump);
             }
         } catch (IOException e) {
             // in-memory stream; only a broken entry writer can land here
             Log.warn("Could not assemble log zip: " + e.getMessage());
         }
         return bytes.toByteArray();
+    }
+
+    private static List<Path> newestHsErrFiles(Path gameDir) {
+        if (gameDir == null || !Files.isDirectory(gameDir)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.list(gameDir)) {
+            return files.filter(Files::isRegularFile)
+                    .filter(
+                            path -> {
+                                String name = path.getFileName().toString();
+                                return name.startsWith("hs_err_pid") && name.endsWith(".log");
+                            })
+                    .sorted(Comparator.comparingLong(LogReport::lastModified).reversed())
+                    .limit(MAX_HS_ERR_FILES)
+                    .collect(java.util.stream.Collectors.toList());
+        } catch (IOException e) {
+            Log.warn("Could not list JVM error dumps: " + e.getMessage());
+            return List.of();
+        }
     }
 
     private static List<Path> newestZomboidLogs() {

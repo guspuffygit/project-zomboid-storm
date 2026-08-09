@@ -1,5 +1,6 @@
 package io.pzstorm.launcher.ui;
 
+import io.pzstorm.launcher.GameCrashWatch;
 import io.pzstorm.launcher.GameLaunch;
 import io.pzstorm.launcher.GameProcessTracker;
 import io.pzstorm.launcher.JoinFlow;
@@ -60,6 +61,15 @@ public final class LauncherWindow extends JFrame {
                                     logArea.append(line + "\n");
                                     logArea.setCaretPosition(logArea.getDocument().getLength());
                                 }));
+        GameCrashWatch.onAlert(
+                message ->
+                        SwingUtilities.invokeLater(
+                                () ->
+                                        JOptionPane.showMessageDialog(
+                                                this,
+                                                message,
+                                                "Out of memory",
+                                                JOptionPane.ERROR_MESSAGE)));
         Log.info(
                 "Storm Launcher "
                         + LauncherInfo.version()
@@ -300,7 +310,9 @@ public final class LauncherWindow extends JFrame {
                     plan.warnings.forEach(Log::warn);
                     Log.info("Launching: " + GameLaunch.describe(plan));
                     Log.info("Game JVM args: " + GameLaunch.describeJvmArgs(plan));
-                    GameProcessTracker.record(plan.start(LauncherPaths.gameLogFile()));
+                    Process process = plan.start(LauncherPaths.gameLogFile());
+                    GameProcessTracker.record(process);
+                    GameCrashWatch.arm(process, LauncherPaths.gameLogFile());
                 });
     }
 

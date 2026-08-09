@@ -4,6 +4,8 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
+import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
 import io.pzstorm.storm.patch.client.experimental.VehicleModDataRequestPatch;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
@@ -396,6 +398,13 @@ public class StormClassTransformers {
         // RPC with no server-side analogue.
         if (!StormEnv.isStormServer()) {
             registerTransformer(new VehicleModDataRequestPatch());
+            // Invisible-vehicle recovery pair. MergeFlags stops clientUpdate's 1 Hz Passengers
+            // request from clobbering a queued Full request inside the same 100 ms flush window;
+            // ModelAttachRetry re-runs ModelManager.addVehicle for vehicles that got physics but
+            // no model slot (collide-but-invisible). Both fail soft: MergeFlags degrades to the
+            // vanilla put(), ModelAttachRetry disables itself on first error.
+            registerTransformer(new VehicleRequestMergeFlagsPatch());
+            registerTransformer(new VehicleModelAttachRetryPatch());
         }
 
         if (StormEnv.isStormServer()) {

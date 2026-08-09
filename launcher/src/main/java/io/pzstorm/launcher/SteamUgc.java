@@ -414,6 +414,16 @@ public final class SteamUgc implements AutoCloseable {
         boolean ok = isJoinReady(state);
         if (ok) {
             progress.accept("item " + itemId + (sawDownload ? " updated" : " up to date"));
+        } else if (!sawDownload && (state & STATE_NEEDS_UPDATE) != 0) {
+            // Steam answered the DownloadItem call but never moved a byte and left the item
+            // needing an update — a stuck Steam client, cleared by restarting Steam
+            progress.accept(
+                    "item "
+                            + itemId
+                            + " FAILED (state="
+                            + state
+                            + " — Steam refused the download; restarting Steam usually clears"
+                            + " this)");
         } else {
             progress.accept("item " + itemId + " FAILED (state=" + state + ")");
         }

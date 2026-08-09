@@ -166,8 +166,8 @@ public final class StormPerformanceSandboxMetrics {
                                     + " Storm.NetDataCapMs sandbox option. Default 90; 0 disables"
                                     + " the cap. When the cap fires during a spin, subsequent"
                                     + " packets in that spin's HIGH/player-update/vehicle drain"
-                                    + " are short-circuited (counted by pz_netdata_deferred_total)"
-                                    + " until the next outer-loop iteration.")
+                                    + " are dropped (counted by pz_netdata_dropped_total) until"
+                                    + " the next outer-loop iteration.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge PEER_SEND_BUFFER_KICK_MB =

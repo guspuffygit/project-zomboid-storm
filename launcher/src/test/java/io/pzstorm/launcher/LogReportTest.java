@@ -76,14 +76,22 @@ class LogReportTest {
         Files.createDirectories(LauncherPaths.logFile().getParent());
         Files.write(LauncherPaths.logFile(), "launcher says hi".getBytes(StandardCharsets.UTF_8));
         Files.write(LauncherPaths.gameLogFile(), "game stdout".getBytes(StandardCharsets.UTF_8));
+        Files.write(
+                LauncherPaths.previousGameLogFile(),
+                "previous game stdout".getBytes(StandardCharsets.UTF_8));
         Path zomboidDir = LauncherPaths.zomboidDir();
         Files.write(
                 zomboidDir.resolve("console.txt"), "pz console".getBytes(StandardCharsets.UTF_8));
         Path logsDir = Files.createDirectories(zomboidDir.resolve("Logs"));
         Files.write(logsDir.resolve("main.log"), "storm main".getBytes(StandardCharsets.UTF_8));
         Files.write(logsDir.resolve("debug.log"), "storm debug".getBytes(StandardCharsets.UTF_8));
+        Path gameDir = Files.createDirectories(tmp.resolve("game"));
+        Files.write(
+                gameDir.resolve("hs_err_pid12008.log"),
+                "jvm fatal error".getBytes(StandardCharsets.UTF_8));
+        Files.write(gameDir.resolve("projectzomboid.jar"), new byte[] {1});
 
-        Map<String, byte[]> entries = unzip(LogReport.buildZip("meta"));
+        Map<String, byte[]> entries = unzip(LogReport.buildZip("meta", gameDir));
 
         assertEquals("meta", new String(entries.get("metadata.txt"), StandardCharsets.UTF_8));
         assertEquals(
@@ -93,6 +101,9 @@ class LogReportTest {
                 "game stdout",
                 new String(entries.get("launcher/game.log"), StandardCharsets.UTF_8));
         assertEquals(
+                "previous game stdout",
+                new String(entries.get("launcher/game-prev.log"), StandardCharsets.UTF_8));
+        assertEquals(
                 "pz console",
                 new String(entries.get("zomboid/console.txt"), StandardCharsets.UTF_8));
         assertEquals(
@@ -101,11 +112,14 @@ class LogReportTest {
         assertEquals(
                 "storm debug",
                 new String(entries.get("zomboid/Logs/debug.log"), StandardCharsets.UTF_8));
+        assertEquals(
+                "jvm fatal error",
+                new String(entries.get("hs_err/hs_err_pid12008.log"), StandardCharsets.UTF_8));
     }
 
     @Test
     void missingLogsStillProduceAZipWithMetadata() throws IOException {
-        Map<String, byte[]> entries = unzip(LogReport.buildZip("meta only"));
+        Map<String, byte[]> entries = unzip(LogReport.buildZip("meta only", null));
         assertEquals(1, entries.size());
         assertEquals("meta only", new String(entries.get("metadata.txt"), StandardCharsets.UTF_8));
     }

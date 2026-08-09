@@ -56,9 +56,15 @@ public final class SettingsDialog extends JDialog {
         int autoGb = GameMemory.autoGb();
         if (autoGb > 0) {
             autoMemory.setText("Automatic (" + autoGb + " GB)");
+        } else if (GameMemory.totalSystemBytes() > 0) {
+            autoMemory.setText("Automatic (game default)");
         }
         autoMemory.setToolTipText(
-                "Half of system RAM + 1 GB, up to " + GameMemory.AUTO_MAX_GB + " GB");
+                "Half of system RAM + 1 GB, up to "
+                        + GameMemory.AUTO_MAX_GB
+                        + " GB — always leaving "
+                        + GameMemory.NATIVE_HEADROOM_GB
+                        + " GB of RAM for the game's native side and the OS");
         autoMemory.setSelected(config.autoMemory);
         autoMemory.addActionListener(e -> memoryGb.setEnabled(!autoMemory.isSelected()));
         memoryGb.setValue(GameMemory.clampManualGb(config.memoryGb));
@@ -85,7 +91,7 @@ public final class SettingsDialog extends JDialog {
         memoryRow.add(memoryGb);
         memoryRow.add(new JLabel("GB"));
         row = addRow(form, row, "Game memory", memoryRow);
-        row = addHintText(form, row, memoryHint(autoGb), autoGb > 0);
+        row = addHintText(form, row, memoryHint(autoGb), GameMemory.totalSystemBytes() > 0);
         row = addRow(form, row, "Global JVM args", new JScrollPane(globalVmArgs));
         row =
                 addRow(
@@ -164,15 +170,25 @@ public final class SettingsDialog extends JDialog {
     }
 
     private static String memoryHint(int autoGb) {
-        if (autoGb <= 0) {
+        long totalBytes = GameMemory.totalSystemBytes();
+        if (totalBytes <= 0) {
             return "RAM detection failed — Automatic keeps the game's own -Xmx";
         }
-        long totalGb = Math.round((double) GameMemory.totalSystemBytes() / (1L << 30));
-        return "auto: half of "
+        long totalGb = Math.round((double) totalBytes / (1L << 30));
+        if (autoGb <= 0) {
+            return "auto: keeps the game's own -Xmx — raising the heap on "
+                    + totalGb
+                    + " GB RAM would starve the game's native side; manual range "
+                    + GameMemory.MANUAL_MIN_GB
+                    + "–"
+                    + GameMemory.MANUAL_MAX_GB
+                    + " GB";
+        }
+        return "auto: "
+                + autoGb
+                + " GB of "
                 + totalGb
-                + " GB RAM + 1 GB, capped at "
-                + GameMemory.AUTO_MAX_GB
-                + " GB; manual range "
+                + " GB RAM (the rest stays free for textures, audio and the OS); manual range "
                 + GameMemory.MANUAL_MIN_GB
                 + "–"
                 + GameMemory.MANUAL_MAX_GB

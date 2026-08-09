@@ -28,9 +28,25 @@ public final class WorkshopUpdate {
         public final boolean allOk;
         public final int failures;
 
-        Result(boolean allOk, int failures) {
+        /** Item count handed to the child process. */
+        public final int attempted;
+
+        /** Whether the Steamworks child actually ran with Steam reachable. */
+        public final boolean childRan;
+
+        Result(boolean allOk, int failures, int attempted, boolean childRan) {
             this.allOk = allOk;
             this.failures = failures;
+            this.attempted = attempted;
+            this.childRan = childRan;
+        }
+
+        /**
+         * Steam was reachable yet not one required item came out join-ready — the in-game workshop
+         * flow talks to the same stuck Steam client, so launching the game cannot end differently.
+         */
+        public boolean nothingUpdated() {
+            return childRan && attempted > 0 && failures >= attempted;
         }
     }
 
@@ -53,7 +69,7 @@ public final class WorkshopUpdate {
             workshopItemIds.add(SteamUpdateChild.VERIFY_PREFIX + id);
         }
         if (workshopItemIds.isEmpty()) {
-            return new Result(true, 0);
+            return new Result(true, 0, 0, false);
         }
         Path gameDir = config.resolveGameDir();
         if (gameDir == null) {
@@ -65,7 +81,7 @@ public final class WorkshopUpdate {
             Log.warn(
                     "Cannot locate storm-launcher.jar on disk — skipping workshop update"
                             + " (running from classes?)");
-            return new Result(false, workshopItemIds.size());
+            return new Result(false, workshopItemIds.size(), workshopItemIds.size(), false);
         }
 
         List<String> command = new ArrayList<>();
@@ -116,7 +132,7 @@ public final class WorkshopUpdate {
             Log.warn(
                     "Steam is not available — workshop items were NOT updated. The game's"
                             + " own join flow will handle them (may prompt in-game).");
-            return new Result(false, workshopItemIds.size());
+            return new Result(false, workshopItemIds.size(), workshopItemIds.size(), false);
         }
         boolean allOk = exit == 0 && failures == 0;
         if (allOk) {
@@ -129,7 +145,7 @@ public final class WorkshopUpdate {
                             + exit
                             + ").");
         }
-        return new Result(allOk, failures);
+        return new Result(allOk, failures, workshopItemIds.size(), true);
     }
 
     static Path ownJar() {

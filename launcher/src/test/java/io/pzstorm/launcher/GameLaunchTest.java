@@ -346,4 +346,12 @@ class GameLaunchTest {
                 plan.command.contains("-XX:+UseZGC"),
                 "windows overlay must follow the target JVM: " + plan.command);
     }
+
+    @Test
+    void previousLogSitsNextToTheOriginal() {
+        assertEquals(
+                tmp.resolve("logs").resolve("game-prev.log"),
+                GameLaunch.previousLogOf(tmp.resolve("logs").resolve("game.log")));
+        assertEquals(tmp.resolve("noext-prev"), GameLaunch.previousLogOf(tmp.resolve("noext")));
+    }
 }

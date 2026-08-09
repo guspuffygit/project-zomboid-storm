@@ -65,6 +65,7 @@ public final class GameLaunch {
 
         public Process start(Path gameLog) throws IOException {
             Files.createDirectories(gameLog.getParent());
+            rotate(gameLog);
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(workingDir.toFile());
             pb.environment().putAll(environment);
@@ -72,6 +73,32 @@ public final class GameLaunch {
             pb.redirectOutput(ProcessBuilder.Redirect.to(gameLog.toFile()));
             return pb.start();
         }
+
+        /**
+         * The previous run's output usually holds the crash that prompted this relaunch — keep one
+         * generation back so a log report sent after a restart still carries it.
+         */
+        private static void rotate(Path gameLog) {
+            try {
+                if (Files.isRegularFile(gameLog) && Files.size(gameLog) > 0) {
+                    Files.move(
+                            gameLog,
+                            previousLogOf(gameLog),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException ignored) {
+                // a locked or unreadable old log never blocks the launch
+            }
+        }
+    }
+
+    /** {@code game.log} → {@code game-prev.log}, next to the original. */
+    public static Path previousLogOf(Path gameLog) {
+        String name = gameLog.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        String prev =
+                dot > 0 ? name.substring(0, dot) + "-prev" + name.substring(dot) : name + "-prev";
+        return gameLog.resolveSibling(prev);
     }
 
     public static LaunchPlan plan(LauncherConfig config, ServerProfile profile) throws IOException {
