@@ -141,6 +141,13 @@ public final class GameLaunch {
         int memoryGb = config.resolveMemoryGb();
         if (memoryGb > 0 && !specifiesXmx(config, profile)) {
             command.add("-Xmx" + memoryGb + "g");
+            if (!specifiesXms(config, profile)) {
+                // commit and fault the whole heap at JVM init: a machine that cannot back
+                // -Xmx fails at launch with a clear error instead of dying hours into a
+                // session as a native OOM once the collector commits toward the max
+                command.add("-Xms" + memoryGb + "g");
+                command.add("-XX:+AlwaysPreTouch");
+            }
         }
 
         Path bootstrapDir = config.resolveBootstrapDir(gameDir);
@@ -204,6 +211,11 @@ public final class GameLaunch {
     /** User args win: an explicit -Xmx in either JVM-args field suppresses the managed heap. */
     static boolean specifiesXmx(LauncherConfig config, ServerProfile profile) {
         return anyUserArgStartsWith(config, profile, "-Xmx");
+    }
+
+    /** User args win: an explicit -Xms suppresses the managed commit-at-boot pair. */
+    static boolean specifiesXms(LauncherConfig config, ServerProfile profile) {
+        return anyUserArgStartsWith(config, profile, "-Xms");
     }
 
     private static boolean anyUserArgStartsWith(

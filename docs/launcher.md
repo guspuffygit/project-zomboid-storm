@@ -113,7 +113,11 @@ workshop updates.
    allocates half the system RAM plus 1 GB, capped at 16 GB, and shows the
    resulting size next to the checkbox; untick it for a manual 4–32 GB value;
    an explicit `-Xmx` among the user JVM args wins and suppresses the managed
-   one),
+   one; the managed heap also gets a matching `-Xms` plus
+   `-XX:+AlwaysPreTouch` so the whole heap is committed and faulted in at
+   launch — a size the machine cannot back fails at startup with a clear
+   allocation error instead of a native OOM hours into a session; an explicit
+   user `-Xms` suppresses that pair),
    any user JVM args, and — unless the
    auto-join handoff is armed — the vanilla `+connect host:port`
    (`+password <serverPassword>`) args, then spawns the JVM with the game

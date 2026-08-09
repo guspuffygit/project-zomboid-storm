@@ -232,10 +232,16 @@ class GameLaunchTest {
         assertTrue(
                 cmd.indexOf(autoArg) > cmd.indexOf("-Dzomboid.steam=1"),
                 "managed -Xmx must follow the game json's args so it wins in HotSpot");
+        assertTrue(
+                cmd.contains("-Xms" + GameMemory.autoGb() + "g"),
+                "managed heap must commit at boot so an unbackable -Xmx fails at launch");
+        assertTrue(cmd.contains("-XX:+AlwaysPreTouch"));
 
         config.autoMemory = false;
         config.memoryGb = 8;
-        assertTrue(GameLaunch.plan(config, null, null).command.contains("-Xmx8g"));
+        List<String> manualCmd = GameLaunch.plan(config, null, null).command;
+        assertTrue(manualCmd.contains("-Xmx8g"));
+        assertTrue(manualCmd.contains("-Xms8g"));
 
         config.memoryGb = 64;
         assertTrue(
@@ -249,10 +255,13 @@ class GameLaunchTest {
 
     @Test
     void userXmxSuppressesTheManagedHeapArg() throws IOException {
-        // config() carries a global -Xmx16g: it must stay the one and only -Xmx
+        // config() carries a global -Xmx16g: it must stay the one and only -Xmx,
+        // and the commit-at-boot pair must not apply to a heap we did not size
         List<String> cmd = GameLaunch.plan(config(), null, null).command;
         assertEquals(1, cmd.stream().filter(a -> a.startsWith("-Xmx")).count());
         assertTrue(cmd.contains("-Xmx16g"));
+        assertTrue(cmd.stream().noneMatch(a -> a.startsWith("-Xms")));
+        assertFalse(cmd.contains("-XX:+AlwaysPreTouch"));
 
         LauncherConfig config = config();
         config.globalVmArgs.clear();
@@ -263,6 +272,20 @@ class GameLaunchTest {
         List<String> cmd2 = GameLaunch.plan(config, profile, null).command;
         assertEquals(1, cmd2.stream().filter(a -> a.startsWith("-Xmx")).count());
         assertTrue(cmd2.contains("-Xmx6g"));
+    }
+
+    @Test
+    void userXmsSuppressesOnlyTheCommitAtBootPair() throws IOException {
+        assumeTrue(GameMemory.autoGb() > 0, "RAM detection");
+        LauncherConfig config = config();
+        config.globalVmArgs.clear();
+        config.globalVmArgs.add("-Xms2g");
+
+        List<String> cmd = GameLaunch.plan(config, null, null).command;
+        assertTrue(cmd.contains("-Xmx" + GameMemory.autoGb() + "g"), cmd.toString());
+        assertEquals(1, cmd.stream().filter(a -> a.startsWith("-Xms")).count());
+        assertTrue(cmd.contains("-Xms2g"));
+        assertFalse(cmd.contains("-XX:+AlwaysPreTouch"));
     }
 
     @Test

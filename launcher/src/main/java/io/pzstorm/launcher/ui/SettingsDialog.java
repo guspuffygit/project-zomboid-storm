@@ -64,7 +64,9 @@ public final class SettingsDialog extends JDialog {
                         + GameMemory.AUTO_MAX_GB
                         + " GB — always leaving "
                         + GameMemory.NATIVE_HEADROOM_GB
-                        + " GB of RAM for the game's native side and the OS");
+                        + " GB of RAM for the game's native side and the OS."
+                        + " The full amount is claimed at launch, so a size the"
+                        + " machine cannot back fails at startup, not mid-game");
         autoMemory.setSelected(config.autoMemory);
         autoMemory.addActionListener(e -> memoryGb.setEnabled(!autoMemory.isSelected()));
         memoryGb.setValue(GameMemory.clampManualGb(config.memoryGb));
