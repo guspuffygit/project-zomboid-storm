@@ -56,6 +56,12 @@ public final class LogReport {
      */
     static final int MAX_ZOMBOID_LOG_FILES = 12;
 
+    /**
+     * Newest-first cap on files pulled from Zomboid/Logs/storm — the Storm client's own log dir,
+     * where ClientLoadingWatchdog's stall dumps land in full.
+     */
+    static final int MAX_STORM_LOG_FILES = 4;
+
     /** Newest-first cap on JVM fatal-error dumps (hs_err_pid*.log) pulled from the game dir. */
     static final int MAX_HS_ERR_FILES = 3;
 
@@ -167,6 +173,9 @@ public final class LogReport {
             for (Path log : newestZomboidLogs()) {
                 putFileTail(zip, "zomboid/Logs/" + log.getFileName(), log);
             }
+            for (Path log : newestStormLogs()) {
+                putFileTail(zip, "zomboid/Logs/storm/" + log.getFileName(), log);
+            }
             for (Path dump : newestHsErrFiles(gameDir)) {
                 putFileTail(zip, "hs_err/" + dump.getFileName(), dump);
             }
@@ -198,17 +207,25 @@ public final class LogReport {
     }
 
     private static List<Path> newestZomboidLogs() {
-        Path dir = LauncherPaths.zomboidDir().resolve("Logs");
+        return newestFilesIn(LauncherPaths.zomboidDir().resolve("Logs"), MAX_ZOMBOID_LOG_FILES);
+    }
+
+    private static List<Path> newestStormLogs() {
+        return newestFilesIn(
+                LauncherPaths.zomboidDir().resolve("Logs").resolve("storm"), MAX_STORM_LOG_FILES);
+    }
+
+    private static List<Path> newestFilesIn(Path dir, int limit) {
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
         try (Stream<Path> files = Files.list(dir)) {
             return files.filter(Files::isRegularFile)
                     .sorted(Comparator.comparingLong(LogReport::lastModified).reversed())
-                    .limit(MAX_ZOMBOID_LOG_FILES)
+                    .limit(limit)
                     .collect(java.util.stream.Collectors.toList());
         } catch (IOException e) {
-            Log.warn("Could not list Zomboid logs: " + e.getMessage());
+            Log.warn("Could not list logs in " + dir + ": " + e.getMessage());
             return List.of();
         }
     }

@@ -105,6 +105,18 @@ public class StormLauncher {
                         .invoke(null, launcherAutoJoin);
             }
 
+            if (!StormEnv.isStormServer()) {
+                try {
+                    classLoader
+                            .loadClass("io.pzstorm.storm.client.ClientLoadingWatchdog")
+                            .getDeclaredMethod("start")
+                            .invoke(null);
+                } catch (Throwable t) {
+                    // diagnostics only — a broken watchdog must never take the client down
+                    LOGGER.error("Failed to start client loading watchdog", t);
+                }
+            }
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());

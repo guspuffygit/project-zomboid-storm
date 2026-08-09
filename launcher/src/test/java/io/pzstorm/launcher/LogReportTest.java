@@ -85,6 +85,10 @@ class LogReportTest {
         Path logsDir = Files.createDirectories(zomboidDir.resolve("Logs"));
         Files.write(logsDir.resolve("main.log"), "storm main".getBytes(StandardCharsets.UTF_8));
         Files.write(logsDir.resolve("debug.log"), "storm debug".getBytes(StandardCharsets.UTF_8));
+        Path stormLogsDir = Files.createDirectories(logsDir.resolve("storm"));
+        Files.write(
+                stormLogsDir.resolve("main.log"),
+                "storm client main".getBytes(StandardCharsets.UTF_8));
         Path gameDir = Files.createDirectories(tmp.resolve("game"));
         Files.write(
                 gameDir.resolve("hs_err_pid12008.log"),
@@ -112,6 +116,9 @@ class LogReportTest {
         assertEquals(
                 "storm debug",
                 new String(entries.get("zomboid/Logs/debug.log"), StandardCharsets.UTF_8));
+        assertEquals(
+                "storm client main",
+                new String(entries.get("zomboid/Logs/storm/main.log"), StandardCharsets.UTF_8));
         assertEquals(
                 "jvm fatal error",
                 new String(entries.get("hs_err/hs_err_pid12008.log"), StandardCharsets.UTF_8));
