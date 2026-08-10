@@ -16,6 +16,8 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import javax.swing.BorderFactory;
@@ -48,7 +50,19 @@ public final class LauncherWindow extends JFrame {
     public LauncherWindow(LauncherConfig config) {
         super("Storm Launcher " + LauncherInfo.version());
         this.config = config;
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // The shutdown hook in LauncherMain kills the tracked game on JVM exit so Steam's Stop
+        // takes the game down with the launcher. A user-initiated window close is different — the
+        // game is meant to keep running (see the "you can keep this window open" log line) — so
+        // release the reference before triggering the same System.exit path.
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        addWindowListener(
+                new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent e) {
+                        GameProcessTracker.releaseCurrent();
+                        System.exit(0);
+                    }
+                });
         buildUi();
         config.servers.forEach(model::addElement);
         if (!model.isEmpty()) {

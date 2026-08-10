@@ -82,6 +82,22 @@ public final class NetDataMetrics {
                     .labelNames("type")
                     .register(StormPrometheus.registry());
 
+    private static final Counter TYPE_EXEMPT_TOTAL =
+            Counter.builder()
+                    .name("pz_netdata_type_exempt_total")
+                    .help(
+                            "Number of packets processed despite the engaged net-data drain cap"
+                                    + " because their type is on the one-shot allowlist"
+                                    + " (CreatePlayer, ConnectCoop, TimeSync, RequestData,"
+                                    + " NetTimedAction, BuildAction, FishingAction): the vanilla"
+                                    + " client sends these exactly once with no retry and no"
+                                    + " periodic stream regenerates the state, so a single drop"
+                                    + " wedges the player (respawn stuck forever, server clock 0"
+                                    + " all session, action queue frozen >= 30 min). Labelled by"
+                                    + " packet type.")
+                    .labelNames("type")
+                    .register(StormPrometheus.registry());
+
     private NetDataMetrics() {}
 
     public static void recordNanos(long nanos) {
@@ -99,5 +115,9 @@ public final class NetDataMetrics {
 
     public static void recordPreJoinExempt(String packetType) {
         PREJOIN_EXEMPT_TOTAL.labelValues(packetType).inc();
+    }
+
+    public static void recordTypeExempt(String packetType) {
+        TYPE_EXEMPT_TOTAL.labelValues(packetType).inc();
     }
 }

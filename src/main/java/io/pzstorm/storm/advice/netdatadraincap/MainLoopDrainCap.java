@@ -4,8 +4,10 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.metrics.NetDataMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
+import java.util.EnumSet;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.GameServer;
+import zombie.network.PacketTypes;
 import zombie.network.ZomboidNetData;
 
 /**
@@ -24,9 +26,10 @@ import zombie.network.ZomboidNetData;
  * Dropped packets are NOT retransmitted — RakNet ACKed them at the transport layer before they were
  * queued, whatever their declared reliability — so while the cap is engaged one-shot reliable
  * packets are lost, not deferred; see {@link MainLoopDrainCapAdvice} for why that tradeoff is
- * accepted. Two packet classes are exempt from the drop: {@code VehicleRequest} (the only path that
- * regenerates a lost vehicle for a client) and anything from a connection that has not finished the
- * join handshake ({@link #isPreJoinExempt}).
+ * accepted. Three packet classes are exempt from the drop: {@code VehicleRequest} (the only path
+ * that regenerates a lost vehicle for a client), anything from a connection that has not finished
+ * the join handshake ({@link #isPreJoinExempt}), and the {@link #EXEMPT_TYPES} allowlist of
+ * one-shot, unretried types whose single loss wedges a player ({@link #isTypeExempt}).
  *
  * <p>"Spin boundary" is detected by a gap of more than {@link #BURST_GAP_NANOS} between consecutive
  * advice invocations. Calls within the same drain section happen back-to-back (sub-microsecond
@@ -56,6 +59,30 @@ public final class MainLoopDrainCap {
     public static volatile long lastCallEndNanos = 0L;
     public static volatile long burstStartNanos = 0L;
 
+    // One-shot packets the vanilla client never retries and no periodic stream regenerates, whose
+    // single loss wedges a player with no recovery path (audit 2026-08-10):
+    // - CreatePlayer/ConnectCoop: the respawn path has no timeout (unlike initial join's 30 s) —
+    //   a drop wedges the client on the respawn screen forever, on a fully-connected connection
+    //   the stalled-connection reaper never candidates.
+    // - TimeSync: sent once right after PlayerConnect (the first packet after the pre-join
+    //   exemption expires, same burst as heavy receivePlayerConnect); the only resend is
+    //   reply-driven, so a drop leaves getServerTime() == 0 all session (breaks vehicle
+    //   interpolation, hit reactions, zombie-owner sync, the ItemTransaction sweep clock).
+    // - NetTimedAction/BuildAction/FishingAction: a dropped Request freezes the player's whole
+    //   timed-action queue for >= 30 min, some actions forever.
+    // - RequestData: the world-download chain sends each request/ACK once and spins waiting;
+    //   today it runs pre-join (covered by isPreJoinExempt) — listed as insurance against a PZ
+    //   update moving it after PlayerConnect.
+    private static final EnumSet<PacketTypes.PacketType> EXEMPT_TYPES =
+            EnumSet.of(
+                    PacketTypes.PacketType.CreatePlayer,
+                    PacketTypes.PacketType.ConnectCoop,
+                    PacketTypes.PacketType.TimeSync,
+                    PacketTypes.PacketType.RequestData,
+                    PacketTypes.PacketType.NetTimedAction,
+                    PacketTypes.PacketType.BuildAction,
+                    PacketTypes.PacketType.FishingAction);
+
     private static final long EXEMPT_WARN_INTERVAL_NANOS = 5_000_000_000L;
 
     // Main-thread writers only (the advice runs inside GameServer.main's outer loop), so plain
@@ -64,6 +91,19 @@ public final class MainLoopDrainCap {
     private static long exemptSinceLastWarn = 0L;
 
     private MainLoopDrainCap() {}
+
+    /**
+     * True when the over-budget packet's type is on the {@link #EXEMPT_TYPES} allowlist of
+     * one-shot, unretried packets whose single loss wedges a player with no recovery. Records
+     * {@code pz_netdata_type_exempt_total}. Main-thread only.
+     */
+    public static boolean isTypeExempt(ZomboidNetData data) {
+        if (data.type == null || !EXEMPT_TYPES.contains(data.type)) {
+            return false;
+        }
+        NetDataMetrics.recordTypeExempt(data.type.name());
+        return true;
+    }
 
     /**
      * True when the over-budget packet belongs to a connection that has not completed the join

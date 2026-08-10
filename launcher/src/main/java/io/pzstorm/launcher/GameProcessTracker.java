@@ -22,12 +22,20 @@ public final class GameProcessTracker {
 
     private GameProcessTracker() {}
 
+    /**
+     * The game process spawned this session, if any. Kept so shutdown hooks can take it down when
+     * the launcher JVM is asked to exit (e.g. by Steam's Stop button). Cleared by {@link
+     * #releaseCurrent()} when the game is meant to outlive the launcher (normal window close).
+     */
+    private static volatile Process current;
+
     static Path recordFile() {
         return LauncherPaths.launcherDir().resolve("game-process.properties");
     }
 
     /** Called right after spawning the game. Best-effort — tracking must never fail a launch. */
     public static void record(Process process) {
+        current = process;
         try {
             ProcessHandle handle = process.toHandle();
             Properties props = new Properties();
@@ -98,6 +106,33 @@ public final class GameProcessTracker {
         } catch (Exception e) {
             Log.warn("Could not reap previous game process: " + e.getMessage());
         }
+    }
+
+    /**
+     * Fired from the launcher JVM's shutdown hook so the tracked game dies with the launcher when
+     * Steam's Stop button (or any signal delivered as CTRL_CLOSE_EVENT / SIGTERM) tears the
+     * launcher down. On Windows {@link Process#destroy()} is a TerminateProcess; that matches what
+     * Steam would do to the game directly if it were the tracked process, so no data-loss surprise
+     * is introduced beyond what Stop already implies.
+     */
+    public static void destroyCurrent() {
+        Process process = current;
+        if (process == null || !process.isAlive()) {
+            return;
+        }
+        try {
+            process.destroy();
+        } catch (Exception e) {
+            Log.warn("Could not close tracked game process on shutdown: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Cleared on normal launcher-window close so the game keeps running independently — matches the
+     * pre-existing "you can keep this window open" contract shown in the launcher log.
+     */
+    public static void releaseCurrent() {
+        current = null;
     }
 
     private static boolean isRecordedProcess(ProcessHandle handle, Properties props) {

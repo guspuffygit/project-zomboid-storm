@@ -25,9 +25,11 @@ import zombie.network.ZomboidNetDataPool;
  * pings) regenerated every tick; a one-shot reliable packet (item transaction, action, chat) lost
  * while the cap is engaged desyncs until the next authoritative resync — the same tradeoff vanilla
  * accepts when its 70&nbsp;ms cycle cap drops the tail of the vehicle queue, VehiclePhysicsReliable
- * included. Two exemptions: {@code VehicleRequest}, and any packet from a connection that has not
- * finished the join handshake ({@link MainLoopDrainCap#isPreJoinExempt} — the login funnel is
- * one-shot and unretried, so a single drop strands the join).
+ * included. Three exemptions: {@code VehicleRequest}; the {@link MainLoopDrainCap#isTypeExempt}
+ * allowlist of one-shot unretried types whose single loss wedges a player (respawn, TimeSync, timed
+ * actions, world download); and any packet from a connection that has not finished the join
+ * handshake ({@link MainLoopDrainCap#isPreJoinExempt} — the login funnel is one-shot and unretried,
+ * so a single drop strands the join).
  *
  * <p>Gated on {@link GameServer#server} as defense-in-depth; the patch itself is registered only
  * when {@link io.pzstorm.storm.util.StormEnv#isStormServer()} (HARD RULE: no Storm patches on the
@@ -58,6 +60,11 @@ public class MainLoopDrainCapAdvice {
             // is cheap.
             if (data != null && data.type == PacketTypes.PacketType.VehicleRequest) {
                 NetDataMetrics.recordVehicleRequestExempt();
+                return false;
+            }
+            // One-shot unretried types whose single loss wedges a player — respawn packets,
+            // TimeSync, timed actions, world-download requests. See MainLoopDrainCap.EXEMPT_TYPES.
+            if (data != null && MainLoopDrainCap.isTypeExempt(data)) {
                 return false;
             }
             // The login funnel is one-shot and never retried by the vanilla client; dropping any

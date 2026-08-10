@@ -60,6 +60,15 @@ public final class LauncherMain {
                 splash.close();
             }
         }
+        // Steam launches the game JVM directly (via -agentpath) and the bootstrap agent then
+        // exits so the launcher can update the workshop; Steam nevertheless usually keeps the
+        // launcher javaw in the game's job object and directs Stop at it. Kill the tracked game
+        // process when the launcher JVM is torn down so Stop takes the game with it. The launcher
+        // window's close handler releases the reference first, so a user-initiated close still
+        // leaves the game running independently.
+        Runtime.getRuntime()
+                .addShutdownHook(
+                        new Thread(GameProcessTracker::destroyCurrent, "storm-launcher-shutdown"));
         SwingUtilities.invokeLater(() -> new LauncherWindow(config).setVisible(true));
     }
 
