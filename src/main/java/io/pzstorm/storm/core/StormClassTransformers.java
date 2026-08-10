@@ -209,6 +209,7 @@ import io.pzstorm.storm.patch.performance.ZombieVehicleOcclusionPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
 import io.pzstorm.storm.patch.rendering.EpilepsyWarningSkipPatch;
+import io.pzstorm.storm.patch.rendering.GameLoadingClickToStartSkipPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStatePatch;
 import io.pzstorm.storm.patch.rendering.TISLogoStateSkipPatch;
@@ -253,6 +254,11 @@ public class StormClassTransformers {
             registerTransformer(new EpilepsyWarningSkipPatch());
             registerTransformer(new TISLogoStateSkipPatch());
             registerTransformer(new TermsOfServiceStateSkipPatch());
+        }
+        // Dev/testing-only (never passed by the launcher): auto-press the pre-spawn
+        // click-to-start screen. Normal players keep the vanilla click.
+        if (Boolean.getBoolean("storm.skipclickstart")) {
+            registerTransformer(new GameLoadingClickToStartSkipPatch());
         }
         registerTransformer(new LuaEventManagerPatch());
         registerTransformer(new LuaManagerPatch());
