@@ -37,7 +37,9 @@ import zombie.network.ServerOptions;
  * spawned players first, then pre-spawn pipeline connections (assigned {@code playerIds} entry —
  * the population {@code getPlayerCount()} counts), then post-login connections with no player id
  * yet — players waiting in the login queue, and the one connection the queue has admitted but not
- * granted. The queue pass matters even below capacity: admission is serialized through {@code
+ * granted. Passes are deduped by {@code steamId} (fallback: lowercase username) so a stale
+ * half-open connection and the same user's fresh reconnect resolve to a single advertised entry,
+ * priority spawned &gt; pre-spawn &gt; waiting. The queue pass matters even below capacity: admission is serialized through {@code
  * currentLoginQueue}, so a joiner burst queues up while the browser would otherwise read "85/100
  * yet I'm 15th in line". Queue-waiters have no player id to key a Steam entry by, so they are
  * registered under synthetic ids allocated downward from {@code MAX_IDS - 1} — a range real ids
@@ -199,7 +201,9 @@ public final class SteamPlayerListReconciler {
 
         int maxPlayers = ServerOptions.getInstance().getMaxPlayers();
         int stamp = ++sweepCounter;
-        int desiredCount = gatherDesired(engine, maxPlayers, stamp);
+        HashSet<Long> seenSteamIds = new HashSet<>();
+        HashSet<String> seenUsernames = new HashSet<>();
+        int desiredCount = gatherDesired(engine, maxPlayers, stamp, seenSteamIds, seenUsernames);
 
         // Removals before adds, so the native list never exceeds MaxPlayers mid-sweep when
         // membership rotates at the clamp.
@@ -255,8 +259,17 @@ public final class SteamPlayerListReconciler {
      * {@code GameServer.getPlayerCount()} counts) in two passes so spawned players always survive
      * the {@code maxPlayers} truncation ahead of pre-spawn connections, then post-login connections
      * still waiting for a player id (the login queue) last.
+     *
+     * <p>Deduped by {@code steamId} (fallback: lowercase username) across all passes so a stale
+     * half-open connection and the same user's fresh reconnect are advertised once — priority
+     * spawned &gt; pre-spawn &gt; waiting.
      */
-    private static int gatherDesired(UdpEngine engine, int maxPlayers, int stamp) {
+    private static int gatherDesired(
+            UdpEngine engine,
+            int maxPlayers,
+            int stamp,
+            HashSet<Long> seenSteamIds,
+            HashSet<String> seenUsernames) {
         int desiredCount = 0;
         List<UdpConnection> connections = engine.connections;
         for (int pass = 0; pass < 2 && desiredCount < maxPlayers; pass++) {
@@ -275,15 +288,19 @@ public final class SteamPlayerListReconciler {
                     if (wantSpawned != (player != null)) {
                         continue;
                     }
+                    String name = entryName(connection, player, i);
+                    if (!claimIdentity(connection, name, seenSteamIds, seenUsernames)) {
+                        continue;
+                    }
                     desiredStamp[id] = stamp;
-                    desiredNames[id] = entryName(connection, player, i);
+                    desiredNames[id] = name;
                     desiredScores[id] = player != null ? player.getZombieKills() : 0;
                     desiredSpawned[id] = player != null;
                     desiredIds[desiredCount++] = id;
                 }
             }
         }
-        return gatherWaiting(engine, maxPlayers, stamp, desiredCount);
+        return gatherWaiting(engine, maxPlayers, stamp, desiredCount, seenSteamIds, seenUsernames);
     }
 
     /**
@@ -295,7 +312,12 @@ public final class SteamPlayerListReconciler {
      * people sit in queue, because queue admission is serialized even below capacity.
      */
     private static int gatherWaiting(
-            UdpEngine engine, int maxPlayers, int stamp, int desiredCount) {
+            UdpEngine engine,
+            int maxPlayers,
+            int stamp,
+            int desiredCount,
+            HashSet<Long> seenSteamIds,
+            HashSet<String> seenUsernames) {
         List<UdpConnection> connections = engine.connections;
         int idFloor = engine.getMaxConnections() * 4;
         HashSet<Long> waiting = null;
@@ -313,6 +335,9 @@ public final class SteamPlayerListReconciler {
             // Track eligibility past the clamp so an assigned id survives membership rotation.
             waiting.add(connection.getConnectedGUID());
             if (desiredCount >= maxPlayers) {
+                continue;
+            }
+            if (!claimIdentity(connection, connection.getUserName(), seenSteamIds, seenUsernames)) {
                 continue;
             }
             short id = waitingEntryId(connection.getConnectedGUID(), idFloor, stamp);
@@ -333,6 +358,27 @@ public final class SteamPlayerListReconciler {
             }
         }
         return desiredCount;
+    }
+
+    /**
+     * Reserves this user in the per-sweep dedup sets. Returns {@code false} if the same user
+     * (steamId, or lowercase username when steamId is unknown) has already been advertised earlier
+     * in this sweep — the caller should skip. Prevents a stale half-open connection and the same
+     * user's fresh reconnect from both showing up in the Steam user list.
+     */
+    private static boolean claimIdentity(
+            UdpConnection connection,
+            String name,
+            HashSet<Long> seenSteamIds,
+            HashSet<String> seenUsernames) {
+        long steamId = connection.getSteamId();
+        if (steamId != 0L) {
+            return seenSteamIds.add(steamId);
+        }
+        if (name == null) {
+            return true;
+        }
+        return seenUsernames.add(name.toLowerCase());
     }
 
     private static boolean hasAssignedPlayerId(UdpConnection connection) {
