@@ -28,6 +28,7 @@ import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalCanClimbStairsNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalUpdateNullDefGuardPatch;
+import io.pzstorm.storm.patch.fixes.IsoGridSquareGetRoomNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
 import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
@@ -279,6 +280,11 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalUpdateNullDefGuardPatch());
         registerTransformer(new IsoAnimalCanClimbStairsNullDefGuardPatch());
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
+        // Squares can keep a stale reference to an IsoRoom gutted (def = null) by the
+        // player-built-room rebuild; consumers without vanilla's hasRoomDef()-style check NPE
+        // (seen live: FirearmRoomSize FMOD parameter -> IngameState.updateInternal kick-to-menu).
+        // Guarding getRoom() routes all of them onto their vanilla no-room fallbacks.
+        registerTransformer(new IsoGridSquareGetRoomNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
         // EXPERIMENTAL client-side perf patches. Deliberate, user-approved exception to the
         // no-client-patches HARD RULE, strictly opt-in via -Dstorm.experimental.clientperf=true:
