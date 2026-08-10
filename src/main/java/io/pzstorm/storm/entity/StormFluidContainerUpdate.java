@@ -47,9 +47,9 @@ import zombie.iso.weather.ClimateManager;
  *       without the per-entity {@code isOutside()}/{@code isMultiTileMoveable()} reads. Every
  *       skipped vanilla expression ({@code isOutside}, {@code isMultiTileMoveable}, {@code
  *       canPlayerEmpty}, {@code getRainCatcher}, {@code getPrecipitationIntensity}) is a
- *       side-effect-free read, and for entities that do qualify, every state change ({@code
- *       adjustAmount}, {@code addFluid}, {@code sync}) runs in the exact vanilla order: petrol
- *       branch first, then rain branch.
+ *       side-effect-free read, and for entities that do qualify, every fluid mutation ({@code
+ *       adjustAmount}, {@code addFluid}) runs in the exact vanilla order: petrol branch first, then
+ *       rain branch.
  *   <li><b>Replaces the {@code "Petrol"} string comparison with an enum identity compare.</b>
  *       {@code getPrimaryFluid().getFluidType() == FluidType.Petrol} is exactly equivalent to
  *       vanilla's {@code getPrimaryFluid().getFluidTypeString().equals("Petrol")}: a builtin {@code
@@ -59,6 +59,15 @@ import zombie.iso.weather.ClimateManager;
  *       builtin case-insensitively to the builtin enum instead of {@code FluidType.Modded}. Null
  *       handling matches too: both dereference the {@code getPrimaryFluid()} result unconditionally
  *       (non-null here because the {@code !isEmpty()} guard precedes it, as in vanilla).
+ *   <li><b>Coalesces the per-branch network sync into one deferred send.</b> Vanilla calls {@code
+ *       sync()} inside both the petrol and the rain branch, so an entity that hits both in the same
+ *       sync-window pass broadcasts its full state twice back to back. The replacement sets a flag
+ *       in each branch and sends once after both — every SyncIsoObject packet serializes the
+ *       object's <i>current</i> full state, so a single post-mutation send delivers exactly the
+ *       state clients would hold after vanilla's second packet. The send still goes through {@code
+ *       IsoObject.sync()}, which {@code IsoObjectSyncGatePatch} relevancy-gates per connection (see
+ *       {@code StormSyncIsoObjectGate}) — off-range connections stop paying for rain-barrel ticks
+ *       entirely.
  * </ol>
  *
  * <p>{@code objectSyncLimiter.Check()} is stateful (it advances the limiter window), so it is
@@ -199,6 +208,7 @@ public final class StormFluidContainerUpdate {
                 }
 
                 boolean didFluidWork = false;
+                boolean needSync = false;
 
                 // Petrol evaporation branch — vanilla condition order preserved:
                 // canPlayerEmpty && rainCatcher > 0 (above) && !isEmpty() && primary is Petrol.
@@ -213,8 +223,8 @@ public final class StormFluidContainerUpdate {
                             amount = fluidContainer.getAmount();
                         }
                         fluidContainer.adjustAmount(fluidContainer.getAmount() - amount);
-                        if (doSync && entity instanceof IsoObject isoObject) {
-                            isoObject.sync();
+                        if (doSync) {
+                            needSync = true;
                         }
                     }
                 }
@@ -236,10 +246,16 @@ public final class StormFluidContainerUpdate {
                             fluidContainer.adjustAmount(fluidContainer.getCapacity() - rainAmount);
                         }
                         fluidContainer.addFluid(waterType, rainAmount);
-                        if (doSync && entity instanceof IsoObject isoObject) {
-                            isoObject.sync();
+                        if (doSync) {
+                            needSync = true;
                         }
                     }
+                }
+
+                // Coalesced sync — one full-state send after the last mutation instead of
+                // vanilla's per-branch sends; see class doc item 4.
+                if (needSync && entity instanceof IsoObject isoObject) {
+                    isoObject.sync();
                 }
 
                 if (didFluidWork) {

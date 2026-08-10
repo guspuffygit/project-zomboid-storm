@@ -265,6 +265,24 @@ caught it, and the fast path latched itself off permanently — grep the server 
 | `pz_entity_array_removes_total` | CounterWithCallback | `path={fast,scan,mismatch,vanilla}` | Removals from the global entity array: `fast` = indexed O(1) swap-with-last; `scan` = Storm's inline linear scan (index miss around a kill-switch toggle, or an equals-based call); `mismatch` = self-check failure (latches the fast path off); `vanilla` = fell through to the vanilla scan (kill switch off or failure latch). |
 | `storm_entity_index_size` | GaugeWithCallback | — | Entities currently tracked by the removal index — mirrors the global entity array size while the fast path is active. |
 
+### SyncIsoObject relevancy gate (StormSyncIsoObjectGate)
+
+Tallies for the per-connection relevancy gate on the server-side `syncIsoObject` broadcast loops —
+base `zombie.iso.IsoObject` plus the `IsoWorldInventoryObject`, `IsoBarricade`, and
+`IsoLightSwitch` overrides. Vanilla sends every SyncIsoObject full-state packet to every
+connection; the gate adds vanilla's own `IsoDoor` precedent
+(`isFullyConnected() && isRelevantTo(x, y)`) per recipient. The gate is always on; it reverts to
+vanilla broadcast permanently if the gated path ever throws. `suppressed` counts only sends
+vanilla *would* have made that the gate dropped — `IsoLightSwitch`'s already-vanilla-gated
+`source == null` branch contributes to `sent` only, so the suppression ratio is a true measure of
+the gate's traffic saving. Tallies are plain non-atomic `long`s read at scrape time via
+`CounterWithCallback` (main-thread writers only).
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_sync_iso_object_calls_total` | CounterWithCallback | `target={iso_object,world_inventory,barricade,light_switch}`, `path={gated,vanilla}` | `syncIsoObject` invocations by executed path (`vanilla` = failure latch tripped). `iso_object` is the base method, i.e. every subclass without its own override (hutches, generators, rain barrels via the fluid sync). |
+| `pz_sync_iso_object_packets_total` | CounterWithCallback | `target` (as above), `outcome={sent,suppressed}` | Per-connection send decisions inside the gated loops: packets actually sent vs sends vanilla would have made that the relevancy gate dropped. |
+
 ### Net-data drain cap (NetDataMetrics)
 
 Counters for the per-spin inbound packet drain cap (`Storm.NetDataCapMs` sandbox option) wrapped

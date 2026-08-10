@@ -47,6 +47,10 @@ import io.pzstorm.storm.patch.networking.GameServerLockFpsPatch;
 import io.pzstorm.storm.patch.networking.GameServerStalledConnectionReapPatch;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.GameServerWorkshopItemsPatch;
+import io.pzstorm.storm.patch.networking.IsoBarricadeSyncGatePatch;
+import io.pzstorm.storm.patch.networking.IsoLightSwitchSyncGatePatch;
+import io.pzstorm.storm.patch.networking.IsoObjectSyncGatePatch;
+import io.pzstorm.storm.patch.networking.IsoWorldInventoryObjectSyncGatePatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.PlayerDownloadServerChunkActivityPatch;
 import io.pzstorm.storm.patch.networking.ReceiveSandboxOptionsPatch;
@@ -439,6 +443,16 @@ public class StormClassTransformers {
             registerTransformer(new BodyDamageSyncPatch());
 
             registerTransformer(new UdpConnectionRelevancePatch());
+
+            // Relevancy gate on the SyncIsoObject broadcast loops (base IsoObject method plus
+            // the three reproducible overrides). IsoObjectRemoveFromWorldPatch also transforms
+            // zombie.iso.IsoObject but advises removeFromWorld, so ordering between them is
+            // unconstrained. The gate leans on UdpConnectionRelevancePatch's hardening of
+            // isRelevantTo (false while not fully connected), registered just above.
+            registerTransformer(new IsoObjectSyncGatePatch());
+            registerTransformer(new IsoWorldInventoryObjectSyncGatePatch());
+            registerTransformer(new IsoBarricadeSyncGatePatch());
+            registerTransformer(new IsoLightSwitchSyncGatePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
             registerTransformer(new PlayerDownloadServerChunkActivityPatch());
