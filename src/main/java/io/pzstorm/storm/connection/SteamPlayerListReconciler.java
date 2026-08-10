@@ -39,17 +39,17 @@ import zombie.network.ServerOptions;
  * yet — players waiting in the login queue, and the one connection the queue has admitted but not
  * granted. Passes are deduped by {@code steamId} (fallback: lowercase username) so a stale
  * half-open connection and the same user's fresh reconnect resolve to a single advertised entry,
- * priority spawned &gt; pre-spawn &gt; waiting. The queue pass matters even below capacity: admission is serialized through {@code
- * currentLoginQueue}, so a joiner burst queues up while the browser would otherwise read "85/100
- * yet I'm 15th in line". Queue-waiters have no player id to key a Steam entry by, so they are
- * registered under synthetic ids allocated downward from {@code MAX_IDS - 1} — a range real ids
- * ({@code slot * 4 + playerIndex}, {@code slot} below the RakNet cap) can never reach — and swap to
- * the real id under the same username at login grant. A2S exposes names, not ids, so query
- * consumers (BattleMetrics and friends) see one continuous session across the swap. Everything is
- * truncated at {@code ServerOptions.getMaxPlayers()}. The clamp is not cosmetic: the vanilla
- * in-game browser silently delists any server advertising {@code players > maxPlayers} ({@code
- * MultiplayerUI.lua}'s anti-spam filter), so a full pipeline reads as exactly {@code
- * MaxPlayers/MaxPlayers} — never above.
+ * priority spawned &gt; pre-spawn &gt; waiting. The queue pass matters even below capacity:
+ * admission is serialized through {@code currentLoginQueue}, so a joiner burst queues up while the
+ * browser would otherwise read "85/100 yet I'm 15th in line". Queue-waiters have no player id to
+ * key a Steam entry by, so they are registered under synthetic ids allocated downward from {@code
+ * MAX_IDS - 1} — a range real ids ({@code slot * 4 + playerIndex}, {@code slot} below the RakNet
+ * cap) can never reach — and swap to the real id under the same username at login grant. A2S
+ * exposes names, not ids, so query consumers (BattleMetrics and friends) see one continuous session
+ * across the swap. Everything is truncated at {@code ServerOptions.getMaxPlayers()}. The clamp is
+ * not cosmetic: the vanilla in-game browser silently delists any server advertising {@code players
+ * > maxPlayers} ({@code MultiplayerUI.lua}'s anti-spam filter), so a full pipeline reads as exactly
+ * {@code MaxPlayers/MaxPlayers} — never above.
  *
  * <p><b>Single writer.</b> While the reconciler is active, {@code SteamGameServerPlayerListPatch}
  * suppresses the vanilla {@code AddPlayer(IsoPlayer)} / {@code RemovePlayer(IsoPlayer)} wrapper

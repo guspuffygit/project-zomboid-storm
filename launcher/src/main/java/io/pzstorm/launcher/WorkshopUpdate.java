@@ -8,8 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Parent-side driver for pre-game workshop item updates. The Steamworks calls run in a CHILD JVM
@@ -34,11 +39,28 @@ public final class WorkshopUpdate {
         /** Whether the Steamworks child actually ran with Steam reachable. */
         public final boolean childRan;
 
-        Result(boolean allOk, int failures, int attempted, boolean childRan) {
+        /**
+         * Workshop item ids the child reported as not join-ready (FAILED/STALLED/rejected). Empty
+         * when the child never ran (Steam unreachable, jar-on-disk missing) — callers that need
+         * per-item detail should check {@link #childRan} first.
+         */
+        public final Set<String> failedItemIds;
+
+        Result(
+                boolean allOk,
+                int failures,
+                int attempted,
+                boolean childRan,
+                Set<String> failedItemIds) {
             this.allOk = allOk;
             this.failures = failures;
             this.attempted = attempted;
             this.childRan = childRan;
+            this.failedItemIds = Collections.unmodifiableSet(new LinkedHashSet<>(failedItemIds));
+        }
+
+        Result(boolean allOk, int failures, int attempted, boolean childRan) {
+            this(allOk, failures, attempted, childRan, Collections.emptySet());
         }
 
         /**
@@ -49,6 +71,9 @@ public final class WorkshopUpdate {
             return childRan && attempted > 0 && failures >= attempted;
         }
     }
+
+    private static final Pattern FAILED_ITEM_ID =
+            Pattern.compile("^item (\\d+) (?:FAILED|STALLED|rejected)\\b");
 
     public static Result run(LauncherConfig config, List<String> workshopItemIds)
             throws IOException, InterruptedException {
@@ -109,6 +134,7 @@ public final class WorkshopUpdate {
                         + " …");
         Process child = pb.start();
         int failures = 0;
+        Set<String> failedItemIds = new LinkedHashSet<>();
         try (BufferedReader reader =
                 new BufferedReader(
                         new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
@@ -119,6 +145,10 @@ public final class WorkshopUpdate {
                         || line.contains("STALLED")
                         || line.contains("rejected")) {
                     failures++;
+                    Matcher m = FAILED_ITEM_ID.matcher(line);
+                    if (m.find()) {
+                        failedItemIds.add(m.group(1));
+                    }
                 }
             }
         }
@@ -145,7 +175,7 @@ public final class WorkshopUpdate {
                             + exit
                             + ").");
         }
-        return new Result(allOk, failures, workshopItemIds.size(), true);
+        return new Result(allOk, failures, workshopItemIds.size(), true, failedItemIds);
     }
 
     static Path ownJar() {

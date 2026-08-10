@@ -133,9 +133,17 @@ public final class JoinFlow {
                             + result.attempted
                             + " workshop item(s) this server needs, so the join was cancelled —"
                             + " the game would only get stuck at its workshop screen."
-                            + " Fully exit Steam (Steam menu → Exit), start it again, then"
-                            + " press Join. If this keeps happening, \"Launch to Main Menu\" and"
-                            + " join from inside the game.");
+                            + " Right-click Steam in the taskbar and click Exit, start Steam"
+                            + " again, then press Join. If this keeps happening,"
+                            + " \"Launch to Main Menu\" and join from inside the game.");
+        }
+        if (stormItem != null && result.failedItemIds.contains(stormItem)) {
+            throw new IOException(
+                    "Steam couldn't update the Storm workshop item ("
+                            + stormItem
+                            + ") — the version this server needs won't load, so the join was"
+                            + " cancelled. Right-click Steam in the taskbar and click Exit,"
+                            + " start Steam again, then press Join.");
         }
     }
 
