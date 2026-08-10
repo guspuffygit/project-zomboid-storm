@@ -341,10 +341,9 @@ public final class LauncherWindow extends JFrame {
                         () -> {
                             try {
                                 action.run();
+                                GameProcessTracker.armCloseLauncherOnGameExit();
                                 SwingUtilities.invokeLater(
-                                        () ->
-                                                Log.info(
-                                                        "You can keep this window open — the game runs independently."));
+                                        () -> Log.info("Launcher will close when the game exits."));
                             } catch (Exception e) {
                                 Log.error("Launch failed", e);
                                 SwingUtilities.invokeLater(

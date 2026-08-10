@@ -42,6 +42,7 @@ import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.ConnectionManagerLogPatch;
 import io.pzstorm.storm.patch.networking.CoopMasterPatch;
+import io.pzstorm.storm.patch.networking.GameEntityBroadcastGatePatch;
 import io.pzstorm.storm.patch.networking.GameServerConnectionCapPatch;
 import io.pzstorm.storm.patch.networking.GameServerLockFpsPatch;
 import io.pzstorm.storm.patch.networking.GameServerStalledConnectionReapPatch;
@@ -453,6 +454,12 @@ public class StormClassTransformers {
             registerTransformer(new IsoWorldInventoryObjectSyncGatePatch());
             registerTransformer(new IsoBarricadeSyncGatePatch());
             registerTransformer(new IsoLightSwitchSyncGatePatch());
+
+            // Relevancy gate on the GameEntity broadcast branch (craft-progress ticks, component
+            // dumps, using-player changes — vanilla sendToAll's only filter is isFullyConnected).
+            // Same isRelevantTo precedent and fail-soft latch as the SyncIsoObject gates above,
+            // and leans on UdpConnectionRelevancePatch's hardening the same way.
+            registerTransformer(new GameEntityBroadcastGatePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
             registerTransformer(new PlayerDownloadServerChunkActivityPatch());

@@ -109,6 +109,27 @@ public final class GameProcessTracker {
     }
 
     /**
+     * Arms the reverse direction of the Steam-Stop coupling: when the tracked game exits (for any
+     * reason — user quit, crash, Steam Stop terminating just the game exe), the launcher exits too.
+     * Steam tracks the ProjectZomboid64 process by exe name, not the launcher's javaw, so Stop only
+     * kills the game — without this the launcher lingers as a headless javaw. Called from the UI
+     * path after a successful spawn; headless {@code --join} skips it because the launcher already
+     * returns on its own.
+     */
+    public static void armCloseLauncherOnGameExit() {
+        Process process = current;
+        if (process == null) {
+            return;
+        }
+        process.onExit()
+                .thenRun(
+                        () -> {
+                            Log.info("Game process exited — closing launcher.");
+                            System.exit(0);
+                        });
+    }
+
+    /**
      * Fired from the launcher JVM's shutdown hook so the tracked game dies with the launcher when
      * Steam's Stop button (or any signal delivered as CTRL_CLOSE_EVENT / SIGTERM) tears the
      * launcher down. On Windows {@link Process#destroy()} is a TerminateProcess; that matches what
