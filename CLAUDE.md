@@ -4,7 +4,7 @@ Client-side Java policy (decided 2026-07-30; replaces the old absolute ban). Cli
 
 Discipline still applies. Prefer the least invasive mechanism, in this order: server-side change → client Lua under media/lua/client/ → Storm-core client Java on existing surfaces (LuaEventManagerPatch's bridge delivers every Lua event to @SubscribeEvent handlers; LuaCompiler.loadstring + LuaManager.caller.pcall runs Lua from Java — see io.pzstorm.storm.client.LauncherAutoJoin for the pattern) → new client bytecode patch. A new client patch needs a reason the cheaper tiers can't cover, must fail soft (a broken patch logs and degrades; it never takes the client down), and adds re-validation work on every game update — say so in the PR/commit.
 
-Existing client-side patches: MainScreenStatePatch, UIWorldMapPatch, LuaEventManagerPatch, TISLogoStatePatch, PacketReceivedPatch, ChatManagerPatch, LuaExposerDumpPatch, LuaManagerPatch, DebugLogPatch, ThreadPatch.
+Existing client-side patches: MainScreenStatePatch, UIWorldMapPatch, LuaEventManagerPatch, TISLogoStatePatch, PacketReceivedPatch, ChatManagerPatch, LuaExposerDumpPatch, LuaManagerPatch, DebugLogPatch, ThreadPatch, RequestDataOverTcpPatch, PlayerProfileOverTcpPatch, ChunkRequestOverTcpPatch, WorldStreamerChunkTcpPatch.
 
 Transformer gating (server-only patches). Gate ZomboidMod.getClassTransformers() on StormEnv.isStormServer(), not GameServer.server. GameServer.server is false at collectTransformers() time and silently drops every patch. See docs/mod-author-guide.md for the full pattern.
 

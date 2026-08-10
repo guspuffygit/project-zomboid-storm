@@ -100,6 +100,48 @@ public class StormLauncher {
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, startupAnalytics);
 
+            // Game-port HTTP server (TCP on the game's UDP port, for game communication with
+            // clients). The @SubscribeEvent on GamePortHttpServer starts it on OnServerStarted,
+            // once GameServer.defaultPort is final.
+            if (StormEnv.isStormServer()) {
+                Class<?> gamePortHttpServer =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortHttpServer");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortHttpServer);
+
+                Class<?> gamePortBuiltinEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortBuiltinEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortBuiltinEndpoints);
+
+                Class<?> gamePortHandshakeEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortHandshakeEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortHandshakeEndpoints);
+
+                Class<?> gamePortRequestDataEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortRequestDataEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortRequestDataEndpoints);
+
+                Class<?> gamePortPlayerProfileEndpoints =
+                        classLoader.loadClass(
+                                "io.pzstorm.storm.http.GamePortPlayerProfileEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortPlayerProfileEndpoints);
+
+                Class<?> gamePortChunkEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortChunkEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortChunkEndpoints);
+            }
+
             // Property name mirrors io.pzstorm.storm.client.LauncherAutoJoin.AUTOJOIN_FILE_PROPERTY
             if (!StormEnv.isStormServer() && System.getProperty("storm.autojoin.file") != null) {
                 Class<?> launcherAutoJoin =
@@ -118,6 +160,16 @@ public class StormLauncher {
                 } catch (Throwable t) {
                     // diagnostics only — a broken watchdog must never take the client down
                     LOGGER.error("Failed to start client loading watchdog", t);
+                }
+
+                try {
+                    classLoader
+                            .loadClass("io.pzstorm.storm.client.StormTcpChannel")
+                            .getDeclaredMethod("start")
+                            .invoke(null);
+                } catch (Throwable t) {
+                    // a broken TCP channel just means UDP-only; never take the client down
+                    LOGGER.error("Failed to start Storm TCP channel", t);
                 }
             }
 

@@ -6,6 +6,8 @@ import com.google.common.collect.Sets;
 import io.pzstorm.storm.event.lua.OnClientCommandEvent;
 import io.pzstorm.storm.event.zomboid.OnPacketReceivedEvent;
 import io.pzstorm.storm.event.zomboid.OnTriggerLuaEvent;
+import io.pzstorm.storm.http.GameHttpEndpoint;
+import io.pzstorm.storm.http.GameHttpEndpointDispatcher;
 import io.pzstorm.storm.http.HttpEndpoint;
 import io.pzstorm.storm.http.HttpEndpointDispatcher;
 import io.pzstorm.storm.http.HttpRequestEvent;
@@ -170,40 +172,58 @@ public class StormEventDispatcher {
         }
 
         if (method.isAnnotationPresent(HttpEndpoint.class)) {
-            Class<?>[] parameters = method.getParameterTypes();
-            if (parameters.length < 1
-                    || parameters.length > 2
-                    || !HttpRequestEvent.class.isAssignableFrom(parameters[0])) {
-                throw new IllegalArgumentException(
-                        "@HttpEndpoint method "
-                                + method.getName()
-                                + " must have signature (HttpRequestEvent) or (HttpRequestEvent,"
-                                + " BodyType)");
-            }
-            if (parameters.length == 2 && HttpRequestEvent.class.isAssignableFrom(parameters[1])) {
-                throw new IllegalArgumentException(
-                        "@HttpEndpoint method "
-                                + method.getName()
-                                + " second parameter must be the JSON body type, not"
-                                + " HttpRequestEvent");
-            }
-            if (method.getReturnType() != void.class) {
-                throw new IllegalArgumentException(
-                        "@HttpEndpoint method " + method.getName() + " must return void");
-            }
-            if (handler == null && !Modifier.isStatic(method.getModifiers())) {
-                throw new IllegalArgumentException(
-                        "@HttpEndpoint method "
-                                + method.getName()
-                                + " must be STATIC when registered via a Class");
-            }
-            if (handler != null && Modifier.isStatic(method.getModifiers())) {
-                throw new IllegalArgumentException(
-                        "@HttpEndpoint method "
-                                + method.getName()
-                                + " must NOT be STATIC when registered via an instance");
-            }
+            validateHttpHandlerSignature(method, handler, "@HttpEndpoint");
             HttpEndpointDispatcher.registerHandler(method, handler);
+        }
+
+        if (method.isAnnotationPresent(GameHttpEndpoint.class)) {
+            validateHttpHandlerSignature(method, handler, "@GameHttpEndpoint");
+            GameHttpEndpointDispatcher.registerHandler(method, handler);
+        }
+    }
+
+    /**
+     * Shared signature validation for {@link HttpEndpoint} and {@link GameHttpEndpoint} handler
+     * methods; both annotations accept the same shapes.
+     */
+    private static void validateHttpHandlerSignature(
+            Method method, @Nullable Object handler, String annotationName) {
+        Class<?>[] parameters = method.getParameterTypes();
+        if (parameters.length < 1
+                || parameters.length > 2
+                || !HttpRequestEvent.class.isAssignableFrom(parameters[0])) {
+            throw new IllegalArgumentException(
+                    annotationName
+                            + " method "
+                            + method.getName()
+                            + " must have signature (HttpRequestEvent) or (HttpRequestEvent,"
+                            + " BodyType)");
+        }
+        if (parameters.length == 2 && HttpRequestEvent.class.isAssignableFrom(parameters[1])) {
+            throw new IllegalArgumentException(
+                    annotationName
+                            + " method "
+                            + method.getName()
+                            + " second parameter must be the JSON body type, not"
+                            + " HttpRequestEvent");
+        }
+        if (method.getReturnType() != void.class) {
+            throw new IllegalArgumentException(
+                    annotationName + " method " + method.getName() + " must return void");
+        }
+        if (handler == null && !Modifier.isStatic(method.getModifiers())) {
+            throw new IllegalArgumentException(
+                    annotationName
+                            + " method "
+                            + method.getName()
+                            + " must be STATIC when registered via a Class");
+        }
+        if (handler != null && Modifier.isStatic(method.getModifiers())) {
+            throw new IllegalArgumentException(
+                    annotationName
+                            + " method "
+                            + method.getName()
+                            + " must NOT be STATIC when registered via an instance");
         }
     }
 

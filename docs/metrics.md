@@ -1099,6 +1099,8 @@ storm_zombie_id_pool_size / (storm_max_total_zombies > 0)
 |------|------|--------|------|
 | `storm_http_requests_total` | Counter | `method`, `path`, `status` | One per HTTP request handled. |
 | `storm_http_request_duration_seconds` | Histogram (native) | `method`, `path` | Wall-clock duration of one HTTP request, from dispatch entry to exchange close. |
+| `storm_gameport_http_requests_total` | Counter | `method`, `path`, `status` | Same, for the game-port TCP server (`@GameHttpEndpoint` registry). |
+| `storm_gameport_http_request_duration_seconds` | Histogram (native) | `method`, `path` | Same, for the game-port TCP server. |
 
 ## Gotchas
 

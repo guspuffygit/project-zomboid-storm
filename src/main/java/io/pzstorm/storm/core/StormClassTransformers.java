@@ -4,8 +4,12 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.client.ChunkRequestOverTcpPatch;
+import io.pzstorm.storm.patch.client.PlayerProfileOverTcpPatch;
+import io.pzstorm.storm.patch.client.RequestDataOverTcpPatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
+import io.pzstorm.storm.patch.client.WorldStreamerChunkTcpPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
 import io.pzstorm.storm.patch.client.experimental.VehicleModDataRequestPatch;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
@@ -389,6 +393,14 @@ public class StormClassTransformers {
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
             registerTransformer(new PacketLimitMetricsPatch());
+            // Loading-phase transfers over the Storm game-port TCP channel; both fall back
+            // to the vanilla UDP paths unless a handshake with a Storm server succeeded.
+            registerTransformer(new RequestDataOverTcpPatch());
+            registerTransformer(new PlayerProfileOverTcpPatch());
+            // Loading-phase chunk streaming over the same channel; gameplay streaming
+            // (after playerConnectSent) stays on vanilla UDP.
+            registerTransformer(new ChunkRequestOverTcpPatch());
+            registerTransformer(new WorldStreamerChunkTcpPatch());
         }
 
         if (StormEnv.isStormServer()) {
