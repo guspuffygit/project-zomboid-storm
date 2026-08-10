@@ -25,7 +25,9 @@ import zombie.network.ZomboidNetDataPool;
  * pings) regenerated every tick; a one-shot reliable packet (item transaction, action, chat) lost
  * while the cap is engaged desyncs until the next authoritative resync — the same tradeoff vanilla
  * accepts when its 70&nbsp;ms cycle cap drops the tail of the vehicle queue, VehiclePhysicsReliable
- * included.
+ * included. Two exemptions: {@code VehicleRequest}, and any packet from a connection that has not
+ * finished the join handshake ({@link MainLoopDrainCap#isPreJoinExempt} — the login funnel is
+ * one-shot and unretried, so a single drop strands the join).
  *
  * <p>Gated on {@link GameServer#server} as defense-in-depth; the patch itself is registered only
  * when {@link io.pzstorm.storm.util.StormEnv#isStormServer()} (HARD RULE: no Storm patches on the
@@ -56,6 +58,11 @@ public class MainLoopDrainCapAdvice {
             // is cheap.
             if (data != null && data.type == PacketTypes.PacketType.VehicleRequest) {
                 NetDataMetrics.recordVehicleRequestExempt();
+                return false;
+            }
+            // The login funnel is one-shot and never retried by the vanilla client; dropping any
+            // of it silently strands the join. See MainLoopDrainCap.isPreJoinExempt.
+            if (data != null && MainLoopDrainCap.isPreJoinExempt(data)) {
                 return false;
             }
             NetDataMetrics.recordDropped();

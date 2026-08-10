@@ -1,6 +1,12 @@
 package io.pzstorm.storm.advice.netdatadraincap;
 
+import static io.pzstorm.storm.logging.StormLogger.LOGGER;
+
+import io.pzstorm.storm.metrics.NetDataMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
+import zombie.core.raknet.UdpConnection;
+import zombie.network.GameServer;
+import zombie.network.ZomboidNetData;
 
 /**
  * Runtime knob for {@link MainLoopDrainCapAdvice}.
@@ -18,7 +24,9 @@ import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
  * Dropped packets are NOT retransmitted — RakNet ACKed them at the transport layer before they were
  * queued, whatever their declared reliability — so while the cap is engaged one-shot reliable
  * packets are lost, not deferred; see {@link MainLoopDrainCapAdvice} for why that tradeoff is
- * accepted.
+ * accepted. Two packet classes are exempt from the drop: {@code VehicleRequest} (the only path that
+ * regenerates a lost vehicle for a client) and anything from a connection that has not finished the
+ * join handshake ({@link #isPreJoinExempt}).
  *
  * <p>"Spin boundary" is detected by a gap of more than {@link #BURST_GAP_NANOS} between consecutive
  * advice invocations. Calls within the same drain section happen back-to-back (sub-microsecond
@@ -48,7 +56,56 @@ public final class MainLoopDrainCap {
     public static volatile long lastCallEndNanos = 0L;
     public static volatile long burstStartNanos = 0L;
 
+    private static final long EXEMPT_WARN_INTERVAL_NANOS = 5_000_000_000L;
+
+    // Main-thread writers only (the advice runs inside GameServer.main's outer loop), so plain
+    // fields are safe for the warn throttle.
+    private static long lastExemptWarnNanos = 0L;
+    private static long exemptSinceLastWarn = 0L;
+
     private MainLoopDrainCap() {}
+
+    /**
+     * True when the over-budget packet belongs to a connection that has not completed the join
+     * handshake — {@code UdpConnection.isFullyConnected()} flips only in {@code
+     * GameServer.receivePlayerConnect}, so this covers the whole login funnel (Login,
+     * LoginQueueRequest, Checksum, LoginQueueDone, PlayerConnect) and the world-download phase.
+     *
+     * <p>Every packet in that funnel is sent exactly once and never retried by the vanilla client
+     * ({@code LoadingQueueState.update} returns Remain forever after its single send), so dropping
+     * one silently strands the join: the client hangs on the loading screen until Storm's stalled
+     * connection reaper kills it. Observed live: a cold-start {@code LoginPacket.processServer}
+     * taking 474&nbsp;ms blew the budget and the {@code LoginQueueRequest} queued in the same burst
+     * was dropped. Pre-join traffic is tiny and bounded by the connection cap and the reaper, so
+     * processing it under an engaged cap is cheap.
+     *
+     * <p>Records {@code pz_netdata_prejoin_exempt_total} and a throttled WARN. Main-thread only.
+     */
+    public static boolean isPreJoinExempt(ZomboidNetData data) {
+        if (GameServer.udpEngine == null) {
+            return false;
+        }
+        UdpConnection connection = GameServer.udpEngine.getActiveConnection(data.connection);
+        if (connection == null || connection.isFullyConnected()) {
+            return false;
+        }
+        String type = data.type == null ? "unknown" : data.type.name();
+        NetDataMetrics.recordPreJoinExempt(type);
+        exemptSinceLastWarn++;
+        long now = System.nanoTime();
+        if (now - lastExemptWarnNanos > EXEMPT_WARN_INTERVAL_NANOS) {
+            LOGGER.warn(
+                    "Storm: net-data drain cap engaged during a join; processed pre-join packet"
+                            + " {} for {} (guid {}) anyway ({} exempted since last report)",
+                    type,
+                    connection.getIP(),
+                    data.connection,
+                    exemptSinceLastWarn);
+            lastExemptWarnNanos = now;
+            exemptSinceLastWarn = 0L;
+        }
+        return true;
+    }
 
     /** Current cap in nanoseconds; {@code 0} when the cap is disabled. Hot-path reader. */
     public static long getCapNanos() {

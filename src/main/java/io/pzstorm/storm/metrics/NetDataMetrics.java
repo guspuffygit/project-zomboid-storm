@@ -68,6 +68,20 @@ public final class NetDataMetrics {
                                     + " vehicle; dropping it strands invisible cars.")
                     .register(StormPrometheus.registry());
 
+    private static final Counter PREJOIN_EXEMPT_TOTAL =
+            Counter.builder()
+                    .name("pz_netdata_prejoin_exempt_total")
+                    .help(
+                            "Number of packets processed despite the engaged net-data drain cap"
+                                    + " because their connection had not completed the join"
+                                    + " handshake (UdpConnection.isFullyConnected() false). The"
+                                    + " login funnel is one-shot and never retried by the vanilla"
+                                    + " client, so dropping any of it silently strands the join"
+                                    + " until the stalled-connection reaper kills the client."
+                                    + " Labelled by packet type.")
+                    .labelNames("type")
+                    .register(StormPrometheus.registry());
+
     private NetDataMetrics() {}
 
     public static void recordNanos(long nanos) {
@@ -81,5 +95,9 @@ public final class NetDataMetrics {
 
     public static void recordVehicleRequestExempt() {
         VEHICLE_REQUEST_EXEMPT_TOTAL.inc();
+    }
+
+    public static void recordPreJoinExempt(String packetType) {
+        PREJOIN_EXEMPT_TOTAL.labelValues(packetType).inc();
     }
 }
