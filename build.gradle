@@ -116,7 +116,14 @@ def getLocalProperty(String property, String defaultValue = null) {
 
 apply from: 'publish.gradle'
 
-String versionSuffix = System.getenv("STAGING") ? "" :
+// Bits that ship to players must never carry -SNAPSHOT: StormCoreUpdate treats a SNAPSHOT
+// install as a dev working tree and refuses CDN updates on top of it (this once parked the whole
+// player base on a stale build). Prod workshop uploads and CDN deploys are therefore always
+// release-versioned; everything else (dev/stage, plain installStorm) keeps -SNAPSHOT so the CDN
+// never overrides a local working-tree install.
+boolean releaseBuild = System.getenv("STAGING") || env == 'prod' ||
+		gradle.startParameter.taskNames.any { it.tokenize(':').last() == 'deployStormJar' }
+String versionSuffix = releaseBuild ? "" :
 		project.ext.has('versionSuffix') ? project.ext.get('versionSuffix') : "-SNAPSHOT"
 
 allprojects {
