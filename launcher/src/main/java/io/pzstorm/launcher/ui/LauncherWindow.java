@@ -109,6 +109,7 @@ public final class LauncherWindow extends JFrame {
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(button("Send Logs", this::onSendLogs));
         toolbar.add(button("Settings", this::onSettings));
+        toolbar.add(button("Quit", this::onQuit));
 
         serverList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         serverList.addListSelectionListener(e -> refreshDetail());
@@ -295,6 +296,10 @@ public final class LauncherWindow extends JFrame {
                         "storm-log-report");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private void onQuit() {
+        dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
     }
 
     private void onSettings() {
