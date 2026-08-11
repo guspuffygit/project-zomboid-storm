@@ -23,12 +23,21 @@ import net.bytebuddy.pool.TypePool;
  * <p>Registration is gated on {@code StormEnv.isStormServer()} — a co-op host's client JVM can load
  * {@code PlayerDownloadServer} through {@code zombie.spnetwork}, and this patch must never apply
  * there.
+ *
+ * <p>That same 1:1 funnel property is what {@code storm_chunk_stream_queue_wait_seconds} needs, so
+ * a second advice rides the method to stamp the returned request — see {@link
+ * io.pzstorm.storm.advice.chunkstream.ClientChunkRequestEnqueueAdvice}. It is kept a separate class
+ * rather than an exit method on the reaper's advice so that a failure in either concern cannot take
+ * the other down with it.
  */
 public class PlayerDownloadServerChunkActivityPatch extends StormClassTransformer {
 
     private static final String ADVICE =
             "io.pzstorm.storm.advice.gameserverstalledconnections"
                     + ".PlayerDownloadServerChunkActivityAdvice";
+
+    private static final String ENQUEUE_ADVICE =
+            "io.pzstorm.storm.advice.chunkstream.ClientChunkRequestEnqueueAdvice";
 
     public PlayerDownloadServerChunkActivityPatch() {
         super("zombie.network.PlayerDownloadServer");
@@ -38,9 +47,14 @@ public class PlayerDownloadServerChunkActivityPatch extends StormClassTransforme
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(typePool.describe(ADVICE).resolve(), locator)
-                        .on(
-                                ElementMatchers.named("getClientChunkRequest")
-                                        .and(ElementMatchers.takesArguments(1))));
+                        Advice.to(typePool.describe(ADVICE).resolve(), locator)
+                                .on(
+                                        ElementMatchers.named("getClientChunkRequest")
+                                                .and(ElementMatchers.takesArguments(1))))
+                .visit(
+                        Advice.to(typePool.describe(ENQUEUE_ADVICE).resolve(), locator)
+                                .on(
+                                        ElementMatchers.named("getClientChunkRequest")
+                                                .and(ElementMatchers.takesArguments(1))));
     }
 }

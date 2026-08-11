@@ -100,5 +100,6 @@ docs/*
 !docs/mod-author-guide.md
 !docs/metrics.md
 !docs/launcher.md
+!docs/chunk-streaming-observability.md
 
 CLAUDE.local.md

@@ -30,4 +30,5 @@ See [What Storm Changes](docs/what-storm-changes.md) for the full list.
 - [Server Configuration](docs/server-configuration.md) — system properties and a production launcher example
 - [HTTP API](docs/http-api.md) — runtime tuning endpoints and developer hot-reload (Lua / Java)
 - [Prometheus Metrics](docs/metrics.md) — exposing metrics and adding new ones from mods
+- [Chunk Streaming Observability](docs/chunk-streaming-observability.md) — attributing a chunk-stream stall to one of five causes, and proving a fix worked
 - [Mod Author Guide](docs/mod-author-guide.md) — `ZomboidMod` entry point, annotation surfaces, Lua API, server commands

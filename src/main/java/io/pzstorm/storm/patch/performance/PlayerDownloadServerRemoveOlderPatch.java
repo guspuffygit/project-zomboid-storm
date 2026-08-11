@@ -19,12 +19,22 @@ public class PlayerDownloadServerRemoveOlderPatch extends StormClassTransformer 
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "PlayerDownloadServerRemoveOlderAdvice")
-                                        .resolve(),
-                                locator)
-                        .on(
-                                ElementMatchers.named("removeOlderDuplicateRequests")
-                                        .and(ElementMatchers.takesArguments(0))));
+                        Advice.to(
+                                        typePool.describe(
+                                                        PKG
+                                                                + "PlayerDownloadServerRemoveOlderAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("removeOlderDuplicateRequests")
+                                                .and(ElementMatchers.takesArguments(0))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "CancelDuplicateChunkAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("cancelDuplicateChunk")
+                                                .and(ElementMatchers.takesArguments(3))));
     }
 }

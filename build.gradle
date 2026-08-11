@@ -191,6 +191,9 @@ dependencies {
 test {
 	useJUnitPlatform()
 	systemProperty 'storm.testing', 'true'
+	// without this the StormEnv.isStormServer() block in StormClassTransformers never runs,
+	// so AllPatchesIntegrationTest silently skips every server-only patch
+	systemProperty 'storm.server', 'true'
 	finalizedBy jacocoTestReport
 
 	testLogging {
@@ -213,6 +216,46 @@ test {
 		].findAll { it }.join(':')
 		environment 'LD_LIBRARY_PATH', ldLibPath
 	}
+}
+
+// StormClassTransformers builds TRANSFORMERS in a static block whose branches are gated on
+// StormEnv.isStormServer(), so one JVM can only ever see one half of the patch set. The main test
+// task pins storm.server=true and therefore never weaves a client-only patch; this second pass
+// leaves the property unset so those patches are validated against real game bytes too. Filtered
+// to the one test that reads TRANSFORMERS — everything else is env-independent and would just run
+// twice.
+tasks.register('clientPatchTest', Test) {
+	useJUnitPlatform()
+	systemProperty 'storm.testing', 'true'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	filter {
+		includeTestsMatching 'com.sentientsimulations.storm.core.AllPatchesIntegrationTest'
+	}
+
+	testLogging {
+		events "skipped", "failed"
+		showExceptions = true
+		showCauses = true
+		showStackTraces = true
+		exceptionFormat = "full"
+	}
+
+	doFirst {
+		def serverDir = getLocalProperty('serverPath').get()
+		systemProperty 'storm.server.path', serverDir
+		def ldLibPath = [
+			"${serverDir}/natives",
+			"${serverDir}/linux64",
+			"${serverDir}/jre64/lib/amd64",
+			System.getenv('LD_LIBRARY_PATH') ?: ''
+		].findAll { it }.join(':')
+		environment 'LD_LIBRARY_PATH', ldLibPath
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('clientPatchTest')
 }
 
 tasks.register('unpackZomboidJar', Copy) {

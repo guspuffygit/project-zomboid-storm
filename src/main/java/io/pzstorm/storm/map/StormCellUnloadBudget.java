@@ -3,6 +3,7 @@ package io.pzstorm.storm.map;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.metrics.CellUnloadBudgetMetrics;
+import io.pzstorm.storm.metrics.ChunkHydrationMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import java.lang.reflect.Field;
@@ -164,6 +165,8 @@ public final class StormCellUnloadBudget {
         boolean mapLoadingLog = mapLoadingField.getBoolean(null);
         long unloaded = 0;
         long deferred = 0;
+        long cancelledQueued = 0;
+        long cancelledInFlight = 0;
         ArrayList<ServerMap.ServerCell> loadedCells = serverMap.loadedCells;
         ArrayList<ServerMap.ServerCell> releventNow = serverMap.releventNow;
 
@@ -174,6 +177,7 @@ public final class StormCellUnloadBudget {
                         releventNow.contains(cell) || !outsidePlayerInfluence(cell);
                 if (!cell.isLoaded) {
                     if (!shouldBeLoaded && !cell.cancelLoading) {
+                        boolean startedLoading = startedLoadingField.getBoolean(cell);
                         if (mapLoadingLog) {
                             DebugLog.log(
                                     DebugType.MapLoading,
@@ -182,11 +186,14 @@ public final class StormCellUnloadBudget {
                                             + ","
                                             + cell.wy
                                             + " cell.startedLoading="
-                                            + startedLoadingField.getBoolean(cell));
+                                            + startedLoading);
                         }
 
-                        if (!startedLoadingField.getBoolean(cell)) {
+                        if (!startedLoading) {
                             cell.loadingWasCancelled = true;
+                            cancelledQueued++;
+                        } else {
+                            cancelledInFlight++;
                         }
 
                         cell.cancelLoading = true;
@@ -227,6 +234,7 @@ public final class StormCellUnloadBudget {
         NetworkZombiePacker.getInstance().postupdate();
         chunkLoader.updateSaved();
         CellUnloadBudgetMetrics.record(unloaded, deferred);
+        ChunkHydrationMetrics.recordCancelledCells(cancelledQueued, cancelledInFlight);
     }
 
     // Re-implementation of the private ServerMap.outsidePlayerInfluence(ServerCell). Kept in sync

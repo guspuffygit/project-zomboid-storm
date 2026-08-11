@@ -2,6 +2,7 @@ package io.pzstorm.storm.hotreload;
 
 import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnRenderTickEvent;
+import io.pzstorm.storm.event.lua.OnTickEvenPausedEvent;
 import io.pzstorm.storm.http.HttpEndpoint;
 import io.pzstorm.storm.http.HttpRequestEvent;
 import java.io.IOException;
@@ -52,6 +53,19 @@ public final class HotReloadEndpoints {
 
     @SubscribeEvent
     public static void drainMainThreadQueue(OnRenderTickEvent event) {
+        MainThreadQueue.drain();
+    }
+
+    /**
+     * In-game companion to {@link #drainMainThreadQueue(OnRenderTickEvent)}. {@code OnRenderTick}
+     * only fires while {@code GameWindow.doRenderEvent} is set, and Lua clears it on entering a
+     * world ({@code MainScreen.lua}, {@code ConnectToServer.lua}), so on its own the drain stops
+     * the moment the client is somewhere worth inspecting and every {@code /eval} and {@code /lua}
+     * call fails on the 30-second main-thread timeout. {@code OnTickEvenPaused} fires every frame
+     * from {@code IngameState.updateInternal} and again from {@code GameWindow}'s paused branch.
+     */
+    @SubscribeEvent
+    public static void drainMainThreadQueueInGame(OnTickEvenPausedEvent event) {
         MainThreadQueue.drain();
     }
 

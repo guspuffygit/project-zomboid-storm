@@ -73,6 +73,9 @@ import io.pzstorm.storm.patch.performance.BitHeaderIntReleasePatch;
 import io.pzstorm.storm.patch.performance.BitHeaderLongReleasePatch;
 import io.pzstorm.storm.patch.performance.BitHeaderShortReleasePatch;
 import io.pzstorm.storm.patch.performance.CalcCountPlayersInRelevantPositionPatch;
+import io.pzstorm.storm.patch.performance.ChunkChecksumMetricsPatch;
+import io.pzstorm.storm.patch.performance.ChunkStreamWorkerMetricsPatch;
+import io.pzstorm.storm.patch.performance.ClientChunkRequestRetryPatch;
 import io.pzstorm.storm.patch.performance.ClientServerMapCharacterInPatch;
 import io.pzstorm.storm.patch.performance.ClimateManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
@@ -117,6 +120,7 @@ import io.pzstorm.storm.patch.performance.IsoChunkAddZombieZoneStoryPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkCheckGrassRegrowthPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkLoadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkRemoveFromWorldPatch;
+import io.pzstorm.storm.patch.performance.IsoChunkSafeReadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSaveLoadedChunkPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
 import io.pzstorm.storm.patch.performance.IsoDeadBodyUpdateBodiesPatch;
@@ -153,6 +157,7 @@ import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombiePackerPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.ObjectIDManagerCheckSaveDataPatch;
 import io.pzstorm.storm.patch.performance.ObjectRenderEffectsUpdateStaticPatch;
+import io.pzstorm.storm.patch.performance.PacketLimitMetricsPatch;
 import io.pzstorm.storm.patch.performance.PacketValidatorUpdatePatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
 import io.pzstorm.storm.patch.performance.PathfindNativeRemoveChunkPatch;
@@ -168,6 +173,7 @@ import io.pzstorm.storm.patch.performance.RemoveAnimalsPatch;
 import io.pzstorm.storm.patch.performance.RemoveDeadBodiesPatch;
 import io.pzstorm.storm.patch.performance.RemoveVehiclesPatch;
 import io.pzstorm.storm.patch.performance.RemoveZombiesPatch;
+import io.pzstorm.storm.patch.performance.RequestZipListParsePatch;
 import io.pzstorm.storm.patch.performance.SafeHouseUpdatePatch;
 import io.pzstorm.storm.patch.performance.SendWorldMapPlayerPositionPatch;
 import io.pzstorm.storm.patch.performance.ServerCellLoad2Patch;
@@ -422,6 +428,9 @@ public class StormClassTransformers {
             // vanilla put(), ModelAttachRetry disables itself on first error.
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
+            // Client-only because only the client acts on isLimitExceeded — PacketType.send
+            // cancels the packet there, while the server's call site logs it and sends anyway.
+            registerTransformer(new PacketLimitMetricsPatch());
         }
 
         if (StormEnv.isStormServer()) {
@@ -561,6 +570,11 @@ public class StormClassTransformers {
             registerTransformer(new FileSystemUpdateAsyncTransactionsPatch());
             registerTransformer(new WorldMapVisitedServerUpdatePatch());
             registerTransformer(new PlayerDownloadServerUpdatePatch());
+            registerTransformer(new ChunkStreamWorkerMetricsPatch());
+            registerTransformer(new RequestZipListParsePatch());
+            registerTransformer(new ClientChunkRequestRetryPatch());
+            registerTransformer(new IsoChunkSafeReadPatch());
+            registerTransformer(new ChunkChecksumMetricsPatch());
             registerTransformer(new CalcCountPlayersInRelevantPositionPatch());
             registerTransformer(new ServerMapCharacterInPatch());
             registerTransformer(new ClientServerMapCharacterInPatch());

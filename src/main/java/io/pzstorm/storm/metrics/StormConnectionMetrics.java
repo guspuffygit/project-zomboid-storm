@@ -42,9 +42,20 @@ import zombie.network.GameServer;
  *       control is currently throttling outbound BPS for this peer, {@code 0} otherwise.
  *   <li>{@code storm_peer_bps_limit_congestion{username}} — current BPS ceiling RakNet's congestion
  *       control has imposed on outbound to this peer (bytes/second).
+ *   <li>{@code storm_peer_send_buffer_messages{username, priority}} — the same queue counted in
+ *       messages instead of bytes, which is the unit a chunk backlog is actually denominated in.
+ *   <li>{@code storm_peer_resend_buffer_messages{username}} — reliable messages awaiting
+ *       retransmission.
+ *   <li>{@code storm_peer_bandwidth_limited{username}} and {@code
+ *       storm_peer_bps_limit_outgoing{username}} — throttling against a configured cap, as opposed
+ *       to against congestion.
  *   <li>{@code storm_peer_kicked_send_buffer_total} — counter incremented every time the watchdog
  *       force-disconnects a peer for sustained send-buffer overflow.
  * </ul>
+ *
+ * <p>Everything above comes from a single {@code UdpConnection.getStatistics()} per peer per tick —
+ * the one JNI call, whose {@code ZNetStatistics} snapshot is then read field by field. Do not add a
+ * second call to sample more fields; it allocates a fresh snapshot and does ~31 JNI write-backs.
  *
  * <p><b>Watchdog.</b> When {@link PeerSendBufferKickConfig#enabled()} and a peer's {@code
  * bytesInSendBufferHigh} stays above {@link PeerSendBufferKickConfig#thresholdBytes()} for {@link
@@ -117,6 +128,52 @@ public final class StormConnectionMetrics {
                     .labelNames("username")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge SEND_BUFFER_MESSAGES =
+            Gauge.builder()
+                    .name("storm_peer_send_buffer_messages")
+                    .help(
+                            "Pending outbound RakNet messages for one peer, labelled by username and"
+                                    + " priority. The message count is what identifies a chunk backlog:"
+                                    + " SentChunkPacket fragments every compressed chunk into"
+                                    + " 1000-byte HIGH/RELIABLE messages, so priority=\"high\" counts"
+                                    + " chunk fragments sitting between the download worker and the"
+                                    + " wire. Bytes alone cannot tell 40 MB of one broadcast from 40000"
+                                    + " queued chunk fragments.")
+                    .labelNames("username", "priority")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge RESEND_BUFFER_MESSAGES =
+            Gauge.builder()
+                    .name("storm_peer_resend_buffer_messages")
+                    .help(
+                            "Reliable messages awaiting retransmission for one peer. Paired with"
+                                    + " storm_peer_resend_buffer_bytes this gives mean retransmit size,"
+                                    + " which separates many small lost chunk fragments from a few large"
+                                    + " lost payloads.")
+                    .labelNames("username")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge BANDWIDTH_LIMITED =
+            Gauge.builder()
+                    .name("storm_peer_bandwidth_limited")
+                    .help(
+                            "1 when RakNet is throttling this peer against its configured outgoing"
+                                    + " bandwidth cap rather than against congestion control, 0"
+                                    + " otherwise. Distinct from storm_peer_congestion_limited: this one"
+                                    + " is a ceiling somebody configured and can raise, the other is the"
+                                    + " link itself backing off.")
+                    .labelNames("username")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge BPS_LIMIT_OUTGOING =
+            Gauge.builder()
+                    .name("storm_peer_bps_limit_outgoing")
+                    .help(
+                            "The configured outbound bytes/second ceiling RakNet is applying to this"
+                                    + " peer. 0 means uncapped.")
+                    .labelNames("username")
+                    .register(StormPrometheus.registry());
+
     private static final Counter KICKED_SEND_BUFFER =
             Counter.builder()
                     .name("storm_peer_kicked_send_buffer_total")
@@ -185,6 +242,19 @@ public final class StormConnectionMetrics {
                     .labelValues(username)
                     .set(stats.isLimitedByCongestionControl ? 1 : 0);
             BPS_LIMIT_CONGESTION.labelValues(username).set(stats.bpsLimitByCongestionControl);
+            SEND_BUFFER_MESSAGES
+                    .labelValues(username, "immediate")
+                    .set(stats.messageInSendBufferImmediate);
+            SEND_BUFFER_MESSAGES.labelValues(username, "high").set(stats.messageInSendBufferHigh);
+            SEND_BUFFER_MESSAGES
+                    .labelValues(username, "medium")
+                    .set(stats.messageInSendBufferMedium);
+            SEND_BUFFER_MESSAGES.labelValues(username, "low").set(stats.messageInSendBufferLow);
+            RESEND_BUFFER_MESSAGES.labelValues(username).set(stats.messagesInResendBuffer);
+            BANDWIDTH_LIMITED
+                    .labelValues(username)
+                    .set(stats.isLimitedByOutgoingBandwidthLimit ? 1 : 0);
+            BPS_LIMIT_OUTGOING.labelValues(username).set(stats.bpsLimitByOutgoingBandwidthLimit);
 
             if (watchdogEnabled && stats.bytesInSendBufferHigh > kickThresholdBytes) {
                 int count = consecutiveTicksOverThreshold.getOrDefault(username, 0) + 1;
@@ -214,6 +284,13 @@ public final class StormConnectionMetrics {
             AVERAGE_PING_MS.labelValues(prev).set(0.0);
             CONGESTION_LIMITED.labelValues(prev).set(0.0);
             BPS_LIMIT_CONGESTION.labelValues(prev).set(0.0);
+            SEND_BUFFER_MESSAGES.labelValues(prev, "immediate").set(0.0);
+            SEND_BUFFER_MESSAGES.labelValues(prev, "high").set(0.0);
+            SEND_BUFFER_MESSAGES.labelValues(prev, "medium").set(0.0);
+            SEND_BUFFER_MESSAGES.labelValues(prev, "low").set(0.0);
+            RESEND_BUFFER_MESSAGES.labelValues(prev).set(0.0);
+            BANDWIDTH_LIMITED.labelValues(prev).set(0.0);
+            BPS_LIMIT_OUTGOING.labelValues(prev).set(0.0);
             consecutiveTicksOverThreshold.remove(prev);
         }
         lastSeenUsernames.clear();

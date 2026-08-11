@@ -1,6 +1,8 @@
 package io.pzstorm.storm.advice.servertick;
 
 import io.pzstorm.storm.connection.SteamPlayerListReconciler;
+import io.pzstorm.storm.metrics.ChunkHydrationMetrics;
+import io.pzstorm.storm.metrics.ChunkStreamMetrics;
 import io.pzstorm.storm.metrics.ServerTickMetrics;
 import io.pzstorm.storm.metrics.StormConnectionMetrics;
 import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
@@ -18,6 +20,8 @@ public class ServerTickAdvice {
         ServerTickMetrics.recordTick(tickMillis);
         StormConnectionMetrics.recordAll();
         StormConnectionStageMetrics.recordAll();
+        ChunkStreamMetrics.sampleTick();
+        ChunkHydrationMetrics.sampleTick();
         SteamPlayerListReconciler.sweep();
         StormZombieTotalCap.onServerTick();
     }

@@ -33,6 +33,19 @@ public class LuaEventFactory {
      */
     @Unmodifiable private static final Map<String, Class<? extends LuaEvent>> EVENT_CLASSES;
 
+    /**
+     * Events whose Project Zomboid name itself ends in {@code Event}, so the suffix {@link
+     * #getEventName} strips is part of the real name rather than Storm's class-naming convention.
+     * Without an entry here the class registers under a name {@code LuaEventManager} never triggers
+     * and its handlers silently never fire.
+     */
+    @Unmodifiable
+    private static final Map<Class<? extends LuaEvent>, String> EXPLICIT_EVENT_NAMES =
+            Map.of(
+                    OnThunderEvent.class, "OnThunderEvent",
+                    OnTriggerNPCEvent.class, "OnTriggerNPCEvent",
+                    OnMultiTriggerNPCEvent.class, "OnMultiTriggerNPCEvent");
+
     static {
         Map<Class<? extends LuaEvent>, CachedConstructor[]> eventConstructors = new HashMap<>();
         Map<String, Class<? extends LuaEvent>> eventClassesMap = new HashMap<>();
@@ -137,6 +150,7 @@ public class LuaEventFactory {
                             OnIsoThumpableSaveEvent.class,
                             ReuseGridsquareEvent.class,
                             LoadGridsquareEvent.class,
+                            LoadChunkEvent.class,
                             EveryOneMinuteEvent.class,
                             EveryTenMinutesEvent.class,
                             EveryDaysEvent.class,
@@ -342,6 +356,10 @@ public class LuaEventFactory {
 
     /** Resolve and return name of the event denoted by given {@code Class}. */
     static String getEventName(Class<? extends LuaEvent> eventClass) {
+        String explicitName = EXPLICIT_EVENT_NAMES.get(eventClass);
+        if (explicitName != null) {
+            return explicitName;
+        }
         String className = eventClass.getSimpleName();
         return className.endsWith("Event")
                 ? className.substring(0, className.length() - 5)

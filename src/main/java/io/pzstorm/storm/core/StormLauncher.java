@@ -117,6 +117,28 @@ public class StormLauncher {
                 }
             }
 
+            // PZ starts its Prometheus HTTP server on this property alone, so without it the
+            // client samples every frame into a registry nothing can ever scrape
+            if (!StormEnv.isStormServer() && System.getProperty("prometheusPort") != null) {
+                try {
+                    // initialize = true so the ~20 Prometheus registrations happen here, inside
+                    // this catch. Left to run lazily they fire on the first event dispatch — on a
+                    // game thread — as an ExceptionInInitializerError, which is neither a
+                    // RuntimeException nor a ReflectiveOperationException and so routes around
+                    // every guard between here and the frame.
+                    Class<?> clientChunkMetrics =
+                            Class.forName(
+                                    "io.pzstorm.storm.client.ClientChunkStreamMetrics",
+                                    true,
+                                    classLoader);
+                    eventDispatcher
+                            .getDeclaredMethod("registerEventHandler", Class.class)
+                            .invoke(null, clientChunkMetrics);
+                } catch (Throwable t) {
+                    LOGGER.error("Failed to register client chunk stream metrics", t);
+                }
+            }
+
             LOGGER.debug("Preparing to launch Entry Point: {}", getEntryPointClass());
 
             Class<?> entryPointClass = classLoader.loadClass(getEntryPointClass());

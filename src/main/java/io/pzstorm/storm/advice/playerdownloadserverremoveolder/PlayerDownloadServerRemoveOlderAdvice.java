@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.playerdownloadserverremoveolder;
 
+import io.pzstorm.storm.metrics.ChunkStreamMetrics;
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -22,8 +23,8 @@ public class PlayerDownloadServerRemoveOlderAdvice {
         if (startNanos == 0L) {
             return;
         }
-        MainLoopStepTimings.record(
-                "PlayerDownloadServer.removeOlderDuplicateRequests",
-                System.nanoTime() - startNanos);
+        long elapsed = System.nanoTime() - startNanos;
+        MainLoopStepTimings.record("PlayerDownloadServer.removeOlderDuplicateRequests", elapsed);
+        ChunkStreamMetrics.recordDedupeDuration(elapsed);
     }
 }
