@@ -19,7 +19,7 @@ package io.pzstorm.storm.patch.performance;
  */
 public final class StormCellWarmingConfig {
 
-    private static final int DEFAULT_MAX_WARM_CELLS = 64;
+    private static final int DEFAULT_MAX_WARM_CELLS = 128;
 
     private static final boolean ENABLED = Boolean.getBoolean("storm.cells.keepWarm");
 

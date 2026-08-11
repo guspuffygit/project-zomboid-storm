@@ -4,7 +4,6 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
-import io.pzstorm.storm.patch.client.AdaptiveChunkResendPatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
@@ -243,32 +242,19 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 import org.jetbrains.annotations.Contract;
 
-/**
- * This class defines, initializes and stores {@link StormClassTransformer} instances. To retrieve a
- * mapped instance of registered transformer call {@link #getRegistered(String)}.
- */
 @SuppressWarnings({"WeakerAccess", "unused"})
 public class StormClassTransformers {
 
-    /**
-     * Internal registry of created transformers. This map is checked for entries by {@link
-     * StormClassLoader} when loading classes and invokes the transformation chain of methods to
-     * transform the class before defining it via JVM.
-     */
     private static final Map<String, List<StormClassTransformer>> TRANSFORMERS = new HashMap<>();
 
     static {
         registerTransformer(new MainScreenStatePatch());
         registerTransformer(new TISLogoStatePatch());
-        // Launcher "Skip menus" toggle (default on): straight to the main menu. Keep the
-        // property name in sync with io.pzstorm.launcher.GameLaunch#SKIP_MENUS_PROPERTY.
         if (Boolean.getBoolean("storm.skipmenus")) {
             registerTransformer(new EpilepsyWarningSkipPatch());
             registerTransformer(new TISLogoStateSkipPatch());
             registerTransformer(new TermsOfServiceStateSkipPatch());
         }
-        // Dev/testing-only (never passed by the launcher): auto-press the pre-spawn
-        // click-to-start screen. Normal players keep the vanilla click.
         if (Boolean.getBoolean("storm.skipclickstart")) {
             registerTransformer(new GameLoadingClickToStartSkipPatch());
         }
@@ -298,16 +284,8 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalUpdateNullDefGuardPatch());
         registerTransformer(new IsoAnimalCanClimbStairsNullDefGuardPatch());
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
-        // Squares can keep a stale reference to an IsoRoom gutted (def = null) by the
-        // player-built-room rebuild; consumers without vanilla's hasRoomDef()-style check NPE
-        // (seen live: FirearmRoomSize FMOD parameter -> IngameState.updateInternal kick-to-menu).
-        // Guarding getRoom() routes all of them onto their vanilla no-room fallbacks.
         registerTransformer(new IsoGridSquareGetRoomNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
-        // EXPERIMENTAL client-side perf patches. Deliberate, user-approved exception to the
-        // no-client-patches HARD RULE, strictly opt-in via -Dstorm.experimental.clientperf=true:
-        // default launches (no flag) keep vanilla bytecode on the client. Do not add entries here
-        // without the same explicit approval, and do not cite this block as precedent.
         if (Boolean.getBoolean("storm.experimental.clientperf")) {
             registerTransformer(new EcsComponentGetClassMemoPatch());
             registerTransformer(new IsoLightSwitchElectricityMemoPatch());
@@ -325,8 +303,6 @@ public class StormClassTransformers {
             registerTransformer(new CutawayLevelDataArrayCachePatch());
             registerTransformer(new FBORenderLevelsFreeSkipPatch());
         }
-        // Server-only: IsoGenerator also executes on the client JVM (HARD RULE). The advice
-        // gates on GameServer.server, so gating registration is behavior-preserving.
         if (StormEnv.isStormServer()) {
             registerTransformer(new IsoGeneratorElectricityPatch());
             registerTransformer(new IsoAnimalUpdateTimingPatch());
@@ -338,15 +314,9 @@ public class StormClassTransformers {
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new ServerLOSUpdatePatch());
         registerTransformer(new ServerLOSIsCouldSeePatch());
-        // Server-only: Stats executes on the client JVM (HARD RULE). Unlike most perf advice,
-        // StatsGetAdvice replaces the method body unconditionally (no GameServer.server gate),
-        // so this registration gate is the only thing keeping the client on vanilla bytecode.
         if (StormEnv.isStormServer()) {
             registerTransformer(new StatsGetPatch());
             registerTransformer(new IsoPlayerUpdateRemotePatch());
-            // Must precede IsoPlayerUpdateLOSPatch: transformers apply in registration order,
-            // so the stopwatch advice registered second wraps the fast-path skip and keeps
-            // pz_player_update_los_call_duration_seconds timing both paths.
             registerTransformer(new IsoPlayerUpdateLOSFastPathPatch());
             registerTransformer(new IsoPlayerUpdateLOSPatch());
             registerTransformer(new IsoAnimalUpdateLOSPatch());
@@ -363,30 +333,13 @@ public class StormClassTransformers {
             registerTransformer(new BitHeaderShortReleasePatch());
             registerTransformer(new BitHeaderIntReleasePatch());
             registerTransformer(new BitHeaderLongReleasePatch());
-            // Must precede ServerMapPostUpdatePatch: transformers apply in registration order,
-            // so the stopwatch advice registered second wraps the budget skip and keeps
-            // pz_server_map_post_update_call_duration_seconds timing both paths. The
-            // ServerMapPostUpdateWarmPatch registered much later stays outermost: with cell
-            // warming enabled its advice owns the whole postupdate body and the budget helper
-            // defers to it via the StormCellWarmingConfig gate.
             registerTransformer(new ServerMapPostUpdateBudgetPatch());
             registerTransformer(new ServerMapPostUpdatePatch());
             registerTransformer(new GameEntityUsingPlayerTrackingPatch());
-            // Must precede UsingPlayerUpdatePatch: transformers apply in registration order,
-            // so the stopwatch advice registered second wraps the registry-sweep skip and keeps
-            // pz_using_player_update_call_duration_seconds timing both paths.
             registerTransformer(new UsingPlayerSweepFastPathPatch());
             registerTransformer(new UsingPlayerUpdatePatch());
-            // No stopwatch patch exists on FluidContainerUpdateSystem.updateSimulation (the
-            // Engine.updateSimulation timing patch targets a different class), so this fast
-            // path has no ordering constraint.
             registerTransformer(new FluidContainerUpdateSimulationFastPathPatch());
-            // Server-side ECSComponent.getECSClass memoization — distinct from the
-            // EXPERIMENTAL client-side EcsComponentGetClassMemoPatch registered above.
             registerTransformer(new EcsGetClassCachePatch());
-            // O(1) removal from the engine's global entity array: the constructor hook tracks
-            // each new EngineEntityManager's array, the Array patch maintains/consults the
-            // index. No other transformer targets either class, so ordering is unconstrained.
             registerTransformer(new EngineEntityManagerIndexPatch());
             registerTransformer(new EntityArrayRemoveFastPathPatch());
             registerTransformer(new GameEntityManagerUpdatePatch());
@@ -405,10 +358,6 @@ public class StormClassTransformers {
         registerTransformer(new KahluaMetatableCachePatch());
 
         if (StormEnv.isStormServer()) {
-            // FindData/RemovePlayer advise different ServerLOS methods than the transformers
-            // registered above, so moving them into this gate does not reorder any shared
-            // advice chain. Their advices already gate on GameServer.server; the registration
-            // gate just makes the server-only intent explicit.
             registerTransformer(new ServerLOSFindDataPatch());
             registerTransformer(new ServerLOSRemovePlayerPatch());
             registerTransformer(new ServerLOSRunInnerPatch());
@@ -416,25 +365,10 @@ public class StormClassTransformers {
             registerTransformer(new IsoRoomOnSeePatch());
         }
 
-        // Client-only: reacts to a client-side packet-ordering race by asking the
-        // server to resend full vehicle state. The advice already gates on
-        // GameClient.client, and the remedy (sendVehicleRequest) is a client->server
-        // RPC with no server-side analogue.
         if (!StormEnv.isStormServer()) {
             registerTransformer(new VehicleModDataRequestPatch());
-            // Invisible-vehicle recovery pair. MergeFlags stops clientUpdate's 1 Hz Passengers
-            // request from clobbering a queued Full request inside the same 100 ms flush window;
-            // ModelAttachRetry re-runs ModelManager.addVehicle for vehicles that got physics but
-            // no model slot (collide-but-invisible). Both fail soft: MergeFlags degrades to the
-            // vanilla put(), ModelAttachRetry disables itself on first error.
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
-            // Replaces the flat 8s WorldStreamer resend wall with SRTT-based timeout + 1x/2x/4x
-            // backoff, capped at 3 attempts to match server MAX_CHUNK_SEND_TRIES. Fails soft to
-            // vanilla if ping is unmeasured or reflection breaks.
-            registerTransformer(new AdaptiveChunkResendPatch());
-            // Client-only because only the client acts on isLimitExceeded — PacketType.send
-            // cancels the packet there, while the server's call site logs it and sends anyway.
             registerTransformer(new PacketLimitMetricsPatch());
         }
 
@@ -450,29 +384,16 @@ public class StormClassTransformers {
             registerTransformer(new ReceiveSandboxOptionsPatch());
             registerTransformer(new IsoZombieUpdateFixPatch());
 
-            // First-aid subscription race: the vanilla client sends BodyDamageUpdatePacket with
-            // its own online id still -1 during the connect/respawn/reconnect window. The parse
-            // patch repairs the id from the connection-resolved player; the sync patch refuses to
-            // register updaters for unresolvable ids (vanilla NPE / dead-updater leak).
             registerTransformer(new BodyDamageUpdatePacketPatch());
             registerTransformer(new BodyDamageSyncPatch());
 
             registerTransformer(new UdpConnectionRelevancePatch());
 
-            // Relevancy gate on the SyncIsoObject broadcast loops (base IsoObject method plus
-            // the three reproducible overrides). IsoObjectRemoveFromWorldPatch also transforms
-            // zombie.iso.IsoObject but advises removeFromWorld, so ordering between them is
-            // unconstrained. The gate leans on UdpConnectionRelevancePatch's hardening of
-            // isRelevantTo (false while not fully connected), registered just above.
             registerTransformer(new IsoObjectSyncGatePatch());
             registerTransformer(new IsoWorldInventoryObjectSyncGatePatch());
             registerTransformer(new IsoBarricadeSyncGatePatch());
             registerTransformer(new IsoLightSwitchSyncGatePatch());
 
-            // Relevancy gate on the GameEntity broadcast branch (craft-progress ticks, component
-            // dumps, using-player changes — vanilla sendToAll's only filter is isFullyConnected).
-            // Same isRelevantTo precedent and fail-soft latch as the SyncIsoObject gates above,
-            // and leans on UdpConnectionRelevancePatch's hardening the same way.
             registerTransformer(new GameEntityBroadcastGatePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
@@ -481,17 +402,8 @@ public class StormClassTransformers {
             registerTransformer(new ConnectionManagerLogPatch());
             registerTransformer(new SteamGameServerPlayerListPatch());
 
-            // Answers the Storm Launcher's pre-login workshop/mod query over the game's own
-            // UDP port, so players can pre-update mods without the Storm HTTP port being
-            // reachable. Server-only: addIncoming exists on the client too, but the client
-            // must never serve queries.
             registerTransformer(new ServerQueryPatch());
 
-            // Per-step timing breakdown of GameServer.main(). Each patch wraps one method
-            // called from the server's frame-step block and records elapsed nanos into
-            // MainLoopStepTimings, which prints a per-tick line when
-            // -Dstorm.mainloop.timings=true. ServerMap.preupdate doubles as the tick
-            // boundary trigger (its advice calls MainLoopStepTimings.beginTick()).
             registerTransformer(new ServerMapPreUpdatePatch());
             registerTransformer(new ServerCellLoad2Patch());
             registerTransformer(new ServerCellRecalcAll2Patch());
@@ -506,8 +418,6 @@ public class StormClassTransformers {
             registerTransformer(new PlayerDownloadServerRemoveOlderPatch());
             registerTransformer(new IsoChunkSaveLoadedChunkPatch());
 
-            // IsoWorld.update / IsoCell.update internals: closes the steady-state gap
-            // inside IsoWorld.update (~10ms uninstrumented body).
             registerTransformer(new IsoCellUpdatePatch());
             registerTransformer(new IsoCellProcessIsoObjectPatch());
             registerTransformer(new IsoCellProcessObjectsPatch());
@@ -529,7 +439,6 @@ public class StormClassTransformers {
             registerTransformer(new ObjectRenderEffectsUpdateStaticPatch());
             registerTransformer(new AnimalZonesUpdateVirtualAnimalsPatch());
 
-            // Spike-source internals: chunk load / unload / save fanout.
             registerTransformer(new MapCollisionDataRemoveChunkPatch());
             registerTransformer(new PolygonalMap2RemoveChunkPatch());
             registerTransformer(new PathfindNativeRemoveChunkPatch());
@@ -543,7 +452,6 @@ public class StormClassTransformers {
             registerTransformer(new IsoChunkCheckGrassRegrowthPatch());
             registerTransformer(new ErosionMainLoadGridsquarePatch());
 
-            // ServerMap.QueuedSaveAll components (rare but large spikes).
             registerTransformer(new ServerMapSaveAllPatch());
             registerTransformer(new ServerPlayerDBSavePatch());
             registerTransformer(new AnimalPopManSavePatch());
@@ -552,7 +460,6 @@ public class StormClassTransformers {
             registerTransformer(new GlobalModDataSavePatch());
             registerTransformer(new WorldMapServerWriteSavefilePatch());
 
-            // GameEntityManager.Update internals (steady-state ~3.4ms).
             registerTransformer(new EngineUpdatePatch());
             registerTransformer(new EngineUpdateSimulationPatch());
             registerTransformer(new EntitySimulationUpdatePatch());
@@ -596,7 +503,6 @@ public class StormClassTransformers {
             registerTransformer(new InventoryItemSweepStridePatch());
         }
 
-        // Register generic packet event dispatching for all supported packet types
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
             registerTransformer(new PacketReceivedPatch(packetClass));
         }
@@ -608,9 +514,6 @@ public class StormClassTransformers {
                 .add(transformer);
     }
 
-    /**
-     * Called by {@link StormBootstrap#loadAndRegisterMods()} to collect mod-provided transformers.
-     */
     public static void collectTransformers() {
         for (ZomboidMod mod : StormModRegistry.getRegisteredMods()) {
             List<StormClassTransformer> transformers = mod.getClassTransformers();
@@ -622,24 +525,11 @@ public class StormClassTransformers {
         }
     }
 
-    /**
-     * Returns all registered {@link StormClassTransformer} instances that target the given class.
-     *
-     * @return list of transformers (empty if none registered).
-     */
     @Contract(pure = true)
     public static List<StormClassTransformer> getRegistered(String className) {
         return TRANSFORMERS.getOrDefault(className, Collections.emptyList());
     }
 
-    /**
-     * Applies all registered transformers for the given class name sequentially. Each transformer
-     * independently redefines the class bytes produced by the previous transformer.
-     *
-     * @param className the binary name of the class to transform.
-     * @param rawClass byte array representing the class.
-     * @return transformed byte array, or the original if no transformers are registered.
-     */
     public static byte[] applyAll(String className, byte[] rawClass) {
         List<StormClassTransformer> transformers = getRegistered(className);
         for (StormClassTransformer transformer : transformers) {
@@ -666,11 +556,6 @@ public class StormClassTransformers {
         return rawClass;
     }
 
-    /**
-     * Applies transformers that target classes blacklisted by {@link StormClassLoader} (e.g. {@code
-     * java.lang.*}) using the {@link Instrumentation} retransformation API. The {@code
-     * Instrumentation} instance is provided by the bootstrap agent's {@code premain()}.
-     */
     public static void applyAgentTransformers(Instrumentation instrumentation) {
         for (String className : TRANSFORMERS.keySet()) {
             if (!StormClassLoader.isBlacklistedClass(className)
