@@ -14,7 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.joml.Vector3f;
 import zombie.MapCollisionData;
+import zombie.characters.IsoPlayer;
 import zombie.characters.animals.AnimalPopulationManager;
 import zombie.characters.animals.IsoAnimal;
 import zombie.core.raknet.UdpConnection;
@@ -33,6 +35,7 @@ import zombie.pathfind.PolygonalMap2;
 import zombie.pathfind.nativeCode.PathfindNative;
 import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombiePopulationManager;
+import zombie.vehicles.BaseVehicle;
 
 /**
  * Server-side cell warming helper.
@@ -75,6 +78,11 @@ public final class StormCellWarmer {
     // a player stands next to it. Back the retry off linearly to a ten-second ceiling instead.
     private static final long REWARM_BACKOFF_STEP_NANOS = 1_000_000_000L;
     private static final int MAX_REWARM_BACKOFF_STEPS = 10;
+
+    private static final int LOOKAHEAD_CELL_TILES = 64;
+    private static final int LOOKAHEAD_MAX_CELLS = 2;
+    private static final float LOOKAHEAD_MIN_SPEED_TILES_S = 5.0f / 3.6f;
+    private static final float LOOKAHEAD_TWO_CELL_SPEED_TILES_S = 128.0f;
 
     // ServerCell.chunkLoader and ServerCell.startedLoading are private; the body-replaced
     // postupdate needs them to drive the save-job pump vanilla runs at its tail and to check the
@@ -211,6 +219,7 @@ public final class StormCellWarmer {
         ArrayList<ServerMap.ServerCell> loadedCells = serverMap.loadedCells;
         ArrayList<ServerMap.ServerCell> releventNow = serverMap.releventNow;
         try {
+            projectDriverLookahead(serverMap);
             for (int n = 0; n < loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = loadedCells.get(n);
                 boolean shouldBeLoaded =
@@ -276,6 +285,57 @@ public final class StormCellWarmer {
         NetworkZombiePacker.getInstance().postupdate();
         if (chunkLoader != null) {
             chunkLoader.updateSaved();
+        }
+    }
+
+    private static void projectDriverLookahead(ServerMap serverMap) {
+        ArrayList<IsoPlayer> players = GameServer.Players;
+        if (players == null) {
+            return;
+        }
+        for (int i = 0; i < players.size(); i++) {
+            try {
+                IsoPlayer player = players.get(i);
+                if (player == null) {
+                    continue;
+                }
+                BaseVehicle vehicle = player.getVehicle();
+                if (vehicle == null) {
+                    continue;
+                }
+                Vector3f v = new Vector3f();
+                vehicle.getLinearVelocity(v);
+                float vx = v.x;
+                float vy = v.z;
+                if (Float.isNaN(vx) || Float.isNaN(vy)) {
+                    continue;
+                }
+                float speed = (float) Math.sqrt(vx * vx + vy * vy);
+                if (speed < LOOKAHEAD_MIN_SPEED_TILES_S) {
+                    continue;
+                }
+                float startX = player.getX();
+                float startY = player.getY();
+                if (Float.isNaN(startX) || Float.isNaN(startY)) {
+                    continue;
+                }
+                int steps = speed >= LOOKAHEAD_TWO_CELL_SPEED_TILES_S ? LOOKAHEAD_MAX_CELLS : 1;
+                float nx = vx / speed;
+                float ny = vy / speed;
+                // Cap at LOOKAHEAD_MAX_CELLS: each projected cell keeps full chunk state resident.
+                for (int step = 1; step <= steps; step++) {
+                    float px = startX + nx * LOOKAHEAD_CELL_TILES * step;
+                    float py = startY + ny * LOOKAHEAD_CELL_TILES * step;
+                    int wx = (int) Math.floor(px / LOOKAHEAD_CELL_TILES);
+                    int wy = (int) Math.floor(py / LOOKAHEAD_CELL_TILES);
+                    int lx = wx - serverMap.getMinX();
+                    int ly = wy - serverMap.getMinY();
+                    if (!serverMap.isInvalidCell(lx, ly)) {
+                        serverMap.loadOrKeepRelevent(lx, ly);
+                    }
+                }
+            } catch (Throwable t) {
+            }
         }
     }
 

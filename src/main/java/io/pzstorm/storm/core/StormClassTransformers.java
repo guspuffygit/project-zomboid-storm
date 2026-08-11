@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.client.AdaptiveChunkResendPatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
@@ -428,6 +429,10 @@ public class StormClassTransformers {
             // vanilla put(), ModelAttachRetry disables itself on first error.
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
+            // Replaces the flat 8s WorldStreamer resend wall with SRTT-based timeout + 1x/2x/4x
+            // backoff, capped at 3 attempts to match server MAX_CHUNK_SEND_TRIES. Fails soft to
+            // vanilla if ping is unmeasured or reflection breaks.
+            registerTransformer(new AdaptiveChunkResendPatch());
             // Client-only because only the client acts on isLimitExceeded — PacketType.send
             // cancels the packet there, while the server's call site logs it and sends anyway.
             registerTransformer(new PacketLimitMetricsPatch());
