@@ -123,19 +123,25 @@ public final class GameLaunch {
         PzGameJson gameJson = PzGameJson.read(gameDir);
         Path jvm = config.resolveJvm(gameDir);
         boolean windows = isWindowsJvm(jvm);
+        Path exeLauncher = exeLauncher(config, gameDir, windows);
+        boolean useExe = exeLauncher != null;
 
         List<String> warnings = new ArrayList<>();
         List<String> command = new ArrayList<>();
-        command.add(jvm.toString());
-        // Overlay args follow the TARGET JVM's platform: spawning the Windows game
-        // JVM from WSL should still get the modern-Windows overlay (e.g. ZGC).
-        String osName = System.getProperty("os.name", "");
-        String osVersion = System.getProperty("os.version", "");
-        if (windows && !osName.toLowerCase().contains("win")) {
-            osName = "Windows";
-            osVersion = "10.0.99999";
+        command.add(useExe ? exeLauncher.toString() : jvm.toString());
+        if (!useExe) {
+            // Overlay args follow the TARGET JVM's platform: spawning the Windows game
+            // JVM from WSL should still get the modern-Windows overlay (e.g. ZGC).
+            // In the exe path we skip these — ProjectZomboid64.exe reads its own
+            // ProjectZomboid64.json for the base vmArgs and picks its own overlay.
+            String osName = System.getProperty("os.name", "");
+            String osVersion = System.getProperty("os.version", "");
+            if (windows && !osName.toLowerCase().contains("win")) {
+                osName = "Windows";
+                osVersion = "10.0.99999";
+            }
+            command.addAll(gameJson.effectiveVmArgs(osName, osVersion));
         }
-        command.addAll(gameJson.effectiveVmArgs(osName, osVersion));
 
         // placed after the game json's stock -Xmx because the later -Xmx wins in HotSpot
         int memoryGb = config.resolveMemoryGb();
@@ -183,9 +189,18 @@ public final class GameLaunch {
             command.addAll(profile.extraVmArgs);
         }
 
-        command.add("-cp");
-        command.add(String.join(windows ? ";" : ":", gameJson.classpath));
-        command.add(gameJson.mainClass);
+        if (!useExe) {
+            command.add("-cp");
+            command.add(String.join(windows ? ";" : ":", gameJson.classpath));
+            command.add(gameJson.mainClass);
+        } else {
+            // ProjectZomboid64.exe splits CLI args on `--`: everything before is forwarded to
+            // jvm.dll as JVM args, everything after goes to main(). WITHOUT `--`, the exe
+            // sends every CLI arg to main() and the JVM sees only the JSON's vmArgs — so
+            // -agentpath / -Xmx / -Dstorm.* silently no-op ("unknown option" in game.log).
+            // The vanilla Steam Launch Options paste ends in `--` for the same reason.
+            command.add("--");
+        }
 
         if (profile != null && autoJoinFile == null) {
             command.add("+connect");
@@ -329,6 +344,27 @@ public final class GameLaunch {
         command.add("-Dstderr.encoding=UTF-8");
     }
 
+    /**
+     * ProjectZomboid64.exe, when we should spawn it in place of java.exe. The exe forwards every
+     * CLI JVM arg into its embedded {@code jvm.dll} (that is how the Steam {@code -agentpath} paste
+     * has always loaded Storm) AND carries the "System DPI Aware" Windows manifest that vanilla
+     * users' UI is calibrated for. {@code jre64/bin/java.exe} declares "Per-Monitor V2" instead, so
+     * a direct spawn reports different pixel dims on any fractional-scale display — auto-detected
+     * moodle/sidebar sizes balloon and the in-vehicle zoom stops matching what the player
+     * configured.
+     *
+     * <p>Only when the launched process is a Windows JVM, the exe is present, and the user has not
+     * pinned an explicit {@code jvmPath} — a custom JVM is a request to bypass the game's bundled
+     * one, which bypasses the exe too.
+     */
+    static Path exeLauncher(LauncherConfig config, Path gameDir, boolean windowsJvm) {
+        if (!windowsJvm || !config.jvmPath.isEmpty()) {
+            return null;
+        }
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        return Files.isRegularFile(exe) ? exe : null;
+    }
+
     static boolean isWindowsJvm(Path jvm) {
         String path = jvm.toString().toLowerCase();
         if (path.endsWith(".exe")) {
@@ -338,10 +374,23 @@ public final class GameLaunch {
         return os.toLowerCase().contains("win");
     }
 
-    /** Just the JVM args (between the java binary and -cp) — the full command line buries them. */
+    /**
+     * Just the JVM args (between the launched binary and the program's own args) — the full command
+     * line buries them. Boundary is {@code -cp} in the direct-java path and {@code --} in the
+     * ProjectZomboid64.exe path (the exe's JVM/program-arg separator); falls back to {@code
+     * +connect} then end-of-command.
+     */
     public static String describeJvmArgs(LaunchPlan plan) {
-        int cpIdx = plan.command.indexOf("-cp");
-        int end = cpIdx >= 0 ? cpIdx : plan.command.size();
+        int end = plan.command.indexOf("-cp");
+        if (end < 0) {
+            end = plan.command.indexOf("--");
+        }
+        if (end < 0) {
+            end = plan.command.indexOf("+connect");
+        }
+        if (end < 0) {
+            end = plan.command.size();
+        }
         return String.join(" ", plan.command.subList(1, Math.max(1, end)));
     }
 

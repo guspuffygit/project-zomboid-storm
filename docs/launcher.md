@@ -105,9 +105,17 @@ workshop updates.
    Storm the launcher does not arm the handoff — arming it would strand the
    player at the main menu with the `+connect` args suppressed and nobody
    consuming the file — and instead falls back to the vanilla `+connect` flow.
-5. **Game launch** — builds the client java command from the game's own
-   `ProjectZomboid64.json` (mainClass, classpath, vmArgs, windows overlays),
-   appends the Storm agent flags, `-Dstorm.experimental.clientperf=true`
+5. **Game launch** — on Windows, spawns `ProjectZomboid64.exe` from the game
+   directory (which hosts the JVM in-process via `jvm.dll` and reads
+   `ProjectZomboid64.json` for its own mainClass, classpath, and base vmArgs);
+   elsewhere, and when the user has pinned a custom *JVM path* in Settings,
+   builds the java command directly from `ProjectZomboid64.json` (mainClass,
+   classpath, vmArgs, windows overlays) and spawns `java` instead. Going through
+   the exe on Windows preserves its **"System DPI Aware"** process manifest —
+   `jre64/bin/java.exe` declares **Per-Monitor V2**, so a direct spawn reports
+   different pixel dimensions on any fractional-scale display and blows up
+   moodle/sidebar auto-sizing and the in-vehicle zoom. Either way, appends the
+   Storm agent flags, `-Dstorm.experimental.clientperf=true`
    (Storm's experimental client performance patches are **on by default**;
    untick *"Experimental client performance fixes"* in Settings or pass your
    own `-Dstorm.experimental.clientperf=…` to override),

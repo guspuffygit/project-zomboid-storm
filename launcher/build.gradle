@@ -73,6 +73,34 @@ jar {
 	}
 }
 
+// Drops the built launcher jar into the local-dev Storm install
+// (<zomboidDir>/Workshop/storm/Contents/mods/storm/launcher/) so a Steam -agentpath paste
+// pointing at that dir's bootstrap picks it up — no workshop-dir writes required. Pair with
+// the paste in docs/launcher.md "Testing a local launcher build". Close the game first —
+// Windows locks the jar while the JVM has it open. Local iteration only; deployLauncher
+// above is the real ship.
+tasks.register('deployLauncherLocal') {
+	dependsOn tasks.named('jar')
+	def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+	def zomboidDir = localProperties.getProperty('zomboidDir') ?: ''
+	doLast {
+		if (zomboidDir.isEmpty()) {
+			throw new GradleException(
+					"local.properties must set zomboidDir (e.g. /mnt/c/Users/<name>/Zomboid)")
+		}
+		def target = new File(
+				"${zomboidDir}/Workshop/storm/Contents/mods/storm/launcher/storm-launcher.jar")
+		if (!target.parentFile.isDirectory()) {
+			throw new GradleException(
+					"Local Storm install missing — run ./gradlew installStorm first"
+					+ " (expected ${target.parentFile})")
+		}
+		java.nio.file.Files.copy(jarFile.get().asFile.toPath(), target.toPath(),
+				java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+		logger.lifecycle("Copied launcher ${launcherVersion} to ${target}")
+	}
+}
+
 // Publishes the launcher jar for the CDN self-update: upload to S3 with the jar's SHA-256 and
 // version attached as object metadata (surfaced to clients as x-amz-meta-sha256 /
 // x-amz-meta-version response headers), then invalidate the CloudFront path so the very next

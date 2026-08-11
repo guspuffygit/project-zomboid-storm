@@ -371,6 +371,153 @@ class GameLaunchTest {
     }
 
     @Test
+    void spawnsProjectZomboid64ExeWhenPresentAndDefaultJvm() throws IOException {
+        // Real setup: user hasn't pinned a jvm, jre64/bin/javaw.exe is auto-detected,
+        // ProjectZomboid64.exe sits next to it. The exe carries the vanilla "System DPI
+        // Aware" manifest that in-vehicle zoom and moodle auto-sizing are calibrated for;
+        // java.exe is "Per-Monitor V2" and reports different pixel dims on fractional
+        // displays. So the exe wins.
+        Files.createDirectories(gameDir.resolve(Path.of("jre64", "bin")));
+        Files.write(gameDir.resolve(Path.of("jre64", "bin", "javaw.exe")), new byte[] {1});
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        Files.write(exe, new byte[] {1});
+
+        LauncherConfig config = config();
+        config.jvmPath = ""; // default → auto-detect
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
+
+        assertEquals(exe.toString(), plan.command.get(0));
+        // exe reads ProjectZomboid64.json itself for vmArgs, classpath, mainClass
+        assertFalse(
+                plan.command.contains("-Dzomboid.steam=1"),
+                "json vmArgs must not double-up: " + plan.command);
+        assertFalse(plan.command.contains("-cp"), "exe supplies its own classpath");
+        assertFalse(plan.command.contains("zombie.gameStates.MainScreenState"));
+        assertFalse(plan.command.contains("projectzomboid.jar"));
+        // overlays and agent still there
+        assertTrue(plan.command.contains("-Xmx16g"));
+        assertTrue(
+                plan.command.stream()
+                        .anyMatch(a -> a.startsWith("-agentpath:") || a.startsWith("-javaagent:")),
+                "agent flag: " + plan.command);
+        assertTrue(plan.command.contains("-D" + GameLaunch.HANDOFF_PROPERTY + "=false"));
+        assertTrue(plan.command.contains("-D" + GameLaunch.CLIENT_PERF_PROPERTY + "=true"));
+    }
+
+    @Test
+    void exePathStillCarriesConnectAndAutoJoinArgs() throws IOException {
+        Files.createDirectories(gameDir.resolve(Path.of("jre64", "bin")));
+        Files.write(gameDir.resolve(Path.of("jre64", "bin", "javaw.exe")), new byte[] {1});
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        Files.write(exe, new byte[] {1});
+
+        LauncherConfig config = config();
+        config.jvmPath = "";
+        ServerProfile profile = new ServerProfile();
+        profile.host = "play.example.org";
+        profile.port = 16261;
+        profile.serverPassword = "sekrit";
+
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config, profile, null);
+        assertEquals(exe.toString(), plan.command.get(0));
+        assertTrue(plan.command.contains("+connect"));
+        assertEquals(
+                "play.example.org:16261", plan.command.get(plan.command.indexOf("+connect") + 1));
+        assertEquals("sekrit", plan.command.get(plan.command.indexOf("+password") + 1));
+
+        // describeJvmArgs must still bound at +connect when there is no -cp sentinel
+        String jvmArgs = GameLaunch.describeJvmArgs(plan);
+        assertFalse(jvmArgs.contains("+connect"), "+connect is a program arg: " + jvmArgs);
+        assertFalse(jvmArgs.contains(exe.toString()), "exe binary is not a JVM arg");
+        assertTrue(jvmArgs.contains("-Xmx16g"), jvmArgs);
+    }
+
+    @Test
+    void exePathEmitsJvmProgramSeparatorBeforeConnect() throws IOException {
+        // ProjectZomboid64.exe splits CLI on `--`: everything before goes to jvm.dll as JVM
+        // args, everything after goes to main(). WITHOUT `--`, the exe sends every CLI arg
+        // (including -agentpath, -Xmx, -D…) to main() as an unknown option and the JVM sees
+        // only the JSON vmArgs — Storm never loads.
+        Files.createDirectories(gameDir.resolve(Path.of("jre64", "bin")));
+        Files.write(gameDir.resolve(Path.of("jre64", "bin", "javaw.exe")), new byte[] {1});
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        Files.write(exe, new byte[] {1});
+
+        LauncherConfig config = config();
+        config.jvmPath = "";
+        ServerProfile profile = new ServerProfile();
+        profile.host = "play.example.org";
+        profile.port = 16261;
+
+        List<String> cmd = GameLaunch.plan(config, profile, null).command;
+        int sepIdx = cmd.indexOf("--");
+        assertTrue(sepIdx > 0, "-- separator missing from exe command: " + cmd);
+        assertEquals(1, cmd.stream().filter("--"::equals).count(), "exe rejects double --");
+
+        // JVM args (-agentpath / -Xmx / -Dstorm.*) sit BEFORE --; +connect / +password AFTER.
+        int agentIdx = -1;
+        for (int i = 0; i < cmd.size(); i++) {
+            if (cmd.get(i).startsWith("-agentpath:") || cmd.get(i).startsWith("-javaagent:")) {
+                agentIdx = i;
+                break;
+            }
+        }
+        assertTrue(agentIdx >= 0 && agentIdx < sepIdx, "agent must precede --: " + cmd);
+        assertTrue(cmd.indexOf("-Xmx16g") < sepIdx, "-Xmx must precede --");
+        assertTrue(cmd.indexOf("+connect") > sepIdx, "+connect must follow --");
+
+        // Auto-join mode (no +connect): -- still required so the JVM sees -agentpath.
+        Path handoff = LauncherPaths.autoJoinFile();
+        List<String> autoJoinCmd = GameLaunch.plan(config, profile, handoff).command;
+        assertTrue(autoJoinCmd.contains("--"), "-- required even without program args");
+        assertEquals(autoJoinCmd.size() - 1, autoJoinCmd.lastIndexOf("--"),
+                "-- may sit at end of command when auto-join suppresses +connect");
+    }
+
+    @Test
+    void directJvmPathHasNoJvmProgramSeparator() throws IOException {
+        // The `--` marker is a ProjectZomboid64.exe quirk. Direct java.exe / javaw.exe / linux
+        // java takes JVM args before -cp and program args after mainClass — no separator needed.
+        List<String> cmd = GameLaunch.plan(config(), null, null).command;
+        assertFalse(cmd.contains("--"), "direct-java path must not emit --: " + cmd);
+    }
+
+    @Test
+    void explicitJvmPathBypassesTheExeLauncher() throws IOException {
+        // A pinned jvm is an opt-out — the user asked for their specific java. Respect it,
+        // even if the DPI-safe exe is right there.
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        Files.write(exe, new byte[] {1});
+
+        LauncherConfig config = config(); // config() sets jvmPath = tmp/jvm/bin/java
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
+
+        assertEquals(config.jvmPath, plan.command.get(0));
+        assertFalse(plan.command.contains(exe.toString()));
+        assertTrue(plan.command.contains("-cp"), "direct-java path always has -cp");
+    }
+
+    @Test
+    void nonWindowsIgnoresExeEvenIfPresent() throws IOException {
+        // isWindowsJvm falls back to the host OS when the jvm path has no .exe suffix.
+        // On a linux host with a "java" (no .exe) jvm, spawning ProjectZomboid64.exe would
+        // just fail; the exe-launcher branch has to gate on isWindowsJvm.
+        assumeTrue(
+                !System.getProperty("os.name", "").toLowerCase().contains("win"),
+                "reverse case only meaningful off Windows hosts");
+        Path exe = gameDir.resolve("ProjectZomboid64.exe");
+        Files.write(exe, new byte[] {1});
+
+        LauncherConfig config = config();
+        config.jvmPath = ""; // auto-detect
+        Files.createDirectories(gameDir.resolve(Path.of("jre64", "bin")));
+        Files.write(gameDir.resolve(Path.of("jre64", "bin", "java")), new byte[] {1});
+
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config, null, null);
+        assertFalse(plan.command.get(0).endsWith("ProjectZomboid64.exe"));
+    }
+
+    @Test
     void previousLogSitsNextToTheOriginal() {
         assertEquals(
                 tmp.resolve("logs").resolve("game-prev.log"),
