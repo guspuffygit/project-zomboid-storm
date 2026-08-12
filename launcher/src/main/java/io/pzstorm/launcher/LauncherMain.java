@@ -2,6 +2,7 @@ package io.pzstorm.launcher;
 
 import io.pzstorm.launcher.ui.LauncherWindow;
 import io.pzstorm.launcher.ui.StageSplash;
+import io.pzstorm.launcher.ui.SteamRestartDialog;
 import java.nio.file.Path;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -24,6 +25,15 @@ public final class LauncherMain {
             String[] ids = new String[args.length - 1];
             System.arraycopy(args, 1, ids, 0, ids.length);
             System.exit(SteamUpdateChild.run(ids));
+        }
+        if (args.length > 0 && args[0].equals("--demo-steam-restart-popup")) {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {
+                // default L&F is fine
+            }
+            runSteamRestartDemo(args.length > 1 ? args[1] : "real");
+            System.exit(0);
         }
         LauncherStage.Context stage = LauncherStage.parse(args);
         Log.init(LauncherPaths.logFile());
@@ -119,6 +129,68 @@ public final class LauncherMain {
                 break;
             default:
                 throw new AssertionError(mode);
+        }
+    }
+
+    /**
+     * Dev-only: render the Steam-restart popup with a stubbed backend so every variant of the
+     * dialog can be seen on any OS. Variants: {@code manual} (no auto-restart offer), {@code
+     * success} / {@code fail} (mock progress log), {@code real} (default, calls the real Windows
+     * code — on non-Windows the dialog surfaces its "not supported" fallback).
+     */
+    private static void runSteamRestartDemo(String variant) {
+        String summary =
+                "Steam refused to update all 3 workshop item(s) this server needs, so the join"
+                        + " was cancelled — the game would only get stuck at its workshop screen.";
+        Runnable sendLogs = () -> System.out.println("[demo] Send Logs clicked");
+        switch (variant) {
+            case "manual":
+                SteamRestartDialog.show(null, summary, log -> null, false, sendLogs);
+                return;
+            case "success":
+                SteamRestartDialog.show(null, summary, fakeRestart(true), true, sendLogs);
+                return;
+            case "fail":
+                SteamRestartDialog.show(null, summary, fakeRestart(false), true, sendLogs);
+                return;
+            case "progress-success":
+                SteamRestartDialog.runAutoRestart(null, summary, fakeRestart(true), sendLogs);
+                return;
+            case "progress-fail":
+                SteamRestartDialog.runAutoRestart(null, summary, fakeRestart(false), sendLogs);
+                return;
+            case "real":
+            default:
+                SteamRestartDialog.show(null, summary, sendLogs);
+        }
+    }
+
+    private static java.util.function.Function<
+                    java.util.function.Consumer<String>, SteamRestart.Result>
+            fakeRestart(boolean succeed) {
+        return log -> {
+            demoStep(log, "Asking Steam to shut down (steam://exit) …", 400);
+            demoStep(log, "Waiting up to 15s for Steam to close …", 800);
+            demoStep(log, "Steam has closed.", 400);
+            demoStep(log, "Starting Steam …", 600);
+            if (!succeed) {
+                demoStep(log, "  (start failed: Steam is not installed on this machine)", 300);
+                return SteamRestart.Result.failed(
+                        "Could not launch Steam automatically — please start it yourself.");
+            }
+            demoStep(log, "Steam launch requested. Give it a few seconds to come back up, then", 200);
+            demoStep(log, "click Join Server again.", 100);
+            return SteamRestart.Result.success();
+        };
+    }
+
+    private static void demoStep(
+            java.util.function.Consumer<String> log, String line, long pauseMs) {
+        log.accept(line);
+        try {
+            Thread.sleep(pauseMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

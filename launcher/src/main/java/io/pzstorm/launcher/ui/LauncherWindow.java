@@ -8,9 +8,9 @@ import io.pzstorm.launcher.LauncherConfig;
 import io.pzstorm.launcher.LauncherInfo;
 import io.pzstorm.launcher.LauncherPaths;
 import io.pzstorm.launcher.Log;
-import io.pzstorm.launcher.LogReport;
 import io.pzstorm.launcher.ServerProfile;
 import io.pzstorm.launcher.ServerStore;
+import io.pzstorm.launcher.SteamRestartRequiredException;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -254,48 +254,7 @@ public final class LauncherWindow extends JFrame {
 
     /** Uploads metadata + zipped launcher/game/Zomboid/Storm logs to the Storm team's Discord. */
     private void onSendLogs() {
-        JTextArea description = new JTextArea(5, 40);
-        description.setLineWrap(true);
-        description.setWrapStyleWord(true);
-        int choice =
-                JOptionPane.showConfirmDialog(
-                        this,
-                        new Object[] {
-                            "<html><b>Privacy Notice</b><br><br>"
-                                    + "You are about to send data to Gus Puffy (the developer).<br>"
-                                    + "Passwords are never included, and the data is deleted once"
-                                    + " it has been reviewed.<br><br>"
-                                    + "Data sent will include:<br>"
-                                    + "&nbsp;&nbsp;• Information about this PC (operating system,"
-                                    + " CPU, RAM, Java version)<br>"
-                                    + "&nbsp;&nbsp;• Launcher settings and launcher logs<br>"
-                                    + "&nbsp;&nbsp;• Logs from Project Zomboid and Storm"
-                                    + " (console.txt and the Logs folder)<br><br>"
-                                    + "Describe the problem (optional):</html>",
-                            new JScrollPane(description)
-                        },
-                        "Send logs to Gus Puffy",
-                        JOptionPane.OK_CANCEL_OPTION);
-        if (choice != JOptionPane.OK_OPTION) {
-            return;
-        }
-        String text = description.getText().trim();
-        Thread worker =
-                new Thread(
-                        () -> {
-                            try {
-                                String logId = LogReport.send(config, text);
-                                Log.info(
-                                        "Logs sent — mention report id "
-                                                + logId
-                                                + " when asking for help.");
-                            } catch (Exception e) {
-                                Log.error("Sending logs failed", e);
-                            }
-                        },
-                        "storm-log-report");
-        worker.setDaemon(true);
-        worker.start();
+        SendLogsDialog.open(this, config);
     }
 
     private void onQuit() {
@@ -349,6 +308,16 @@ public final class LauncherWindow extends JFrame {
                                 GameProcessTracker.armCloseLauncherOnGameExit();
                                 SwingUtilities.invokeLater(
                                         () -> Log.info("Launcher will close when the game exits."));
+                            } catch (SteamRestartRequiredException e) {
+                                Log.error("Launch failed", e);
+                                SwingUtilities.invokeLater(
+                                        () ->
+                                                SteamRestartDialog.show(
+                                                        this,
+                                                        e.summary(),
+                                                        () ->
+                                                                SendLogsDialog.open(
+                                                                        this, config)));
                             } catch (Exception e) {
                                 Log.error("Launch failed", e);
                                 SwingUtilities.invokeLater(
