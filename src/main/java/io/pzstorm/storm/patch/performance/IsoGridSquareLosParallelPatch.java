@@ -17,7 +17,7 @@ import net.bytebuddy.pool.TypePool;
 
 /**
  * Server-only structural patch on {@code IsoGridSquare} that makes per-square LOS state safe to run
- * from multiple LOS workers concurrently. Three changes:
+ * from multiple LOS workers concurrently. Four changes:
  *
  * <ol>
  *   <li>Enter advice on {@code CalcVisibility} lazily allocates {@code lighting[playerIndex]} for
@@ -32,6 +32,10 @@ import net.bytebuddy.pool.TypePool;
  *       square creation, so growing it there keeps the "workers only touch disjoint slots"
  *       invariant with no extra synchronisation. The sibling {@code lightInfo} array (also length
  *       4) is left alone — the server LOS path never indexes it by slot.
+ *   <li>Exit advice on {@code discard} resets the slots change (3) added. Vanilla's own reset loop
+ *       is bounded by the literal {@code 4}, so without this a square recycled through {@code
+ *       isoGridSquareCache} carries the previous location's {@code bCouldSee} bits in slots {@code
+ *       4..MAX-1} until the next {@code CalcVisibility} for that specific slot.
  * </ol>
  *
  * <p>MUST be registration-gated to the dedicated server ({@code StormEnv.isStormServer()}) — {@code
@@ -48,6 +52,8 @@ public class IsoGridSquareLosParallelPatch extends StormClassTransformer {
 
     private static final String ADVICE =
             "io.pzstorm.storm.advice.isogridsquarelos.IsoGridSquareCalcVisibilityAdvice";
+    private static final String DISCARD_ADVICE =
+            "io.pzstorm.storm.advice.isogridsquarelos.IsoGridSquareDiscardAdvice";
     private static final String SCRATCH = "io.pzstorm.storm.los.StormLosScratch";
 
     /** Internal name of the array element type whose per-square allocation we enlarge. */
@@ -88,6 +94,9 @@ public class IsoGridSquareLosParallelPatch extends StormClassTransformer {
         requireDeclared(
                 !target.getDeclaredFields().filter(ElementMatchers.named("tempo2")).isEmpty(),
                 "static scratch field tempo2");
+        requireDeclared(
+                !target.getDeclaredMethods().filter(ElementMatchers.named("discard")).isEmpty(),
+                "method discard (per-slot lighting reset target)");
 
         TypeDescription scratch = typePool.describe(SCRATCH).resolve();
         MethodDescription tempoRepl =
@@ -117,6 +126,10 @@ public class IsoGridSquareLosParallelPatch extends StormClassTransformer {
                 builder.visit(
                         new AsmVisitorWrapper.ForDeclaredMethods()
                                 .invokable(ElementMatchers.isConstructor(), lightingWrapper));
+        builder =
+                builder.visit(
+                        Advice.to(typePool.describe(DISCARD_ADVICE).resolve(), locator)
+                                .on(ElementMatchers.named("discard")));
         return builder;
     }
 
