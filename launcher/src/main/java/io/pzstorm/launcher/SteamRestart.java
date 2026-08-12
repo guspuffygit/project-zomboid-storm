@@ -50,8 +50,8 @@ public final class SteamRestart {
     }
 
     /**
-     * Runs synchronously on the calling thread — the caller is expected to spawn a worker so the
-     * UI stays responsive.
+     * Runs synchronously on the calling thread — the caller is expected to spawn a worker so the UI
+     * stays responsive.
      */
     public static Result attemptRestart(Consumer<String> log) {
         if (!isSupported()) {

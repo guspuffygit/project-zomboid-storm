@@ -86,14 +86,14 @@ tasks.register('deployLauncherLocal') {
 	doLast {
 		if (zomboidDir.isEmpty()) {
 			throw new GradleException(
-					"local.properties must set zomboidDir (e.g. /mnt/c/Users/<name>/Zomboid)")
+			"local.properties must set zomboidDir (e.g. /mnt/c/Users/<name>/Zomboid)")
 		}
 		def target = new File(
 				"${zomboidDir}/Workshop/storm/Contents/mods/storm/launcher/storm-launcher.jar")
 		if (!target.parentFile.isDirectory()) {
 			throw new GradleException(
-					"Local Storm install missing — run ./gradlew installStorm first"
-					+ " (expected ${target.parentFile})")
+			"Local Storm install missing — run ./gradlew installStorm first"
+			+ " (expected ${target.parentFile})")
 		}
 		java.nio.file.Files.copy(jarFile.get().asFile.toPath(), target.toPath(),
 				java.nio.file.StandardCopyOption.REPLACE_EXISTING)

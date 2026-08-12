@@ -470,7 +470,9 @@ class GameLaunchTest {
         Path handoff = LauncherPaths.autoJoinFile();
         List<String> autoJoinCmd = GameLaunch.plan(config, profile, handoff).command;
         assertTrue(autoJoinCmd.contains("--"), "-- required even without program args");
-        assertEquals(autoJoinCmd.size() - 1, autoJoinCmd.lastIndexOf("--"),
+        assertEquals(
+                autoJoinCmd.size() - 1,
+                autoJoinCmd.lastIndexOf("--"),
                 "-- may sit at end of command when auto-join suppresses +connect");
     }
 

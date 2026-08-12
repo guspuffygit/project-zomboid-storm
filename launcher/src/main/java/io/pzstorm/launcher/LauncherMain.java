@@ -178,7 +178,10 @@ public final class LauncherMain {
                 return SteamRestart.Result.failed(
                         "Could not launch Steam automatically — please start it yourself.");
             }
-            demoStep(log, "Steam launch requested. Give it a few seconds to come back up, then", 200);
+            demoStep(
+                    log,
+                    "Steam launch requested. Give it a few seconds to come back up, then",
+                    200);
             demoStep(log, "click Join Server again.", 100);
             return SteamRestart.Result.success();
         };

@@ -56,19 +56,27 @@ end
 
 local originalOnCommandEntered = ISChat.onCommandEntered
 
+-- Note: ISChat.onCommandEntered is copied into textEntry.onCommandEntered by
+-- ISChat:createChildren (see project-zomboid-base ISChat.lua ~line 195), and
+-- UITextBox2 invokes it with the textEntry's own Lua table as `self` — not the
+-- ISChat instance. Route everything through ISChat.instance to match vanilla.
 function ISChat:onCommandEntered()
-    local text = self.textEntry and self.textEntry:getText() or ""
+    local chat = ISChat.instance
+    if not chat or not chat.textEntry then
+        return originalOnCommandEntered(self)
+    end
+    local text = chat.textEntry:getText() or ""
     local head, rest = text:match("^(/%S+)%s*(.-)%s*$")
     if head == "/checkroom" then
-        self:unfocus()
-        self:logChatCommand(text)
-        self.textEntry:setText("")
+        chat:unfocus()
+        chat:logChatCommand(text)
+        chat.textEntry:setText("")
         runCheck(parseRadius(rest))
         return
     elseif head == "/clearcheckroom" then
-        self:unfocus()
-        self:logChatCommand(text)
-        self.textEntry:setText("")
+        chat:unfocus()
+        chat:logChatCommand(text)
+        chat.textEntry:setText("")
         runClear(parseRadius(rest))
         return
     end

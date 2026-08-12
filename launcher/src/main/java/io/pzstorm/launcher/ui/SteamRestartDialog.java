@@ -55,8 +55,8 @@ public final class SteamRestartDialog {
     }
 
     /**
-     * Test/demo hook: inject the restart function (usually {@link SteamRestart#attemptRestart})
-     * and force the auto path on/off so the same code renders on any OS.
+     * Test/demo hook: inject the restart function (usually {@link SteamRestart#attemptRestart}) and
+     * force the auto path on/off so the same code renders on any OS.
      */
     public static void show(
             Component parent,

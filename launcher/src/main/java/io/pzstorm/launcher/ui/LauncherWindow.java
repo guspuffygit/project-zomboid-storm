@@ -315,9 +315,7 @@ public final class LauncherWindow extends JFrame {
                                                 SteamRestartDialog.show(
                                                         this,
                                                         e.summary(),
-                                                        () ->
-                                                                SendLogsDialog.open(
-                                                                        this, config)));
+                                                        () -> SendLogsDialog.open(this, config)));
                             } catch (Exception e) {
                                 Log.error("Launch failed", e);
                                 SwingUtilities.invokeLater(
