@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.core.StormBootstrap;
 import io.pzstorm.storm.core.StormModLoader;
 import io.pzstorm.storm.core.StormVersion;
+import io.pzstorm.storm.debugging.StormIsoRegionCheck;
 import io.pzstorm.storm.event.lua.*;
 import io.pzstorm.storm.event.zomboid.*;
 import io.pzstorm.storm.lua.functions.storm.StormLua;
@@ -115,6 +116,11 @@ public class StormEventHandler {
 
         try {
             LuaManager.exposer.setExposed(PersistedBooleanConfigOption.class);
+            if (GameClient.client) {
+                LuaManager.exposer.setExposed(StormIsoRegionCheck.class);
+                LuaManager.exposer.exposeLikeJavaRecursively(
+                        StormIsoRegionCheck.class, LuaManager.env);
+            }
 
             // Load files from mod jars
             for (JarFile modJar : StormModLoader.getModJars()) {
