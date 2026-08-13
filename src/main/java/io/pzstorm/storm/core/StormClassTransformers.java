@@ -17,8 +17,11 @@ import io.pzstorm.storm.patch.events.ChatManagerPatch;
 import io.pzstorm.storm.patch.events.ChatServerSendMessagePatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
+import io.pzstorm.storm.patch.fixes.ActionGroupSyncPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
+import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
+import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
 import io.pzstorm.storm.patch.fixes.BodyDamageSyncPatch;
 import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
@@ -34,6 +37,7 @@ import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
 import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
+import io.pzstorm.storm.patch.fixes.RefreshAnimSetsLockPatch;
 import io.pzstorm.storm.patch.fixes.RequestSaveCellSuppressPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
@@ -316,6 +320,12 @@ public class StormClassTransformers {
             registerTransformer(new IsoObjectRemoveFromWorldPatch());
             registerTransformer(new OnDeathTriggerPatch("zombie.characters.IsoGameCharacter"));
             registerTransformer(new OnDeathTriggerPatch("zombie.characters.animals.IsoAnimal"));
+            // SPVThread vs main-thread animset-load race; a THashMap.rehash AIOOBE during
+            // vehicle load permanently deletes the vehicle from vehicles.db.
+            registerTransformer(new AnimationSetLockPatch());
+            registerTransformer(new RefreshAnimSetsLockPatch());
+            registerTransformer(new ActionGroupSyncPatch());
+            registerTransformer(new AssetManagerSyncPatch());
         }
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new ServerLOSUpdatePatch());
