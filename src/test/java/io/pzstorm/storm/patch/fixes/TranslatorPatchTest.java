@@ -13,14 +13,14 @@ import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies that {@link TranslatorPatch} injects {@code GetTextAdvice} into {@code
- * Translator.getText(String, Object...)}, so a string that matches no known translation key prefix
- * is returned as-is instead of triggering a spurious "Missing translation" error log.
+ * Verifies that {@link TranslatorPatch} injects {@code ZeroArgFormatAdvice} into {@code
+ * Translator.reportMissingArgumentsFromPastAbuse}, so zero-arg {@code getText} calls on texts with
+ * positional specifiers return the raw text without throwing and warn-logging every frame.
  *
- * <p>Detection signal: the advice is inlined, so the patched method gains {@code LDC} constants for
- * the known key prefixes (e.g. {@code "SurvivorSurname_"}) that vanilla {@code getText} — a
- * one-line delegation — does not contain. Asserting they appear in the target method and not in
- * {@code getTextOrNull} proves both that the advice landed and that the matcher didn't leak.
+ * <p>Detection signal: the advice is inlined, so the patched method gains an {@code LDC} constant
+ * ({@code "%1$s"}) that the vanilla method does not contain. Asserting it appears in the target
+ * method and not in {@code getText} proves both that the advice landed and that the matcher didn't
+ * leak.
  *
  * <p>Uses ByteBuddy's bundled ASM ({@code net.bytebuddy.jar.asm.*}) because the standalone {@code
  * org.ow2.asm:asm:9.1} test dependency is too old to read Java&nbsp;25 class files.
@@ -28,18 +28,6 @@ import org.junit.jupiter.api.Test;
 class TranslatorPatchTest implements UnitTest {
 
     private static final String TRANSLATOR = "zombie/core/Translator";
-
-    /** A prefix constant only the inlined advice loads; see {@code GetTextAdvice.onEnter}. */
-    private static final String ADVICE_PREFIX_CONSTANT = "SurvivorSurname_";
-
-    private static final String TARGET_METHOD = "getText";
-    private static final String TARGET_DESC =
-            "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
-
-    // getTextOrNull has the same shape as getText but must not be instrumented itself.
-    private static final String SIBLING_METHOD = "getTextOrNull";
-    private static final String SIBLING_DESC =
-            "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
 
     /**
      * A constant only the inlined {@code ZeroArgFormatAdvice} loads; vanilla {@code
@@ -52,34 +40,17 @@ class TranslatorPatchTest implements UnitTest {
     private static final String REPORT_DESC =
             "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
 
-    @Test
-    void patchInjectsGetTextAdviceIntoGetTextOnly() throws Exception {
-        byte[] rawClass = readClassBytes(TRANSLATOR + ".class");
-        byte[] transformed = new TranslatorPatch().transform(rawClass);
-        assertNotNull(transformed);
-        assertTrue(transformed.length > 0);
-
-        assertEquals(
-                0,
-                countConstants(rawClass, TARGET_METHOD, TARGET_DESC, ADVICE_PREFIX_CONSTANT),
-                "Vanilla " + TARGET_METHOD + " must not contain the advice's prefix constant");
-
-        assertTrue(
-                countConstants(transformed, TARGET_METHOD, TARGET_DESC, ADVICE_PREFIX_CONSTANT)
-                        >= 1,
-                "Patched " + TARGET_METHOD + " must inline GetTextAdvice (advice not injected)");
-
-        assertEquals(
-                countConstants(rawClass, SIBLING_METHOD, SIBLING_DESC, ADVICE_PREFIX_CONSTANT),
-                countConstants(transformed, SIBLING_METHOD, SIBLING_DESC, ADVICE_PREFIX_CONSTANT),
-                "Advice must not leak into Translator." + SIBLING_METHOD);
-    }
+    // getText delegates to the report method and must not be instrumented itself.
+    private static final String SIBLING_METHOD = "getText";
+    private static final String SIBLING_DESC =
+            "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
 
     @Test
     void patchInjectsZeroArgFormatAdviceIntoReportMethodOnly() throws Exception {
         byte[] rawClass = readClassBytes(TRANSLATOR + ".class");
         byte[] transformed = new TranslatorPatch().transform(rawClass);
         assertNotNull(transformed);
+        assertTrue(transformed.length > 0);
 
         assertEquals(
                 0,
@@ -94,9 +65,9 @@ class TranslatorPatchTest implements UnitTest {
                         + " must inline ZeroArgFormatAdvice (advice not injected)");
 
         assertEquals(
-                countConstants(rawClass, TARGET_METHOD, TARGET_DESC, ZERO_ARG_ADVICE_CONSTANT),
-                countConstants(transformed, TARGET_METHOD, TARGET_DESC, ZERO_ARG_ADVICE_CONSTANT),
-                "ZeroArgFormatAdvice must not leak into Translator." + TARGET_METHOD);
+                countConstants(rawClass, SIBLING_METHOD, SIBLING_DESC, ZERO_ARG_ADVICE_CONSTANT),
+                countConstants(transformed, SIBLING_METHOD, SIBLING_DESC, ZERO_ARG_ADVICE_CONSTANT),
+                "ZeroArgFormatAdvice must not leak into Translator." + SIBLING_METHOD);
     }
 
     private byte[] readClassBytes(String resourcePath) throws Exception {

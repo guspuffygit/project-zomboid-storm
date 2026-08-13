@@ -8,38 +8,33 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Fixes a vanilla bug where {@code Translator.getText()} is called with an already-translated
- * string (e.g. a craft recipe display name), causing a spurious "Missing translation" error.
+ * Fixes a vanilla bug where call sites like {@code LoadingQueueUI.render()} line 327 wrap a no-arg
+ * {@code getText} in an outer {@code String.format} ({@code
+ * String.format(Translator.getText("UI_GameLoad_windSpeed"), windName, knots, kph)}). Vanilla's
+ * {@code reportMissingArgumentsFromPastAbuse} then formats a text containing {@code %1$s} with zero
+ * arguments, which is guaranteed to throw {@code MissingFormatArgumentException}, log a warning,
+ * and return the raw text — every rendered frame. On the loading-queue screen that floods the log
+ * at hundreds of warnings per second, drowning real diagnostics out of the 1&nbsp;MB launcher
+ * Send-Logs tail. {@code ZeroArgFormatAdvice} detects the guaranteed-throw shape (zero args, text
+ * contains {@code %1$s}) and returns the raw text directly: outcome-identical to vanilla's catch
+ * path minus the per-frame exception and log line. All other calls, including zero-arg texts
+ * without positional specifiers (which need {@code %%} collapsing), run the original method
+ * unchanged.
  *
- * <p>The root cause is in {@code ISInventoryPaneContextMenu.lua} line 3351:
+ * <p>Two earlier advices were retired as vanilla absorbed or defused their bugs:
  *
- * <pre>local recipeName = getText(recipe:getTranslationName())</pre>
- *
- * <p>{@code getTranslationName()} already returns the translated name (e.g. "Craft Vehicle
- * Ownership Title"), but it gets passed to {@code getText()} again as if it were a translation key.
- * Since it doesn't match any known prefix, {@code getTextInternal} logs a "Missing translation"
- * error.
- *
- * <p>This patch intercepts {@code getText(String, Object...)} (the only overload since 42.20.1) and
- * short-circuits the call when the input string doesn't match any known translation key prefix,
- * returning the string as-is without triggering the error log.
- *
- * <p>Until 42.20.1 this patch also rescued {@code reportMissingArgumentsFromPastAbuse} from
- * malformed format strings (an unescaped {@code %} threw {@code UnknownFormatConversionException}
- * into the calling Lua chunk). 42.20.2 absorbed that fix: vanilla now catches {@code
- * IllegalFormatException} and returns the unformatted text itself, so the advice was retired.
- *
- * <p>{@code ZeroArgFormatAdvice} fixes a second vanilla bug: call sites like {@code
- * LoadingQueueUI.render()} line 327 wrap a no-arg {@code getText} in an outer {@code String.format}
- * ({@code String.format(Translator.getText("UI_GameLoad_windSpeed"), windName, knots, kph)}).
- * Vanilla's {@code reportMissingArgumentsFromPastAbuse} then formats a text containing {@code %1$s}
- * with zero arguments, which is guaranteed to throw {@code MissingFormatArgumentException}, log a
- * warning, and return the raw text — every rendered frame. On the loading-queue screen that floods
- * the log at hundreds of warnings per second, drowning real diagnostics out of the 1&nbsp;MB
- * launcher Send-Logs tail. The advice detects the guaranteed-throw shape (zero args, text contains
- * {@code %1$s}) and returns the raw text directly: outcome-identical to vanilla's catch path minus
- * the per-frame exception and log line. All other calls, including zero-arg texts without
- * positional specifiers (which need {@code %%} collapsing), run the original method unchanged.
+ * <ul>
+ *   <li>Until 42.20.1: rescued {@code reportMissingArgumentsFromPastAbuse} from malformed format
+ *       strings (an unescaped {@code %} threw {@code UnknownFormatConversionException} into the
+ *       calling Lua chunk). 42.20.2 catches {@code IllegalFormatException} and returns the
+ *       unformatted text itself.
+ *   <li>Until 42.20.2: {@code GetTextAdvice} short-circuited {@code getText} for strings matching
+ *       no known translation-key prefix, suppressing the "Missing translation" error spam caused by
+ *       Lua re-translating already-translated strings (e.g. {@code
+ *       ISInventoryPaneContextMenu.lua}'s {@code getText(recipe:getTranslationName())}). The Lua
+ *       bug is still there, but 42.20.2 dedups the error once per unique string and gates it behind
+ *       {@code -debug}/{@code -debugtranslation}, so production JVMs no longer log it at all.
+ * </ul>
  */
 public class TranslatorPatch extends StormClassTransformer {
 
@@ -51,75 +46,13 @@ public class TranslatorPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                        Advice.to(GetTextAdvice.class)
-                                .on(
-                                        ElementMatchers.named("getText")
-                                                .and(
-                                                        ElementMatchers.takesArguments(
-                                                                String.class, Object[].class))
-                                                .and(ElementMatchers.isStatic())))
-                .visit(
-                        Advice.to(ZeroArgFormatAdvice.class)
-                                .on(
-                                        ElementMatchers.named("reportMissingArgumentsFromPastAbuse")
-                                                .and(
-                                                        ElementMatchers.takesArguments(
-                                                                String.class,
-                                                                String.class,
-                                                                Object[].class))
-                                                .and(ElementMatchers.isStatic())));
-    }
-
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    public static class GetTextAdvice {
-
-        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
-        public static String onEnter(@Advice.Argument(0) String desc) {
-            if (desc == null || desc.isEmpty()) {
-                return desc;
-            }
-            // If the string matches a known translation key prefix, let the original method handle
-            // it. Otherwise, it's not a valid key (likely an already-translated string), so return
-            // it directly to avoid the "Missing translation" error log.
-            if (desc.startsWith("UI_")
-                    || desc.startsWith("Moodles_")
-                    || desc.startsWith("SurvivalGuide_")
-                    || desc.startsWith("Farming_")
-                    || desc.startsWith("IGUI_")
-                    || desc.startsWith("ContextMenu_")
-                    || desc.startsWith("credits_")
-                    || desc.startsWith("GameSound_")
-                    || desc.startsWith("Sandbox_")
-                    || desc.startsWith("Tooltip_")
-                    || desc.startsWith("Challenge_")
-                    || desc.startsWith("MakeUp")
-                    || desc.startsWith("Stash_")
-                    || desc.startsWith("RM_")
-                    || desc.startsWith("SurvivorName_")
-                    || desc.startsWith("SurvivorSurname_")
-                    || desc.startsWith("Attributes_")
-                    || desc.startsWith("Fluid_")
-                    || desc.startsWith("Print_Media_")
-                    || desc.startsWith("Print_Text_")
-                    || desc.startsWith("EC_")
-                    || desc.startsWith("RD_")
-                    || desc.startsWith("BODYPART_")
-                    || desc.startsWith("MapLabel_")
-                    || desc.startsWith("AEBS_")) {
-                // Known prefix — let the original getText handle it
-                return null;
-            }
-            // No known prefix — not a valid translation key, return as-is
-            return desc;
-        }
-
-        @Advice.OnMethodExit
-        public static void onExit(
-                @Advice.Enter String earlyReturn, @Advice.Return(readOnly = false) String result) {
-            if (earlyReturn != null) {
-                result = earlyReturn;
-            }
-        }
+                Advice.to(ZeroArgFormatAdvice.class)
+                        .on(
+                                ElementMatchers.named("reportMissingArgumentsFromPastAbuse")
+                                        .and(
+                                                ElementMatchers.takesArguments(
+                                                        String.class, String.class, Object[].class))
+                                        .and(ElementMatchers.isStatic())));
     }
 
     public static class ZeroArgFormatAdvice {
