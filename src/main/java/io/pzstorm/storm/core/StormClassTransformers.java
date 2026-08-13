@@ -31,6 +31,7 @@ import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalCanClimbStairsNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalUpdateNullDefGuardPatch;
+import io.pzstorm.storm.patch.fixes.IsoChunkSaveCrcPatch;
 import io.pzstorm.storm.patch.fixes.IsoGridSquareGetRoomNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
@@ -287,6 +288,7 @@ public class StormClassTransformers {
         registerTransformer(new ItemTransactionPacketPatch());
         registerTransformer(new TransactionManagerPatch());
         registerTransformer(new CompressIdenticalItemsPatch());
+        registerTransformer(new IsoChunkSaveCrcPatch());
         registerTransformer(new IsoAnimalReattachBackToMomPatch());
         registerTransformer(new IsoAnimalUpdateNullDefGuardPatch());
         registerTransformer(new IsoAnimalCanClimbStairsNullDefGuardPatch());
