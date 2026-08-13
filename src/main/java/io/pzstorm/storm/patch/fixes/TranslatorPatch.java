@@ -28,6 +28,18 @@ import net.bytebuddy.pool.TypePool;
  * malformed format strings (an unescaped {@code %} threw {@code UnknownFormatConversionException}
  * into the calling Lua chunk). 42.20.2 absorbed that fix: vanilla now catches {@code
  * IllegalFormatException} and returns the unformatted text itself, so the advice was retired.
+ *
+ * <p>{@code ZeroArgFormatAdvice} fixes a second vanilla bug: call sites like {@code
+ * LoadingQueueUI.render()} line 327 wrap a no-arg {@code getText} in an outer {@code String.format}
+ * ({@code String.format(Translator.getText("UI_GameLoad_windSpeed"), windName, knots, kph)}).
+ * Vanilla's {@code reportMissingArgumentsFromPastAbuse} then formats a text containing {@code %1$s}
+ * with zero arguments, which is guaranteed to throw {@code MissingFormatArgumentException}, log a
+ * warning, and return the raw text — every rendered frame. On the loading-queue screen that floods
+ * the log at hundreds of warnings per second, drowning real diagnostics out of the 1&nbsp;MB
+ * launcher Send-Logs tail. The advice detects the guaranteed-throw shape (zero args, text contains
+ * {@code %1$s}) and returns the raw text directly: outcome-identical to vanilla's catch path minus
+ * the per-frame exception and log line. All other calls, including zero-arg texts without
+ * positional specifiers (which need {@code %%} collapsing), run the original method unchanged.
  */
 public class TranslatorPatch extends StormClassTransformer {
 
@@ -39,13 +51,23 @@ public class TranslatorPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(GetTextAdvice.class)
-                        .on(
-                                ElementMatchers.named("getText")
-                                        .and(
-                                                ElementMatchers.takesArguments(
-                                                        String.class, Object[].class))
-                                        .and(ElementMatchers.isStatic())));
+                        Advice.to(GetTextAdvice.class)
+                                .on(
+                                        ElementMatchers.named("getText")
+                                                .and(
+                                                        ElementMatchers.takesArguments(
+                                                                String.class, Object[].class))
+                                                .and(ElementMatchers.isStatic())))
+                .visit(
+                        Advice.to(ZeroArgFormatAdvice.class)
+                                .on(
+                                        ElementMatchers.named("reportMissingArgumentsFromPastAbuse")
+                                                .and(
+                                                        ElementMatchers.takesArguments(
+                                                                String.class,
+                                                                String.class,
+                                                                Object[].class))
+                                                .and(ElementMatchers.isStatic())));
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
@@ -89,6 +111,30 @@ public class TranslatorPatch extends StormClassTransformer {
             }
             // No known prefix — not a valid translation key, return as-is
             return desc;
+        }
+
+        @Advice.OnMethodExit
+        public static void onExit(
+                @Advice.Enter String earlyReturn, @Advice.Return(readOnly = false) String result) {
+            if (earlyReturn != null) {
+                result = earlyReturn;
+            }
+        }
+    }
+
+    public static class ZeroArgFormatAdvice {
+
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static String onEnter(
+                @Advice.Argument(1) String text, @Advice.Argument(2) Object[] args) {
+            // With zero args, a text holding a positional specifier makes text.formatted() throw
+            // MissingFormatArgumentException, warn-log, and return the raw text — on every call.
+            // Short-circuit to the identical outcome without the exception and log spam. Zero-arg
+            // texts without "%1$s" still need the original path for %% collapsing.
+            if (args != null && args.length == 0 && text != null && text.contains("%1$s")) {
+                return text;
+            }
+            return null;
         }
 
         @Advice.OnMethodExit

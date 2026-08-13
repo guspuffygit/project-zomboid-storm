@@ -41,6 +41,17 @@ class TranslatorPatchTest implements UnitTest {
     private static final String SIBLING_DESC =
             "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
 
+    /**
+     * A constant only the inlined {@code ZeroArgFormatAdvice} loads; vanilla {@code
+     * reportMissingArgumentsFromPastAbuse} references {@code "%$1\$s"} and {@code "%%(\d+)"} but
+     * never the plain literal {@code "%1$s"}.
+     */
+    private static final String ZERO_ARG_ADVICE_CONSTANT = "%1$s";
+
+    private static final String REPORT_METHOD = "reportMissingArgumentsFromPastAbuse";
+    private static final String REPORT_DESC =
+            "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;";
+
     @Test
     void patchInjectsGetTextAdviceIntoGetTextOnly() throws Exception {
         byte[] rawClass = readClassBytes(TRANSLATOR + ".class");
@@ -50,17 +61,42 @@ class TranslatorPatchTest implements UnitTest {
 
         assertEquals(
                 0,
-                countAdviceConstants(rawClass, TARGET_METHOD, TARGET_DESC),
+                countConstants(rawClass, TARGET_METHOD, TARGET_DESC, ADVICE_PREFIX_CONSTANT),
                 "Vanilla " + TARGET_METHOD + " must not contain the advice's prefix constant");
 
         assertTrue(
-                countAdviceConstants(transformed, TARGET_METHOD, TARGET_DESC) >= 1,
+                countConstants(transformed, TARGET_METHOD, TARGET_DESC, ADVICE_PREFIX_CONSTANT)
+                        >= 1,
                 "Patched " + TARGET_METHOD + " must inline GetTextAdvice (advice not injected)");
 
         assertEquals(
-                countAdviceConstants(rawClass, SIBLING_METHOD, SIBLING_DESC),
-                countAdviceConstants(transformed, SIBLING_METHOD, SIBLING_DESC),
+                countConstants(rawClass, SIBLING_METHOD, SIBLING_DESC, ADVICE_PREFIX_CONSTANT),
+                countConstants(transformed, SIBLING_METHOD, SIBLING_DESC, ADVICE_PREFIX_CONSTANT),
                 "Advice must not leak into Translator." + SIBLING_METHOD);
+    }
+
+    @Test
+    void patchInjectsZeroArgFormatAdviceIntoReportMethodOnly() throws Exception {
+        byte[] rawClass = readClassBytes(TRANSLATOR + ".class");
+        byte[] transformed = new TranslatorPatch().transform(rawClass);
+        assertNotNull(transformed);
+
+        assertEquals(
+                0,
+                countConstants(rawClass, REPORT_METHOD, REPORT_DESC, ZERO_ARG_ADVICE_CONSTANT),
+                "Vanilla " + REPORT_METHOD + " must not contain the advice's marker constant");
+
+        assertTrue(
+                countConstants(transformed, REPORT_METHOD, REPORT_DESC, ZERO_ARG_ADVICE_CONSTANT)
+                        >= 1,
+                "Patched "
+                        + REPORT_METHOD
+                        + " must inline ZeroArgFormatAdvice (advice not injected)");
+
+        assertEquals(
+                countConstants(rawClass, TARGET_METHOD, TARGET_DESC, ZERO_ARG_ADVICE_CONSTANT),
+                countConstants(transformed, TARGET_METHOD, TARGET_DESC, ZERO_ARG_ADVICE_CONSTANT),
+                "ZeroArgFormatAdvice must not leak into Translator." + TARGET_METHOD);
     }
 
     private byte[] readClassBytes(String resourcePath) throws Exception {
@@ -70,7 +106,8 @@ class TranslatorPatchTest implements UnitTest {
         }
     }
 
-    private static int countAdviceConstants(byte[] classBytes, String method, String desc) {
+    private static int countConstants(
+            byte[] classBytes, String method, String desc, String constant) {
         int[] hits = new int[1];
         new ClassReader(classBytes)
                 .accept(
@@ -88,7 +125,7 @@ class TranslatorPatchTest implements UnitTest {
                                 return new MethodVisitor(Opcodes.ASM9) {
                                     @Override
                                     public void visitLdcInsn(Object value) {
-                                        if (ADVICE_PREFIX_CONSTANT.equals(value)) {
+                                        if (constant.equals(value)) {
                                             hits[0]++;
                                         }
                                     }
