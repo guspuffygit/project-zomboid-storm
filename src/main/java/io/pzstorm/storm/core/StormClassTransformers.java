@@ -82,6 +82,7 @@ import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerResolveContactsPatch;
 import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
 import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
+import io.pzstorm.storm.patch.performance.CutawayVisitFastPathPatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
 import io.pzstorm.storm.patch.performance.EcsGetClassCachePatch;
 import io.pzstorm.storm.patch.performance.EngineEntityManagerIndexPatch;
@@ -91,6 +92,7 @@ import io.pzstorm.storm.patch.performance.EntityArrayRemoveFastPathPatch;
 import io.pzstorm.storm.patch.performance.EntitySimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquarePatch;
 import io.pzstorm.storm.patch.performance.EventTriggerFastPathPatch;
+import io.pzstorm.storm.patch.performance.FBORenderCellRenderLayerHoistPatch;
 import io.pzstorm.storm.patch.performance.FBORenderLevelsFreeSkipPatch;
 import io.pzstorm.storm.patch.performance.FileSystemUpdateAsyncTransactionsPatch;
 import io.pzstorm.storm.patch.performance.FishSchoolManagerUpdatePatch;
@@ -165,6 +167,7 @@ import io.pzstorm.storm.patch.performance.PlayerDownloadServerRemoveOlderPatch;
 import io.pzstorm.storm.patch.performance.PlayerDownloadServerUpdatePatch;
 import io.pzstorm.storm.patch.performance.PolygonalMap2RemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.PropertyContainerHasIdCachePatch;
+import io.pzstorm.storm.patch.performance.PropertyContainerHasStringIdCachePatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePatch;
 import io.pzstorm.storm.patch.performance.PublicServerUtilUpdatePlayerCountPatch;
 import io.pzstorm.storm.patch.performance.RCONServerUpdatePatch;
@@ -292,6 +295,7 @@ public class StormClassTransformers {
             registerTransformer(new JniLightingCleanSquarePatch());
             registerTransformer(new IsoWaterFlowMemoPatch());
             registerTransformer(new PropertyContainerHasIdCachePatch());
+            registerTransformer(new PropertyContainerHasStringIdCachePatch());
             registerTransformer(new WeatherFxScanSkipPatch());
             registerTransformer(new LightingPreUpdateForkPatch());
             registerTransformer(new AnimationVariableReferenceGetVariablePatch());
@@ -302,6 +306,8 @@ public class StormClassTransformers {
             registerTransformer(new EventTriggerFastPathPatch());
             registerTransformer(new CutawayLevelDataArrayCachePatch());
             registerTransformer(new FBORenderLevelsFreeSkipPatch());
+            registerTransformer(new CutawayVisitFastPathPatch());
+            registerTransformer(new FBORenderCellRenderLayerHoistPatch());
         }
         if (StormEnv.isStormServer()) {
             registerTransformer(new IsoGeneratorElectricityPatch());

@@ -227,6 +227,8 @@ test {
 tasks.register('clientPatchTest', Test) {
 	useJUnitPlatform()
 	systemProperty 'storm.testing', 'true'
+	// register the -Dstorm.experimental.clientperf patches so they get weave-validated too
+	systemProperty 'storm.experimental.clientperf', 'true'
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
 	filter {
