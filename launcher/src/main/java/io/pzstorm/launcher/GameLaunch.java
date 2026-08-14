@@ -158,6 +158,7 @@ public final class GameLaunch {
 
         Path bootstrapDir = config.resolveBootstrapDir(gameDir);
         if (bootstrapDir != null) {
+            StaleStormJarCleanup.run(bootstrapDir);
             command.add(agentArg(bootstrapDir, jvm));
             command.add("-D" + HANDOFF_PROPERTY + "=false");
             if (LauncherConfig.isLocalDevBootstrap(bootstrapDir)) {
