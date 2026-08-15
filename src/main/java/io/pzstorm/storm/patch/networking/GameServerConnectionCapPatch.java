@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.connection.RakNetConnectionCapConfig;
 import io.pzstorm.storm.core.StormClassTransformer;
 import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
+import io.pzstorm.storm.sandbox.StormPerformanceSandboxApplier;
 import java.net.ConnectException;
 import net.bytebuddy.asm.MemberSubstitution;
 import net.bytebuddy.dynamic.ClassFileLocator;
@@ -153,7 +154,22 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
             }
         }
 
+        /**
+         * Reads the player ceiling the cap derives from. Applies the {@code
+         * Storm.OverrideMaxPlayers} sandbox pair first: at {@code UdpEngine} construction time
+         * sandbox vars are loaded but the {@code OnServerStarted} applier has not run yet, and a
+         * save with the override enabled should get its connection headroom sized from the
+         * override, not the {@code .ini} value.
+         */
         private static int readMaxPlayers() {
+            try {
+                StormPerformanceSandboxApplier.applyMaxPlayersOverride();
+            } catch (Throwable t) {
+                LOGGER.warn(
+                        "Storm: early MaxPlayers-override apply failed; sizing the RakNet cap"
+                                + " from the .ini MaxPlayers",
+                        t);
+            }
             try {
                 return ServerOptions.getInstance().getMaxPlayers();
             } catch (Throwable t) {

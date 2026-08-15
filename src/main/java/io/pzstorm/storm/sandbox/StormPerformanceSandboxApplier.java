@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper;
 import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
+import io.pzstorm.storm.connection.StormMaxPlayersConfig;
 import io.pzstorm.storm.entity.EcsClassCache;
 import io.pzstorm.storm.entity.StormEntityIndex;
 import io.pzstorm.storm.entity.StormFluidContainerUpdate;
@@ -26,7 +27,10 @@ import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import zombie.SandboxOptions;
+import zombie.core.znet.SteamGameServer;
+import zombie.core.znet.SteamUtils;
 import zombie.network.GameServer;
+import zombie.network.ServerOptions;
 
 /**
  * Reads Storm's performance sandbox options at {@code OnServerStarted} and pushes them through the
@@ -68,6 +72,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ECS_CLASS_CACHE = "Storm.EcsClassCache";
     public static final String OPT_CELL_UNLOAD_BUDGET_PER_TICK = "Storm.CellUnloadBudgetPerTick";
     public static final String OPT_ENTITY_REMOVE_FAST_PATH = "Storm.EntityRemoveFastPath";
+    public static final String OPT_OVERRIDE_MAX_PLAYERS = "Storm.OverrideMaxPlayers";
+    public static final String OPT_MAX_PLAYERS = "Storm.MaxPlayers";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -116,6 +122,66 @@ public final class StormPerformanceSandboxApplier {
         applyEcsClassCache();
         applyCellUnloadBudgetPerTick();
         applyEntityRemoveFastPath();
+        applyMaxPlayersOverride();
+    }
+
+    /**
+     * Pushes {@link #OPT_OVERRIDE_MAX_PLAYERS} and {@link #OPT_MAX_PLAYERS} through {@link
+     * StormMaxPlayersConfig#setOverride(boolean, int)} — the live replacement for the {@code .ini}
+     * {@code MaxPlayers} value. Public because {@code
+     * GameServerConnectionCapPatch.UdpEngineFactory} also invokes it at {@code UdpEngine}
+     * construction time: sandbox vars are already loaded ({@code doMinimumInit}) but {@code
+     * OnServerStarted} has not fired yet, and the boot-time RakNet connection cap must account for
+     * an enabled override.
+     *
+     * <p>The Steam-browser re-push lives here (not in the config setter) so it only ever runs in a
+     * real server JVM — {@code StormMaxPlayersConfig} must stay free of {@code zombie.*}
+     * references, because unit tests call the setter in a bare JVM where {@code
+     * ServerOptions.&lt;clinit&gt;} fails and stays poisoned for later tests in the same JVM.
+     */
+    public static void applyMaxPlayersOverride() {
+        Boolean enabled = readBooleanOption(OPT_OVERRIDE_MAX_PLAYERS);
+        Integer maxPlayers = readIntOption(OPT_MAX_PLAYERS);
+        if (enabled == null || maxPlayers == null) {
+            return;
+        }
+        boolean wasEnabled = StormMaxPlayersConfig.isOverrideEnabled();
+        int wasValue = StormMaxPlayersConfig.getConfiguredMaxPlayers();
+        int clamped = StormMaxPlayersConfig.setOverride(enabled, maxPlayers);
+        boolean effectiveChanged = enabled != wasEnabled || (enabled && clamped != wasValue);
+        if (effectiveChanged) {
+            pushEffectiveMaxPlayers(enabled, clamped);
+        }
+    }
+
+    /**
+     * Reports the new effective ceiling and mirrors it to the Steam server browser — vanilla calls
+     * {@code SteamGameServer.SetMaxPlayerCount} exactly once at boot, before sandbox vars are even
+     * loaded, so without this re-push the browser would keep advertising the {@code .ini} value.
+     */
+    private static void pushEffectiveMaxPlayers(boolean overrideEnabled, int overrideValue) {
+        int effective;
+        try {
+            effective = ServerOptions.getInstance().getMaxPlayers();
+        } catch (Throwable t) {
+            LOGGER.warn(
+                    "Storm: could not read the effective MaxPlayers after an override change", t);
+            return;
+        }
+        LOGGER.info(
+                "Storm: effective max player count is now {} (override {})",
+                effective,
+                overrideEnabled ? "enabled, value " + overrideValue : "disabled, .ini value");
+        try {
+            if (SteamUtils.isSteamModeEnabled()) {
+                SteamGameServer.SetMaxPlayerCount(effective);
+            }
+        } catch (Throwable t) {
+            LOGGER.warn(
+                    "Storm: could not push the max player count {} to the Steam server browser",
+                    effective,
+                    t);
+        }
     }
 
     /**

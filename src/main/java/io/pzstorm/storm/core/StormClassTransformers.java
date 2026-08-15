@@ -61,6 +61,7 @@ import io.pzstorm.storm.patch.networking.IsoWorldInventoryObjectSyncGatePatch;
 import io.pzstorm.storm.patch.networking.PacketReceivedPatch;
 import io.pzstorm.storm.patch.networking.PlayerDownloadServerChunkActivityPatch;
 import io.pzstorm.storm.patch.networking.ReceiveSandboxOptionsPatch;
+import io.pzstorm.storm.patch.networking.ServerOptionsMaxPlayersPatch;
 import io.pzstorm.storm.patch.networking.ServerQueryPatch;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
 import io.pzstorm.storm.patch.networking.SteamGameServerPlayerListPatch;
@@ -417,6 +418,7 @@ public class StormClassTransformers {
             registerTransformer(new GameServerStalledConnectionReapPatch());
             registerTransformer(new PlayerDownloadServerChunkActivityPatch());
             registerTransformer(new GameServerConnectionCapPatch());
+            registerTransformer(new ServerOptionsMaxPlayersPatch());
             registerTransformer(new ConnectionManagerLogPatch());
             registerTransformer(new SteamGameServerPlayerListPatch());
 

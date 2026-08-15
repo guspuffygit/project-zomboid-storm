@@ -2,6 +2,7 @@ package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
+import io.pzstorm.storm.connection.StormMaxPlayersConfig;
 import io.pzstorm.storm.entity.EcsClassCache;
 import io.pzstorm.storm.entity.StormEntityIndex;
 import io.pzstorm.storm.entity.StormFluidContainerUpdate;
@@ -297,6 +298,30 @@ public final class StormPerformanceSandboxMetrics {
                                     + " identity scan of the whole array.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge MAX_PLAYERS_OVERRIDE_ENABLED =
+            Gauge.builder()
+                    .name("storm_max_players_override_enabled")
+                    .help(
+                            "Whether the Storm.OverrideMaxPlayers sandbox option is active,"
+                                    + " replacing the .ini MaxPlayers value with"
+                                    + " storm_max_players_override everywhere the server reads it"
+                                    + " (login gate, login queue, co-op join, server browser info)."
+                                    + " 1 = override active; 0 = the .ini value is used untouched"
+                                    + " (default).")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge MAX_PLAYERS_OVERRIDE =
+            Gauge.builder()
+                    .name("storm_max_players_override")
+                    .help(
+                            "Configured Storm.MaxPlayers sandbox value — the player-count ceiling"
+                                    + " used instead of the .ini MaxPlayers while"
+                                    + " storm_max_players_override_enabled is 1 (ignored while 0)."
+                                    + " Default 100; range 1-500. Vanilla hard-caps the .ini value"
+                                    + " at 100 — values above it only take effect through this"
+                                    + " override.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge SCREENSHOT_ENCODE_KB_PER_TICK =
             Gauge.builder()
                     .name("storm_screenshot_encode_kb_per_tick")
@@ -333,6 +358,8 @@ public final class StormPerformanceSandboxMetrics {
         ECS_CLASS_CACHE.set(EcsClassCache.DEFAULT_ENABLED ? 1 : 0);
         CELL_UNLOAD_BUDGET_PER_TICK.set(StormCellUnloadBudget.DEFAULT_BUDGET);
         ENTITY_REMOVE_FAST_PATH.set(StormEntityIndex.DEFAULT_ENABLED ? 1 : 0);
+        MAX_PLAYERS_OVERRIDE_ENABLED.set(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED ? 1 : 0);
+        MAX_PLAYERS_OVERRIDE.set(StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -427,5 +454,13 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setEntityRemoveFastPath(boolean enabled) {
         ENTITY_REMOVE_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setMaxPlayersOverrideEnabled(boolean enabled) {
+        MAX_PLAYERS_OVERRIDE_ENABLED.set(enabled ? 1 : 0);
+    }
+
+    public static void setMaxPlayersOverride(int maxPlayers) {
+        MAX_PLAYERS_OVERRIDE.set(maxPlayers);
     }
 }
