@@ -393,12 +393,8 @@ public class StormClassTransformers {
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
             registerTransformer(new PacketLimitMetricsPatch());
-            // Loading-phase transfers over the Storm game-port TCP channel; both fall back
-            // to the vanilla UDP paths unless a handshake with a Storm server succeeded.
             registerTransformer(new RequestDataOverTcpPatch());
             registerTransformer(new PlayerProfileOverTcpPatch());
-            // Loading-phase chunk streaming over the same channel; gameplay streaming
-            // (after playerConnectSent) stays on vanilla UDP.
             registerTransformer(new ChunkRequestOverTcpPatch());
             registerTransformer(new WorldStreamerChunkTcpPatch());
         }
