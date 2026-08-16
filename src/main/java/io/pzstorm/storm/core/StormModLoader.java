@@ -20,6 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.jetbrains.annotations.Nullable;
 import zombie.core.Core;
 import zombie.core.GameVersion;
 
@@ -77,6 +78,19 @@ public class StormModLoader extends URLClassLoader {
     }
 
     public static void catalogModJars(List<Path> modDirectories) throws IOException {
+        catalogModJars(modDirectories, Collections.emptySet(), null);
+    }
+
+    /**
+     * Catalogs mod jars from {@code modDirectories}. Directories in {@code gatedDirectories} are
+     * only cataloged when their mod id is in {@code enabledMods}; a {@code null} set disables
+     * gating entirely.
+     */
+    public static void catalogModJars(
+            List<Path> modDirectories,
+            Set<Path> gatedDirectories,
+            @Nullable Set<String> enabledMods)
+            throws IOException {
         STORM_MODS.clear();
 
         GameVersion gameVersion = Core.getInstance().getGameVersion();
@@ -113,6 +127,17 @@ public class StormModLoader extends URLClassLoader {
                 continue;
             }
 
+            String modId = modInfo.getId().get();
+            if (enabledMods != null
+                    && gatedDirectories.contains(modDir.toAbsolutePath().normalize())
+                    && !enabledMods.contains(modId)) {
+                LOGGER.info(
+                        "Skipping workshop mod '{}', not enabled by the server: {}",
+                        modId,
+                        modDir.toAbsolutePath());
+                continue;
+            }
+
             List<ModJar> modJars = new ArrayList<>();
             if (versionDir != null) {
                 collectJarsFromDirectory(versionDir, modJars);
@@ -123,7 +148,7 @@ public class StormModLoader extends URLClassLoader {
                 continue;
             }
 
-            STORM_MODS.put(modInfo.getId().get(), new StormMod(modInfo, modJars));
+            STORM_MODS.put(modId, new StormMod(modInfo, modJars));
         }
     }
 
@@ -310,6 +335,17 @@ public class StormModLoader extends URLClassLoader {
 
             boolean preferLocal = StormEnv.isStormLocal();
 
+            // Workshop-scanned dirs only load mods the server enabled; ~/Zomboid/mods and
+            // launcher-synced dirs always load (the launcher dir is server-curated already).
+            Set<String> enabledWorkshopMods = StormWorkshopModGate.enabledMods();
+            Set<Path> gatedDirectories = new HashSet<>();
+            if (enabledWorkshopMods != null) {
+                Stream.concat(workshopDirectories.stream(), localWorkshopDirectories.stream())
+                        .map(dir -> dir.toAbsolutePath().normalize())
+                        .forEach(gatedDirectories::add);
+                LOGGER.info("Workshop mod gating active, enabled mod ids: {}", enabledWorkshopMods);
+            }
+
             // Launcher-synced mods go last: on id collision the last cataloged dir wins,
             // and the launcher dir holds the exact versions the target server published.
             catalogModJars(
@@ -319,7 +355,9 @@ public class StormModLoader extends URLClassLoader {
                                     preferLocal ? localWorkshopDirectories : workshopDirectories,
                                     launcherModDirectories)
                             .flatMap(List::stream)
-                            .collect(Collectors.toList()));
+                            .collect(Collectors.toList()),
+                    gatedDirectories,
+                    enabledWorkshopMods);
         } catch (Exception e) {
             LOGGER.error("Unable to load storm mods", e);
             throw new RuntimeException(e);

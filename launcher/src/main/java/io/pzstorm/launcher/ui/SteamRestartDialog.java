@@ -11,7 +11,6 @@ import java.util.function.Function;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -78,7 +77,7 @@ public final class SteamRestartDialog {
 
     private static int askPermission(Component parent, String summary) {
         JLabel heading = new JLabel("Steam needs to be restarted");
-        heading.setFont(heading.getFont().deriveFont(Font.BOLD, 18f));
+        heading.setFont(StormTheme.displayFont(Font.BOLD, 18f));
         heading.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel body =
@@ -121,16 +120,16 @@ public final class SteamRestartDialog {
             Runnable sendLogsAction) {
         JTextArea log = new JTextArea(14, 60);
         log.setEditable(false);
-        log.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        log.setFont(StormTheme.monoFont(12f));
         JScrollPane scroll = new JScrollPane(log);
         scroll.setPreferredSize(new Dimension(560, 260));
 
         JLabel status = new JLabel("Restarting Steam …");
         status.setFont(status.getFont().deriveFont(Font.BOLD, 14f));
 
-        JButton sendLogs = new JButton("Send Logs to Developer");
+        StormButton sendLogs = StormButton.secondary("Send Logs to Developer");
         sendLogs.setVisible(false);
-        JButton close = new JButton("Close");
+        StormButton close = StormButton.primary("Close");
         close.setEnabled(false);
 
         JPanel content = new JPanel(new BorderLayout(0, 8));
@@ -138,10 +137,11 @@ public final class SteamRestartDialog {
         content.add(status, BorderLayout.NORTH);
         content.add(scroll, BorderLayout.CENTER);
         JPanel buttons = new JPanel();
-        buttons.add(close);
+        buttons.setOpaque(false);
         if (sendLogsAction != null) {
             buttons.add(sendLogs);
         }
+        buttons.add(close);
         content.add(buttons, BorderLayout.SOUTH);
 
         JDialog dialog =
@@ -204,7 +204,7 @@ public final class SteamRestartDialog {
 
     private static void showManual(Component parent, String summary, Runnable sendLogsAction) {
         JLabel heading = new JLabel("Please restart Steam");
-        heading.setFont(heading.getFont().deriveFont(Font.BOLD, 18f));
+        heading.setFont(StormTheme.displayFont(Font.BOLD, 18f));
         heading.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         String fallback =

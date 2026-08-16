@@ -1,6 +1,7 @@
 package io.pzstorm.launcher.ui;
 
 import io.pzstorm.launcher.ServerProfile;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -8,7 +9,6 @@ import java.awt.Window;
 import java.util.ArrayList;
 import java.util.Arrays;
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -53,7 +53,8 @@ public final class ServerDialog extends JDialog {
         extraVmArgs.setText(String.join(" ", profile.extraVmArgs));
 
         JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        form.setBackground(StormTheme.BG);
+        form.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         int row = 0;
         row = addRow(form, row, "Name", name);
         row = addRow(form, row, "Host / IP", host);
@@ -70,15 +71,17 @@ public final class ServerDialog extends JDialog {
                         "<html><i>With auto-connect on, Storm fills and submits"
                                 + " the connect dialog for you.<br>Without it the game still"
                                 + " pre-fills what it remembers; you click CONNECT once.</i></html>");
+        note.setForeground(StormTheme.TEXT_DIM);
         row = addRow(form, row, null, note);
 
-        JButton ok = new JButton("OK");
+        StormButton ok = StormButton.primary("Save Server");
         ok.addActionListener(e -> onOk(profile));
-        JButton cancel = new JButton("Cancel");
+        StormButton cancel = StormButton.ghost("Cancel");
         cancel.addActionListener(e -> dispose());
-        JPanel buttons = new JPanel();
-        buttons.add(ok);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.setOpaque(false);
         buttons.add(cancel);
+        buttons.add(ok);
         row = addRow(form, row, null, buttons);
 
         getRootPane().setDefaultButton(ok);

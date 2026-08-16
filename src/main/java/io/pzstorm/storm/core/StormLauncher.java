@@ -53,6 +53,10 @@ public class StormLauncher {
                         "Instrumentation not available, agent-based transformers will not be applied");
             }
 
+            // Mod cataloging below gates workshop-folder mods on the server's enabled mod
+            // list, which lives at <cachedir>/Server/<servername>.ini — both come from args.
+            StormWorkshopModGate.captureGameArgs(args);
+
             StormBootstrap.loadAndRegisterMods();
 
             classLoader.loadClass("io.pzstorm.storm.event.core.LuaEventFactory");

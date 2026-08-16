@@ -5,6 +5,15 @@ A Storm mod is a regular `.jar` that ships at least one class implementing
 version-specific directory (e.g. `42/`), instantiates the entry point, and gives
 it three hooks for registering surfaces:
 
+Where mods load from: `~/Zomboid/mods` and the launcher-synced directory are
+always cataloged. Workshop folders (Steam workshop content under `steamapps/`
+and `~/Zomboid/Workshop`) are gated on server JVMs: a workshop mod's java jars
+only load when its mod id appears on the `Mods=` line of
+`<cachedir>/Server/<servername>.ini` — the same list PZ itself loads.
+`-Dstorm.workshop.mods=<id;id;…>` overrides the enabled set on any JVM
+(clients without the override load everything, as they have no server context
+at bootstrap). See `io.pzstorm.storm.core.StormWorkshopModGate`.
+
 ```java
 public final class MyMod implements ZomboidMod {
 

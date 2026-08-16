@@ -12,8 +12,11 @@ import io.pzstorm.launcher.ServerProfile;
 import io.pzstorm.launcher.ServerStore;
 import io.pzstorm.launcher.SteamRestartRequiredException;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
@@ -22,8 +25,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.DefaultListModel;
-import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -32,7 +35,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
-import javax.swing.JToolBar;
+import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 
@@ -41,11 +44,15 @@ public final class LauncherWindow extends JFrame {
     private final LauncherConfig config;
     private final DefaultListModel<ServerProfile> model = new DefaultListModel<>();
     private final JList<ServerProfile> serverList = new JList<>(model);
-    private final JTextArea logArea = new JTextArea(10, 80);
-    private final JButton joinForceButton = new JButton("Join Server Force Mod Updates");
-    private final JButton joinButton = new JButton("Join Server");
-    private final JButton launchOnlyButton = new JButton("Launch to Main Menu");
-    private final JLabel detailLabel = new JLabel(" ");
+    private final JTextArea logArea = new JTextArea(9, 80);
+    private final StormButton joinButton = StormButton.primary("Join Server");
+    private final StormButton launchOnlyButton = StormButton.secondary("Launch to Main Menu");
+    private final StormButton joinForceButton =
+            StormButton.secondary("Join with forced mod updates");
+    private final JLabel detailName = new JLabel(" ");
+    private final JLabel detailAddress = new JLabel(" ");
+    private final JLabel detailCharacter = new JLabel(" ");
+    private final JLabel detailAutoConnect = new JLabel(" ");
 
     public LauncherWindow(LauncherConfig config) {
         super("Storm Launcher " + LauncherInfo.version());
@@ -95,83 +102,246 @@ public final class LauncherWindow extends JFrame {
                         ? "Game directory: " + gameDir
                         : "Game directory NOT found — open Settings and point me at Project Zomboid.");
         pack();
-        setMinimumSize(new Dimension(860, 560));
+        setMinimumSize(new Dimension(920, 620));
         setLocationRelativeTo(null);
     }
 
     private void buildUi() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.add(button("Add", this::onAdd));
-        toolbar.add(button("Edit", this::onEdit));
-        toolbar.add(button("Remove", this::onRemove));
-        toolbar.add(button("Refresh from game", this::onRefreshFromGame));
-        toolbar.add(Box.createHorizontalGlue());
-        toolbar.add(button("Send Logs", this::onSendLogs));
-        toolbar.add(button("Settings", this::onSettings));
-        toolbar.add(button("Quit", this::onQuit));
+        getContentPane().setBackground(StormTheme.BG);
 
         serverList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        serverList.setCellRenderer(new ServerCellRenderer());
+        serverList.setBackground(StormTheme.BG_INSET);
+        serverList.setFixedCellHeight(52);
         serverList.addListSelectionListener(e -> refreshDetail());
         serverList.addMouseListener(
                 new MouseAdapter() {
                     @Override
                     public void mouseClicked(MouseEvent e) {
                         if (e.getClickCount() == 2) {
-                            onJoin(true);
+                            onJoin(false);
                         }
                     }
                 });
 
-        joinForceButton.setFont(joinForceButton.getFont().deriveFont(Font.BOLD, 16f));
-        joinForceButton.setToolTipText(
-                "<html>Asks Steam to check and update <b>every</b> server mod before launching."
-                        + "<br>Slower, but the most thorough — use this if Join Server still hits"
-                        + "<br>the in-game mod update screen.</html>");
-        joinForceButton.addActionListener(e -> onJoin(true));
-        joinButton.setFont(joinButton.getFont().deriveFont(Font.PLAIN, 16f));
         joinButton.setToolTipText(
                 "<html>Compares all mods against the Steam Workshop in a single request and only"
                         + "<br>updates the ones that actually changed — much faster when"
                         + "<br>everything is already up to date.</html>");
         joinButton.addActionListener(e -> onJoin(false));
+        joinForceButton.setFont(StormTheme.font(Font.PLAIN, 12f));
+        joinForceButton.setToolTipText(
+                "<html>Asks Steam to check and update <b>every</b> server mod before launching."
+                        + "<br>Slower, but the most thorough — use this if Join Server still hits"
+                        + "<br>the in-game mod update screen.</html>");
+        joinForceButton.addActionListener(e -> onJoin(true));
         launchOnlyButton.addActionListener(e -> onLaunchOnly());
 
-        JPanel right = new JPanel();
-        right.setLayout(new javax.swing.BoxLayout(right, javax.swing.BoxLayout.Y_AXIS));
-        right.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        detailLabel.setAlignmentX(LEFT_ALIGNMENT);
-        joinForceButton.setAlignmentX(LEFT_ALIGNMENT);
-        joinButton.setAlignmentX(LEFT_ALIGNMENT);
-        launchOnlyButton.setAlignmentX(LEFT_ALIGNMENT);
-        right.add(detailLabel);
-        right.add(Box.createVerticalStrut(16));
-        right.add(joinForceButton);
-        right.add(Box.createVerticalStrut(8));
-        right.add(joinButton);
-        right.add(Box.createVerticalStrut(8));
-        right.add(launchOnlyButton);
-        right.add(Box.createVerticalGlue());
-
         JSplitPane split =
-                new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(serverList), right);
-        split.setResizeWeight(0.55);
-
-        logArea.setEditable(false);
-        logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+                new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildServerPane(), buildDetailPane());
+        split.setResizeWeight(0.5);
+        split.setBorder(null);
+        split.setBackground(StormTheme.BG);
 
         JPanel content = new JPanel(new BorderLayout());
-        content.add(toolbar, BorderLayout.NORTH);
+        content.setBackground(StormTheme.BG);
+        content.add(buildHeader(), BorderLayout.NORTH);
         content.add(split, BorderLayout.CENTER);
-        content.add(new JScrollPane(logArea), BorderLayout.SOUTH);
+        content.add(buildLogPane(), BorderLayout.SOUTH);
         setContentPane(content);
         refreshDetail();
     }
 
-    private static JButton button(String label, Runnable action) {
-        JButton b = new JButton(label);
+    private JPanel buildHeader() {
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.X_AXIS));
+        header.setBackground(StormTheme.HEADER_BG);
+        header.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createMatteBorder(0, 0, 1, 0, StormTheme.DIVIDER),
+                        BorderFactory.createEmptyBorder(12, 16, 12, 12)));
+
+        JLabel wordmark = new JLabel("STORM");
+        wordmark.setFont(StormTheme.displayFont(Font.BOLD, 20f));
+        wordmark.setForeground(StormTheme.ACCENT);
+        JLabel sub = new JLabel("LAUNCHER");
+        sub.setFont(StormTheme.displayFont(Font.PLAIN, 20f));
+        sub.setForeground(StormTheme.HEADER_TEXT);
+        JLabel version = new JLabel(LauncherInfo.version());
+        version.setFont(StormTheme.font(Font.PLAIN, 11f));
+        version.setForeground(StormTheme.TEXT_FAINT);
+
+        header.add(wordmark);
+        header.add(Box.createHorizontalStrut(6));
+        header.add(sub);
+        header.add(Box.createHorizontalStrut(10));
+        header.add(version);
+        header.add(Box.createHorizontalGlue());
+        header.add(ghost("Send Logs", this::onSendLogs));
+        header.add(Box.createHorizontalStrut(4));
+        header.add(ghost("Settings", this::onSettings));
+        header.add(Box.createHorizontalStrut(4));
+        header.add(ghost("Quit", this::onQuit));
+        return header;
+    }
+
+    private JPanel buildServerPane() {
+        JPanel pane = new JPanel(new BorderLayout(0, 8));
+        pane.setBackground(StormTheme.BG);
+        pane.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 8));
+
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(sectionLabel("SERVERS"), BorderLayout.WEST);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
+        actions.setOpaque(false);
+        actions.add(smallGhost("+ Add", this::onAdd));
+        actions.add(smallGhost("Edit", this::onEdit));
+        actions.add(smallGhost("Remove", this::onRemove));
+        actions.add(smallGhost("Refresh", this::onRefreshFromGame));
+        top.add(actions, BorderLayout.EAST);
+        pane.add(top, BorderLayout.NORTH);
+
+        JScrollPane scroll = new JScrollPane(serverList);
+        scroll.setBorder(BorderFactory.createLineBorder(StormTheme.BORDER));
+        scroll.getViewport().setBackground(StormTheme.BG_INSET);
+        pane.add(scroll, BorderLayout.CENTER);
+        return pane;
+    }
+
+    private JPanel buildDetailPane() {
+        JPanel pane = new JPanel();
+        pane.setLayout(new BoxLayout(pane, BoxLayout.Y_AXIS));
+        pane.setBackground(StormTheme.BG);
+        pane.setBorder(BorderFactory.createEmptyBorder(14, 12, 14, 16));
+
+        detailName.setFont(StormTheme.displayFont(Font.BOLD, 21f));
+        detailName.setForeground(StormTheme.HEADER_TEXT);
+        detailAddress.setFont(StormTheme.font(Font.PLAIN, 13f));
+        detailAddress.setForeground(StormTheme.TEXT_DIM);
+        detailCharacter.setFont(StormTheme.font(Font.PLAIN, 13f));
+        detailCharacter.setForeground(StormTheme.TEXT_DIM);
+        detailAutoConnect.setFont(StormTheme.font(Font.PLAIN, 13f));
+        detailAutoConnect.setForeground(StormTheme.TEXT_DIM);
+
+        for (Component c :
+                new Component[] {
+                    sectionLabel("SELECTED SERVER"),
+                    Box.createVerticalStrut(10),
+                    detailName,
+                    Box.createVerticalStrut(4),
+                    detailAddress,
+                    Box.createVerticalStrut(12),
+                    detailCharacter,
+                    Box.createVerticalStrut(2),
+                    detailAutoConnect,
+                    Box.createVerticalStrut(24),
+                    joinButton,
+                    Box.createVerticalStrut(10),
+                    launchOnlyButton,
+                    Box.createVerticalStrut(14),
+                    joinForceButton,
+                    Box.createVerticalGlue()
+                }) {
+            if (c instanceof javax.swing.JComponent) {
+                ((javax.swing.JComponent) c).setAlignmentX(LEFT_ALIGNMENT);
+            }
+            pane.add(c);
+        }
+        return pane;
+    }
+
+    private JPanel buildLogPane() {
+        logArea.setEditable(false);
+        logArea.setLineWrap(true);
+        logArea.setFont(StormTheme.monoFont(12f));
+        logArea.setBackground(StormTheme.HEADER_BG);
+        logArea.setForeground(StormTheme.TEXT_DIM);
+        logArea.setCaretColor(StormTheme.ACCENT);
+        logArea.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+
+        JPanel pane = new JPanel(new BorderLayout(0, 6));
+        pane.setBackground(StormTheme.BG);
+        pane.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createMatteBorder(1, 0, 0, 0, StormTheme.DIVIDER),
+                        BorderFactory.createEmptyBorder(10, 16, 12, 16)));
+        pane.add(sectionLabel("ACTIVITY"), BorderLayout.NORTH);
+        JScrollPane scroll = new JScrollPane(logArea);
+        scroll.setBorder(BorderFactory.createLineBorder(StormTheme.BORDER));
+        scroll.getViewport().setBackground(StormTheme.HEADER_BG);
+        scroll.setPreferredSize(new Dimension(0, 150));
+        pane.add(scroll, BorderLayout.CENTER);
+        return pane;
+    }
+
+    private static JLabel sectionLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(StormTheme.displayFont(Font.BOLD, 11f));
+        label.setForeground(StormTheme.TEXT_FAINT);
+        return label;
+    }
+
+    private static StormButton ghost(String label, Runnable action) {
+        StormButton b = StormButton.ghost(label);
         b.addActionListener(e -> action.run());
         return b;
+    }
+
+    private static StormButton smallGhost(String label, Runnable action) {
+        StormButton b = ghost(label, action);
+        b.setFont(StormTheme.font(Font.PLAIN, 12f));
+        b.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+        return b;
+    }
+
+    /** Two-line card rows: server name over address · character, gold bar on the selected row. */
+    private static final class ServerCellRenderer extends JPanel
+            implements ListCellRenderer<ServerProfile> {
+
+        private final JLabel title = new JLabel();
+        private final JLabel subtitle = new JLabel();
+        private boolean selected;
+
+        ServerCellRenderer() {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setBorder(BorderFactory.createEmptyBorder(8, 14, 8, 10));
+            title.setFont(StormTheme.font(Font.BOLD, 14f));
+            subtitle.setFont(StormTheme.font(Font.PLAIN, 12f));
+            add(title);
+            add(Box.createVerticalStrut(2));
+            add(subtitle);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(
+                JList<? extends ServerProfile> list,
+                ServerProfile value,
+                int index,
+                boolean isSelected,
+                boolean cellHasFocus) {
+            selected = isSelected;
+            title.setText(value.name.isEmpty() ? value.connectAddress() : value.name);
+            String character = value.username.isEmpty() ? "no character" : value.username;
+            subtitle.setText(value.connectAddress() + "  ·  " + character);
+            setBackground(
+                    isSelected
+                            ? StormTheme.ROW_SELECTED
+                            : index % 2 == 1 ? StormTheme.ROW_ALT : StormTheme.BG_INSET);
+            title.setForeground(isSelected ? StormTheme.HEADER_TEXT : StormTheme.TEXT);
+            subtitle.setForeground(isSelected ? StormTheme.TEXT : StormTheme.TEXT_DIM);
+            setEnabled(list.isEnabled());
+            return this;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (selected) {
+                g.setColor(StormTheme.ACCENT);
+                g.fillRect(0, 0, 3, getHeight());
+            }
+        }
     }
 
     private void refreshDetail() {
@@ -179,26 +349,19 @@ public final class LauncherWindow extends JFrame {
         joinForceButton.setEnabled(p != null);
         joinButton.setEnabled(p != null);
         if (p == null) {
-            detailLabel.setText("<html><i>Add a server to get started.</i></html>");
+            detailName.setText("No server selected");
+            detailName.setForeground(StormTheme.TEXT_FAINT);
+            detailAddress.setText("Add a server to get started.");
+            detailCharacter.setText(" ");
+            detailAutoConnect.setText(" ");
             return;
         }
-        String character =
-                p.username.isEmpty() ? "no character" : "character: " + escape(p.username);
-        String extras = p.autoConnect ? "auto-connect on" : "auto-connect off";
-        detailLabel.setText(
-                "<html><b>"
-                        + escape(p.name.isEmpty() ? p.connectAddress() : p.name)
-                        + "</b><br>"
-                        + escape(p.connectAddress())
-                        + "<br>"
-                        + character
-                        + "<br>"
-                        + extras
-                        + "</html>");
-    }
-
-    private static String escape(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        detailName.setForeground(StormTheme.HEADER_TEXT);
+        detailName.setText(p.name.isEmpty() ? p.connectAddress() : p.name);
+        detailAddress.setText(p.connectAddress());
+        detailCharacter.setText(
+                p.username.isEmpty() ? "Character: none saved" : "Character: " + p.username);
+        detailAutoConnect.setText("Auto-connect: " + (p.autoConnect ? "on" : "off"));
     }
 
     private void onAdd() {

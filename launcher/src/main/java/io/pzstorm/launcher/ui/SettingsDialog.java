@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -78,7 +77,8 @@ public final class SettingsDialog extends JDialog {
         Path detectedBootstrap = config.resolveBootstrapDir(detectedGame);
 
         JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        form.setBackground(StormTheme.BG);
+        form.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         int row = 0;
         row = addRow(form, row, "Game directory", withBrowse(gameDir, true));
         row = addHint(form, row, detectedGame, "game install");
@@ -89,22 +89,25 @@ public final class SettingsDialog extends JDialog {
         row = addRow(form, row, null, clientPerfFixes);
         row = addRow(form, row, null, skipMenus);
         JPanel memoryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        memoryRow.setOpaque(false);
         memoryRow.add(autoMemory);
         memoryRow.add(memoryGb);
         memoryRow.add(new JLabel("GB"));
         row = addRow(form, row, "Game memory", memoryRow);
         row = addHintText(form, row, memoryHint(autoGb), GameMemory.totalSystemBytes() > 0);
-        row = addRow(form, row, "Global JVM args", new JScrollPane(globalVmArgs));
+        JScrollPane argsScroll = new JScrollPane(globalVmArgs);
+        argsScroll.setBorder(BorderFactory.createLineBorder(StormTheme.BORDER));
+        row = addRow(form, row, "Global JVM args", argsScroll);
         row =
                 addRow(
                         form,
                         row,
                         null,
-                        new JLabel(
+                        dimLabel(
                                 "<html><i>One arg per line; an explicit -Xmx here overrides Game"
                                         + " memory. Empty path fields auto-detect.</i></html>"));
 
-        JButton ok = new JButton("OK");
+        StormButton ok = StormButton.primary("Save Settings");
         ok.addActionListener(
                 e -> {
                     config.gameDir = gameDir.getText().trim();
@@ -121,11 +124,12 @@ public final class SettingsDialog extends JDialog {
                     accepted = true;
                     dispose();
                 });
-        JButton cancel = new JButton("Cancel");
+        StormButton cancel = StormButton.ghost("Cancel");
         cancel.addActionListener(e -> dispose());
-        JPanel buttons = new JPanel();
-        buttons.add(ok);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.setOpaque(false);
         buttons.add(cancel);
+        buttons.add(ok);
         addRow(form, row, null, buttons);
 
         getRootPane().setDefaultButton(ok);
@@ -135,9 +139,10 @@ public final class SettingsDialog extends JDialog {
     }
 
     private JPanel withBrowse(JTextField field, boolean directories) {
-        JPanel panel = new JPanel(new java.awt.BorderLayout(4, 0));
+        JPanel panel = new JPanel(new java.awt.BorderLayout(6, 0));
+        panel.setOpaque(false);
         panel.add(field, java.awt.BorderLayout.CENTER);
-        JButton browse = new JButton("…");
+        StormButton browse = StormButton.secondary("Browse…");
         browse.addActionListener(
                 e -> {
                     JFileChooser chooser =
@@ -205,10 +210,16 @@ public final class SettingsDialog extends JDialog {
         return addHintText(form, row, text, detected != null);
     }
 
+    private static JLabel dimLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(StormTheme.TEXT_DIM);
+        return label;
+    }
+
     private static int addHintText(JPanel form, int row, String text, boolean ok) {
         JLabel hint = new JLabel(text);
         hint.setFont(hint.getFont().deriveFont(hint.getFont().getSize2D() - 1f));
-        hint.setForeground(ok ? java.awt.Color.GRAY : java.awt.Color.RED.darker());
+        hint.setForeground(ok ? StormTheme.TEXT_FAINT : StormTheme.DANGER);
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(0, 4, 4, 4);
         gbc.gridx = 1;

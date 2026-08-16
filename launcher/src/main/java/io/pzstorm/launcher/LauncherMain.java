@@ -3,9 +3,9 @@ package io.pzstorm.launcher;
 import io.pzstorm.launcher.ui.LauncherWindow;
 import io.pzstorm.launcher.ui.StageSplash;
 import io.pzstorm.launcher.ui.SteamRestartDialog;
+import io.pzstorm.launcher.ui.StormTheme;
 import java.nio.file.Path;
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
 
 /**
  * Storm Launcher entry point. Runs before — and completely outside — the game: no Project Zomboid
@@ -27,11 +27,7 @@ public final class LauncherMain {
             System.exit(SteamUpdateChild.run(ids));
         }
         if (args.length > 0 && args[0].equals("--demo-steam-restart-popup")) {
-            try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception ignored) {
-                // default L&F is fine
-            }
+            StormTheme.install();
             runSteamRestartDemo(args.length > 1 ? args[1] : "real");
             System.exit(0);
         }
@@ -57,11 +53,7 @@ public final class LauncherMain {
             return;
         }
 
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {
-            // default L&F is fine
-        }
+        StormTheme.install();
         StageSplash splash = stage.staged() ? StageSplash.open() : null;
         try {
             LauncherStage.runStartupUpdate(config, stage);
