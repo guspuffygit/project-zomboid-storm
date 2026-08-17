@@ -49,6 +49,7 @@ import io.pzstorm.storm.patch.fixes.SitOnFurnitureBoxedInChairPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
+import io.pzstorm.storm.patch.fixes.WorldMapVisitedServerAllKnownPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
 import io.pzstorm.storm.patch.networking.ConnectionManagerLogPatch;
@@ -515,6 +516,7 @@ public class StormClassTransformers {
             registerTransformer(new NetworkPlayerManagerUpdatePatch());
             registerTransformer(new FileSystemUpdateAsyncTransactionsPatch());
             registerTransformer(new WorldMapVisitedServerUpdatePatch());
+            registerTransformer(new WorldMapVisitedServerAllKnownPatch());
             registerTransformer(new PlayerDownloadServerUpdatePatch());
             registerTransformer(new ChunkStreamWorkerMetricsPatch());
             registerTransformer(new RequestZipListParsePatch());
