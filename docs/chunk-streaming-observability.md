@@ -192,8 +192,8 @@ loaded cell with that
 one slot empty, or holding a chunk that is not itself loaded; it should be rare and it points at the
 cell rather than at the stream. `cell_absent`
 is no `ServerCell` at all — nothing is loading it, so the request parks in `queueUntilGenerated`
-while the
-client waits out its flat 8-second resend timer for a chunk the server never even started. That is
+for a chunk the server never even started; since 42.20.3 the park is bounded at 30 seconds, after
+which the server answers `ChunkNotReady` and the client re-requests from scratch. That is
 the state that separates a player who is *stuck* from one who is merely waiting, and its fix is
 getting the cell requested sooner (warmer reach, lookahead), not making hydration quicker:
 
@@ -345,9 +345,9 @@ Broken out by `mechanism`, it says which of the four blocking paths to attack �
 (a remote passenger's missing chunk braking the driver), or `player_square_null` (the on-foot
 equivalent, where the character is rewound to its last square every tick).
 
-A `storm_client_chunk_stall_duration_seconds` p99 tail beyond 8 seconds implicates the streamer's
-fixed 8-second resend timeout, which has no backoff and **discards any reply that arrives after it
-fires** — so a late chunk costs the bandwidth twice and the player waits another 8 seconds.
+A `storm_client_chunk_stall_duration_seconds` p99 tail toward 30 seconds implicates the server's
+chunk-generation deadline: after 30 seconds it answers `ChunkNotReady` and the client re-requests
+from scratch, so the wait starts over — with no backoff and no give-up.
 
 ## Evaluating a change
 
@@ -424,8 +424,9 @@ Honest gaps, with the reason each was left alone.
 - ~~**Silent request loss.**~~ Now measured, as
   `storm_client_packet_suppressed_total{type="RequestZipList"}`. `PacketType.send` cancels the
   packet when `MaxPacketsPerSecond` is exceeded, but `WorldStreamer.updateMain` has already added
-  the requests to `sentRequests` — the client believes it asked, and those chunks only recover via
-  the flat 8-second resend timer. `PacketsCache` keeps a sliding one-second window and no
+  the requests to `sentRequests` — the client believes it asked, and since 42.20.3 removed the
+  client resend timer nothing ever retries them (the server never saw the request, so its
+  `ChunkNotReady` timeout never arms). `PacketsCache` keeps a sliding one-second window and no
   cumulative count, so this needed a patch (`PacketLimitMetricsPatch`, exit-only advice on
   `PacketsCache.isLimitExceeded`, gated on `GameClient.client` because only the client acts on the
   result). Remaining caveat: it says a request was lost, not which chunks were in it.
@@ -452,6 +453,7 @@ Two of the client-side stalls also have a production-side proxy that needs no cl
   `UdpConnection.getLoadedCell(index).loaded` — the server's own copy of the mirror the client's
   brake consults. The server pushes that array on change, so its copy can be staler but never
   fresher than the client's, making the count a lower bound on what is really braking the player.
-- **The client's resend timer** shows up as `storm_chunk_stream_duplicate_requests_total`, which
-  counts the server observing a client re-request a chunk whose first request was still unanswered
-  — that is the 8-second timeout firing, visible entirely from the server.
+- **The retry loop** shows up as `storm_chunk_stream_duplicate_requests_total`, which counts the
+  server observing a client re-request a chunk whose first request was still unanswered — since
+  42.20.3 that re-ask is driven by the server's own `ChunkNotReady` replies rather than the removed
+  client 8-second resend timer, and it is visible entirely from the server.

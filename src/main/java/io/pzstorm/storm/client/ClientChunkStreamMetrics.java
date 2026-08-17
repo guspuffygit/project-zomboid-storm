@@ -34,11 +34,11 @@ import zombie.vehicles.BaseVehicle;
  * missing chunk stops the player moving.
  *
  * <p>The server-side metrics ({@code storm_chunk_stream_*}) end at the wire. Everything after that
- * — decompression, the main-thread hydration budget, the 8-second resend timer, and the force-brake
- * — is invisible from the server, and players' clients are not scrapeable. This class closes the
- * loop for a client launched with {@code -DprometheusPort}, which is the only condition under which
- * it is registered at all: {@code StatisticManager.init()} starts its Prometheus {@code HTTPServer}
- * on that property alone, with no {@code GameServer.server} check, bound to {@code
+ * — decompression, the main-thread hydration budget, the ChunkNotReady retry loop, and the
+ * force-brake — is invisible from the server, and players' clients are not scrapeable. This class
+ * closes the loop for a client launched with {@code -DprometheusPort}, which is the only condition
+ * under which it is registered at all: {@code StatisticManager.init()} starts its Prometheus {@code
+ * HTTPServer} on that property alone, with no {@code GameServer.server} check, bound to {@code
  * PrometheusRegistry.defaultRegistry} — the same registry {@link StormPrometheus#registry()}
  * returns. So Storm's series appear on the client's {@code /metrics} with no new transport.
  *
@@ -83,8 +83,8 @@ public final class ClientChunkStreamMetrics {
                                     + " newly wanted chunk to the streamer thread; wanted ="
                                     + " chunkRequests1, sorted by distance and waiting to be turned"
                                     + " into a request (the streamer thread polls at 20ms while it has"
-                                    + " work and 280ms while idle, so a newly wanted chunk can wait a"
-                                    + " quarter second before it even becomes a request); ws_to_main ="
+                                    + " work and 140ms while idle, so a newly wanted chunk can wait"
+                                    + " well over a frame before it even becomes a request); ws_to_main ="
                                     + " mainThreadRequestQueue, requests built by the streamer thread"
                                     + " waiting for the main thread to put them on the wire; in_flight"
                                     + " = pendingRequests1, built and unanswered, still owned by the"
@@ -184,8 +184,8 @@ public final class ClientChunkStreamMetrics {
                     .help(
                             "Chunk requests the client has created, from the delta of"
                                     + " WorldStreamer.requestNumber (incremented exactly once per"
-                                    + " ChunkRequest). Counts re-requests after the 8-second timeout"
-                                    + " as new requests, so requests_total minus arrivals_total over a"
+                                    + " ChunkRequest). Counts the re-request after a ChunkNotReady"
+                                    + " reply as a new request, so requests_total minus arrivals_total over a"
                                     + " window is wasted request volume. The counter restarts when the"
                                     + " streamer is replaced on reconnect; a decrease is treated as a"
                                     + " restart and contributes nothing.")
@@ -223,9 +223,11 @@ public final class ClientChunkStreamMetrics {
                                     + " cancelPacket() and returns normally, so the caller has no way"
                                     + " to know: WorldStreamer.updateMain has already moved the"
                                     + " requests into sentRequests by then, and the client goes on"
-                                    + " believing it asked for chunks it never sent. They only recover"
-                                    + " when the flat 8-second resend timer fires, which is a whole"
-                                    + " stall on its own. Nothing else can see this — PacketsCache"
+                                    + " believing it asked for chunks it never sent. 42.20.3 removed"
+                                    + " the client's flat 8-second resend timer, so nothing"
+                                    + " timer-driven recovers them: the chunk stays missing until the"
+                                    + " chunk map stops referencing it and wants it again."
+                                    + " Nothing else can see this — PacketsCache"
                                     + " keeps a sliding one-second window of timestamps and no"
                                     + " cumulative count, and the only trace is a Multiplayer debug"
                                     + " warn. RequestZipList here is silent chunk-request loss;"
@@ -300,9 +302,9 @@ public final class ClientChunkStreamMetrics {
                     .name("storm_client_chunk_stall_duration_seconds")
                     .help(
                             "Length of each completed stall episode. The distribution matters more"
-                                    + " than the mean: a tail beyond 8 seconds implicates the"
-                                    + " streamer's fixed 8-second resend timeout, which has no backoff"
-                                    + " and discards any reply that arrives after it fires.")
+                                    + " than the mean: a tail toward 30 seconds implicates the"
+                                    + " server's chunk-generation deadline, after which it answers"
+                                    + " ChunkNotReady and the wait starts over from scratch.")
                     .labelNames("mechanism")
                     .nativeOnly()
                     .register(StormPrometheus.registry());
@@ -311,19 +313,21 @@ public final class ClientChunkStreamMetrics {
             Histogram.builder()
                     .name("storm_client_chunk_latency_seconds")
                     .help(
-                            "End-to-end age of a chunk when it lands in the world: from"
-                                    + " ChunkRequest.time, stamped as the World Streamer puts the"
-                                    + " request on the wire, to the vanilla LoadChunk event at the end"
-                                    + " of IsoChunk.doLoadGridsquare. This is the number a streaming"
-                                    + " fix has to move — every other client series is a proxy for it."
-                                    + " Two caveats. Send times are harvested by the per-frame in-flight"
-                                    + " walk, so a chunk answered before the next frame is never"
-                                    + " observed at all; the histogram therefore covers requests that"
-                                    + " lived at least one frame, and its count over a window is well"
-                                    + " below arrivals_total by design. And a chunk re-requested after"
-                                    + " the 8-second timeout keeps its original send time, so the"
-                                    + " observation is total time the player waited for that terrain"
-                                    + " rather than the age of the attempt that happened to succeed.")
+                            "End-to-end age of a chunk when it lands in the world: from the"
+                                    + " request's first observation in flight — 42.20.3 removed"
+                                    + " ChunkRequest.time, so the stamp is this sampler's own, at most"
+                                    + " one frame after the request went on the wire — to the vanilla"
+                                    + " LoadChunk event at the end of IsoChunk.doLoadGridsquare. This"
+                                    + " is the number a streaming fix has to move — every other client"
+                                    + " series is a proxy for it. Two caveats. Stamps come from the"
+                                    + " per-frame in-flight walk, so a chunk answered before the next"
+                                    + " frame is never observed at all; the histogram therefore covers"
+                                    + " requests that lived at least one frame, and its count over a"
+                                    + " window is well below arrivals_total by design. And a chunk"
+                                    + " re-requested after a ChunkNotReady reply keeps its original"
+                                    + " stamp, so the observation is total time the player waited for"
+                                    + " that terrain rather than the age of the attempt that happened"
+                                    + " to succeed.")
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
@@ -335,47 +339,54 @@ public final class ClientChunkStreamMetrics {
                                     + " flight. Unlike the latency histogram this cannot be biased by"
                                     + " chunks that never arrive, which makes it the honest live"
                                     + " stall indicator: it climbs for exactly as long as the server"
-                                    + " stays silent. Crossing 8 seconds means the streamer's resend"
-                                    + " timer is about to fire and discard whatever reply is in transit.")
+                                    + " stays silent. Crossing 30 seconds means the server's"
+                                    + " chunk-generation timeout has fired and answered ChunkNotReady,"
+                                    + " sending the request back around for another full wait.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge INFLIGHT_TIMED_OUT =
             Gauge.builder()
                     .name("storm_client_chunk_inflight_timed_out")
                     .help(
-                            "In-flight requests whose 8-second timeout has already fired, i.e."
-                                    + " ChunkRequest.flagsWs has bit 3 set. These have been re-queued"
-                                    + " for a fresh request and, critically, any reply to the original"
-                                    + " is now discarded on arrival, so each one is a chunk the server"
-                                    + " may well have paid to compress and send for nothing.")
+                            "In-flight requests the server has answered ChunkNotReady, i.e."
+                                    + " ChunkRequest.flagsUdp has CRF_NOT_READY set: the server's"
+                                    + " download queue overflowed or the chunk missed its 30-second"
+                                    + " generation deadline. The streamer thread re-queues these on"
+                                    + " its next pass, so the observation window is tens of"
+                                    + " milliseconds and this undercounts — any non-zero value means"
+                                    + " the server is actively failing to produce chunks; use"
+                                    + " storm_client_chunk_timeouts_total for counting.")
                     .register(StormPrometheus.registry());
 
     private static final Counter TIMEOUTS =
             Counter.builder()
                     .name("storm_client_chunk_timeouts_total")
                     .help(
-                            "Requests observed crossing the 8-second timeout, counted once per attempt"
-                                    + " on the rising edge — a chunk that times out four times before"
-                                    + " it lands counts four. The timeout is flat with no backoff, so a"
-                                    + " server that is merely slow rather than lossy still produces"
-                                    + " these, and each one adds a duplicate request to a queue that is"
-                                    + " already the bottleneck. Compare against"
-                                    + " storm_client_chunk_arrivals_total: a rising ratio is the"
-                                    + " signature of the resend loop feeding itself.")
+                            "Retry attempts per chunk, counted when a coordinate already seen in"
+                                    + " flight reappears with a fresh requestNumber — a chunk retried"
+                                    + " four times before it lands counts four. Since 42.20.3 the"
+                                    + " retry driver is the server's ChunkNotReady reply (download"
+                                    + " queue overflow or the 30-second generation deadline), plus the"
+                                    + " rare client-side decompression-failure retry. Each one adds a"
+                                    + " duplicate request to a queue that is already the bottleneck."
+                                    + " Compare against storm_client_chunk_arrivals_total: a rising"
+                                    + " ratio is the signature of the server failing to keep up with"
+                                    + " chunk generation.")
                     .register(StormPrometheus.registry());
 
     /**
      * Send times of requests seen in flight, keyed by packed chunk coordinate, so {@link
      * #onChunkLoaded} can age a chunk that the streamer has already recycled. Values are {@code
-     * {firstSendTimeMillis, timeoutCounted, lastSeenSendTimeMillis}}; the last two dedupe {@link
-     * #TIMEOUTS} per attempt without a second collection.
+     * {firstSeenMillis, lastSeenRequestNumber}}; the second detects a retry — the same coordinate
+     * back in flight as a fresh {@code ChunkRequest} — for {@link #TIMEOUTS} without a second
+     * collection.
      *
      * <p>Concurrent because the two ends run on different threads: {@link #scanInFlight} fills it
      * from the sampler on the main thread, while {@code LoadChunk} — and so {@link #onChunkLoaded}
      * — fires on the World Streamer thread for Convert and SoftReset jobs, which reach {@code
      * IsoChunk.doLoadGridsquare} directly instead of queueing onto the main-thread drain. Slot 0 is
-     * written inside the mapping function so it is never mutated after publication; slots 1 and 2
-     * are only ever touched by the sampler.
+     * written inside the mapping function so it is never mutated after publication; slot 1 is only
+     * ever touched by the sampler.
      */
     private static final ConcurrentHashMap<Long, long[]> SEND_TIMES = new ConcurrentHashMap<>();
 
@@ -478,8 +489,8 @@ public final class ClientChunkStreamMetrics {
     private static Field tempRequests;
     private static Field requestingLargeArea;
     private static Field requestNumber;
-    private static Field requestTime;
     private static Field requestFlagsWs;
+    private static Field requestFlagsUdp;
     private static Field disableSimulation;
     private static Field connectionLostField;
 
@@ -679,14 +690,19 @@ public final class ClientChunkStreamMetrics {
     }
 
     /**
-     * Walks the in-flight request list to harvest send times, the oldest outstanding age, and the
-     * timeout flag. This is the only place that reads the elements of a streamer list rather than
-     * its size, and the list belongs to the World Streamer thread: the walk indexes it by position
-     * and treats any exception, shrinking size, or null element as "the list moved under us" and
-     * stops, since a partial sample of a racing list is fine and a thrown frame is not.
+     * Walks the in-flight request list to harvest first-seen times, the oldest outstanding age, and
+     * the server's not-ready flag. This is the only place that reads the elements of a streamer
+     * list rather than its size, and the list belongs to the World Streamer thread: the walk
+     * indexes it by position and treats any exception, shrinking size, or null element as "the list
+     * moved under us" and stops, since a partial sample of a racing list is fine and a thrown frame
+     * is not.
+     *
+     * <p>42.20.3 removed {@code ChunkRequest.time}, so the send stamp is this walk's own first
+     * observation — at most one frame after {@code updateMain} put the batch on the wire, since the
+     * walk runs unstrided every frame.
      */
     private static void scanInFlight(WorldStreamer streamer) throws Exception {
-        if (pendingRequests1 == null || requestTime == null) {
+        if (pendingRequests1 == null) {
             return;
         }
         Object value = pendingRequests1.get(streamer);
@@ -698,7 +714,7 @@ public final class ClientChunkStreamMetrics {
         long now = System.currentTimeMillis();
         long oldest = now;
         boolean sawAny = false;
-        int timedOut = 0;
+        int notReady = 0;
         try {
             for (int i = 0, n = requests.size(); i < n; i++) {
                 Object element = requests.get(i);
@@ -710,33 +726,34 @@ public final class ClientChunkStreamMetrics {
                 if (chunk == null) {
                     continue;
                 }
-                long sent = requestTime.getLong(request);
-                if (sent > 0L) {
-                    sawAny = true;
-                    if (sent < oldest) {
-                        oldest = sent;
-                    }
+                // A cancelled request lingers here until the server acknowledges it. Its wait is
+                // over — the player left — so its stamp must go: a later re-want of the same
+                // coordinate is a fresh wait, not a retry, and without this it would book a fake
+                // timeout and an inflated latency.
+                if (requestFlagsWs != null && (requestFlagsWs.getInt(request) & 1) != 0) {
+                    SEND_TIMES.remove(key(chunk.wx, chunk.wy));
+                    continue;
                 }
-                long stamped = sent;
+                long attempt = request.requestNumber;
                 long[] entry =
                         SEND_TIMES.computeIfAbsent(
-                                key(chunk.wx, chunk.wy), k -> new long[] {stamped, 0L, stamped});
-                // resendTimedOutRequests retires the request and pushes the chunk back to
-                // chunkRequests1, so a retry arrives as a fresh ChunkRequest with a fresh time.
-                // Without rearming on that change the counter books one timeout per coordinate
-                // forever and reports a chunk that has failed six times as a single failure — the
-                // exact case that leaves a player stuck. entry[0] deliberately keeps the first
-                // stamp, so latency stays the whole wait rather than the last attempt's.
-                if (sent > 0L && sent != entry[2]) {
-                    entry[2] = sent;
-                    entry[1] = 0L;
+                                key(chunk.wx, chunk.wy), k -> new long[] {now, attempt});
+                // A ChunkNotReady reply retires the request and pushes the chunk back to
+                // chunkRequests1, so a retry arrives as a fresh ChunkRequest with a fresh
+                // requestNumber. Counting on that change books one timeout per attempt — a chunk
+                // that has failed six times reports six, the exact case that leaves a player
+                // stuck — while entry[0] deliberately keeps the first stamp, so latency stays the
+                // whole wait rather than the last attempt's.
+                if (entry[1] != attempt) {
+                    entry[1] = attempt;
+                    TIMEOUTS.inc();
                 }
-                if (requestFlagsWs != null && (requestFlagsWs.getInt(request) & 8) != 0) {
-                    timedOut++;
-                    if (entry[1] == 0L) {
-                        entry[1] = 1L;
-                        TIMEOUTS.inc();
-                    }
+                sawAny = true;
+                if (entry[0] < oldest) {
+                    oldest = entry[0];
+                }
+                if (requestFlagsUdp != null && (requestFlagsUdp.getInt(request) & 8) != 0) {
+                    notReady++;
                 }
             }
         } catch (IndexOutOfBoundsException | NullPointerException ignored) {
@@ -746,7 +763,7 @@ public final class ClientChunkStreamMetrics {
         // sawAny, not requests.isEmpty(): a walk that aborted on the first recycled element would
         // otherwise report 0.0, which reads as an empty pipeline — the opposite of the truth.
         OLDEST_INFLIGHT.set(sawAny ? Math.max(0L, now - oldest) / 1000.0 : 0.0);
-        INFLIGHT_TIMED_OUT.set(timedOut);
+        INFLIGHT_TIMED_OUT.set(notReady);
         sweepSendTimes(now);
     }
 
@@ -948,8 +965,8 @@ public final class ClientChunkStreamMetrics {
         tempRequests = open(WorldStreamer.class, "tempRequests");
         requestingLargeArea = open(WorldStreamer.class, "requestingLargeArea");
         requestNumber = open(WorldStreamer.class, "requestNumber");
-        requestTime = open(WorldStreamer.ChunkRequest.class, "time");
         requestFlagsWs = open(WorldStreamer.ChunkRequest.class, "flagsWs");
+        requestFlagsUdp = open(WorldStreamer.ChunkRequest.class, "flagsUdp");
         disableSimulation =
                 open(BaseVehicle.class, "disableSimulationDueToLackOfSurroundingChunks");
         connectionLostField = open(GameClient.class, "connectionLost");

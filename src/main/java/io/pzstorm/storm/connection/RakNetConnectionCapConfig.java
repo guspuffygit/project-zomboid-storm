@@ -6,10 +6,10 @@ package io.pzstorm.storm.connection;
  *
  * <p>{@code GameServer.startServer()} passes a bare literal to {@code new UdpEngine(defaultPort,
  * udpPort, cap, serverPassword, true)} — it never consults {@code MaxPlayers}. Through 42.20.2 that
- * literal was {@code 101}; since {@code ServerOptions.getMaxPlayers()} is itself capped at {@code
- * 100}, a 100-player server had <b>one</b> spare RakNet slot for its entire login pipeline: every
- * half-open connection, every client still downloading mods, every stalled connect attempt shared
- * that single slot. Once the peer is full RakNet answers new joiners with {@code
+ * literal was {@code 101}; with {@code ServerOptions.getMaxPlayers()} then capped at {@code 100}, a
+ * 100-player server had <b>one</b> spare RakNet slot for its entire login pipeline: every half-open
+ * connection, every client still downloading mods, every stalled connect attempt shared that single
+ * slot. Once the peer is full RakNet answers new joiners with {@code
  * ID_NO_FREE_INCOMING_CONNECTIONS}, which the vanilla client never handles — no {@code
  * OnConnectFailed}, no state change, so the connect UI sits on "Getting Server Info..." forever.
  * 42.20.3 absorbed the fix: the literal is now {@value #VANILLA_CAP}, so on an unmodified {@code

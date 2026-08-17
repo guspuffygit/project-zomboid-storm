@@ -298,10 +298,11 @@ public final class ChunkStreamMetrics {
                                     + " appends them to ccrWaiting. This is the demand side. Compare"
                                     + " against storm_chunk_stream_sent_total (supply): while a player"
                                     + " drives, demand outruns supply and the difference accumulates as"
-                                    + " storm_chunk_stream_backlog_chunks. Note the client re-requests"
-                                    + " anything unanswered after 8s (WorldStreamer"
-                                    + " .resendTimedOutRequests) with no backoff and no give-up, so once"
-                                    + " the server falls 8s behind this rate roughly doubles on its own.")
+                                    + " storm_chunk_stream_backlog_chunks. Note 42.20.3 moved the retry"
+                                    + " to the server: a chunk unanswered for 30s (or bumped from a full"
+                                    + " download queue) gets a ChunkNotReady reply and the client"
+                                    + " re-requests it immediately, with no backoff and no give-up, so"
+                                    + " once the server falls 30s behind this rate inflates on its own.")
                     .register(StormPrometheus.registry());
 
     private static final Histogram REQUEST_PACKET_CHUNKS =
@@ -513,8 +514,9 @@ public final class ChunkStreamMetrics {
                             "Queued chunk requests dropped by removeOlderDuplicateRequests because a"
                                     + " newer request for the same wx,wy was already waiting. Every one"
                                     + " of these is the client asking a second time for a chunk the"
-                                    + " server had not yet answered — almost always its flat 8-second"
-                                    + " resend timer firing while the request sat in ccrWaiting. This"
+                                    + " server had not yet answered — since 42.20.3, driven by the"
+                                    + " server's own ChunkNotReady replies or a cancel-then-re-want"
+                                    + " cycle rather than the removed client resend timer. This"
                                     + " is the best server-side proxy for client-perceived stall, and"
                                     + " it needs no client instrumentation to read. Each cancellation"
                                     + " also increments"

@@ -16,7 +16,8 @@ import net.bytebuddy.pool.TypePool;
  * during the initial map download and never during play.
  *
  * <p>Without this, the backlog gauges show a queue growing but not whether the cause is a demand
- * spike (grid scroll, teleport, an 8-second resend wave) or supply falling off. Pure measurement.
+ * spike (grid scroll, teleport, a ChunkNotReady retry wave) or supply falling off. Pure
+ * measurement.
  */
 public class RequestZipListParsePatch extends StormClassTransformer {
 
