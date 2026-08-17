@@ -128,7 +128,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.character.PlayerDropHeldItemsPacket",
                     "zombie.network.packets.character.PlayerEmptyShotPacket",
                     "zombie.network.packets.character.PlayerPacket",
-                    "zombie.network.packets.character.PlayerVisitedPacket",
                     "zombie.network.packets.character.RemoveCorpseFromMapPacket",
                     "zombie.network.packets.character.ThumpPacket",
                     "zombie.network.packets.connection.GoogleAuthKeyPacket",

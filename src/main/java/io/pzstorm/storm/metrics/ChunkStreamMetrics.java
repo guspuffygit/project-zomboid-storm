@@ -91,10 +91,9 @@ public final class ChunkStreamMetrics {
                                     + " thread is idle, so this is the peer's chunk-delivery backlog"
                                     + " measured in dispatch slots. Sustained non-zero means the client"
                                     + " is asking for chunks faster than the one-per-tick rule can"
-                                    + " serve them. Excludes the empty retry bucket sendArray parks"
-                                    + " on the queue before it knows whether anything needs retrying,"
-                                    + " which would otherwise read as a permanent backlog of 1 for"
-                                    + " every peer with a busy worker.")
+                                    + " serve them. Excludes requests whose chunks have all been"
+                                    + " drained by cancellation or dedupe, which would otherwise"
+                                    + " read as phantom backlog until the queue reaps them.")
                     .labelNames("username")
                     .register(StormPrometheus.registry());
 
@@ -325,11 +324,11 @@ public final class ChunkStreamMetrics {
                                     + " the request arrived. resident = a loaded ServerCell held the"
                                     + " chunk and the server could have answered immediately."
                                     + " cell_loading = the ServerCell exists but has not finished"
-                                    + " hydrating, so the request is early and a retry will likely"
-                                    + " land. cell_absent = there is no ServerCell at all — nothing is"
-                                    + " loading it, so the request burns all three retries and the"
-                                    + " client waits out the 8-second resend timer for a chunk the"
-                                    + " server never even started. chunk_absent = the cell is loaded"
+                                    + " hydrating, so the request is early and will be answered once"
+                                    + " hydration lands. cell_absent = there is no ServerCell at all —"
+                                    + " nothing is loading it, so unless a save file exists on disk the"
+                                    + " request parks in queueUntilGenerated for a chunk the server"
+                                    + " never even started. chunk_absent = the cell is loaded"
                                     + " but that slot is empty or the chunk in it is not itself loaded,"
                                     + " which should be rare and points at the cell, not the stream."
                                     + " Separating these matters because they"
@@ -359,10 +358,10 @@ public final class ChunkStreamMetrics {
                                     + " request per connection per tick and only while that peer's"
                                     + " single worker is idle, so this is the delay the one-per-tick"
                                     + " rule imposes, isolated from how long the work itself takes"
-                                    + " (storm_chunk_stream_batch_duration_seconds). fresh = demand"
-                                    + " straight from RequestZipListPacket; retry = a rung of the"
-                                    + " 3-strike ladder, which waits behind the same queue and so"
-                                    + " compounds. When a driver stalls, this is where the seconds go.")
+                                    + " (storm_chunk_stream_batch_duration_seconds). kind is always"
+                                    + " fresh since 42.20.3 removed the chunk retry ladder; the label"
+                                    + " is kept for dashboard continuity. When a driver stalls, this"
+                                    + " is where the seconds go.")
                     .labelNames("kind")
                     .nativeOnly()
                     .register(StormPrometheus.registry());
@@ -388,9 +387,10 @@ public final class ChunkStreamMetrics {
                                     + " chunk in ServerMap and serialized it inline, so the worker only"
                                     + " has to compress and send. cold = ServerMap had no loaded chunk"
                                     + " there, so the worker must stat the save file and either block on"
-                                    + " IsoChunk.SafeRead or push the request onto the 3-strike retry"
-                                    + " ladder. A cold ratio that climbs while a player drives is the"
-                                    + " server losing the race to hydrate cells ahead of them.")
+                                    + " IsoChunk.SafeRead or park the request in queueUntilGenerated"
+                                    + " until the chunk exists. A cold ratio that climbs while a player"
+                                    + " drives is the server losing the race to hydrate cells ahead of"
+                                    + " them.")
                     .labelNames("source")
                     .register(StormPrometheus.registry());
 
@@ -501,39 +501,9 @@ public final class ChunkStreamMetrics {
                                     + " copy and no payload was needed — this is the bandwidth"
                                     + " optimisation working. false = the server is telling the client"
                                     + " to stop waiting without sending anything, which happens on a"
-                                    + " serialize exception, a duplicate request, a send error, or"
-                                    + " retry exhaustion. A rising false rate means clients are being"
-                                    + " left with holes; cross-reference"
-                                    + " storm_chunk_stream_retry_exhausted_total to see how much of it"
-                                    + " is the retry ladder giving up.")
+                                    + " serialize exception, a duplicate request, or a send error."
+                                    + " A rising false rate means clients are being left with holes.")
                     .labelNames("same_on_server")
-                    .register(StormPrometheus.registry());
-
-    private static final Counter RETRIES =
-            Counter.builder()
-                    .name("storm_chunk_stream_retries_total")
-                    .help(
-                            "Chunk requests re-queued because the server had neither a loaded chunk"
-                                    + " in ServerMap nor a save file on disk. The retry goes to the back"
-                                    + " of ccrWaiting, so each attempt costs at least one more dispatch"
-                                    + " slot — a full ladder is three extra round trips through a queue"
-                                    + " that is already the bottleneck. attempt is the new retry count"
-                                    + " (1..3). This is the direct signal for 'the player is asking for"
-                                    + " ground the server has not hydrated yet'.")
-                    .labelNames("attempt")
-                    .register(StormPrometheus.registry());
-
-    private static final Counter RETRY_EXHAUSTED =
-            Counter.builder()
-                    .name("storm_chunk_stream_retry_exhausted_total")
-                    .help(
-                            "Chunk requests that hit MAX_CHUNK_SEND_TRIES (3) and were answered with"
-                                    + " NotRequiredInZip instead of data. The client is told the chunk"
-                                    + " is not coming, so the square stays unloaded until it re-requests"
-                                    + " — and an unloaded chunk ahead of a vehicle makes"
-                                    + " BaseVehicle.isInvalidChunkAhead true, which CarController turns"
-                                    + " into a forced brake. Non-zero here while players are driving is"
-                                    + " the mechanism behind 'stuck and can't progress'.")
                     .register(StormPrometheus.registry());
 
     private static final Counter DUPLICATE_REQUESTS =
@@ -549,9 +519,8 @@ public final class ChunkStreamMetrics {
                                     + " it needs no client instrumentation to read. Each cancellation"
                                     + " also increments"
                                     + " storm_chunk_stream_not_required_total{same_on_server=\"false\"},"
-                                    + " so subtracting this and"
-                                    + " storm_chunk_stream_retry_exhausted_total from that counter"
-                                    + " leaves the serialization failures.")
+                                    + " so subtracting this from that counter leaves the"
+                                    + " serialization failures.")
                     .register(StormPrometheus.registry());
 
     private static final Histogram DEDUPE_DURATION =
@@ -1048,7 +1017,7 @@ public final class ChunkStreamMetrics {
         }
         try {
             List<ClientChunkRequest.Chunk> chunks = ccr.chunks;
-            recordQueueWait(ccr, kindOf(chunks));
+            recordQueueWait(ccr, "fresh");
             int hot = 0;
             int cold = 0;
             for (int i = 0; i < chunks.size(); i++) {
@@ -1170,28 +1139,6 @@ public final class ChunkStreamMetrics {
         }
     }
 
-    private static final String[] RETRY_LABELS = {"1", "2", "3"};
-
-    /**
-     * Record one rung of the retry ladder. {@code attempt} is the retry count the new request
-     * carries, or {@code 0} when {@code getRetryChunk} refused because the original already had
-     * three tries.
-     */
-    public static void recordRetry(int attempt) {
-        if (failed) {
-            return;
-        }
-        try {
-            if (attempt <= 0) {
-                RETRY_EXHAUSTED.inc();
-                return;
-            }
-            RETRIES.labelValues(attempt <= 3 ? RETRY_LABELS[attempt - 1] : "over").inc();
-        } catch (Throwable t) {
-            disable(t);
-        }
-    }
-
     public static void recordDuplicateCancelled() {
         if (failed) {
             return;
@@ -1218,11 +1165,10 @@ public final class ChunkStreamMetrics {
      * Sum the chunks across every queued request, writing {@code {chunks, nonEmptyRequests}} into
      * {@code out}.
      *
-     * <p>Empty requests are counted separately because {@code sendArray} unconditionally acquires a
-     * retry bucket and appends it to {@code ccrWaiting} <em>before</em> it knows whether any chunk
-     * will need retrying. Counting it as backlog puts every peer with a busy worker at a permanent
-     * one-request queue and tips {@code workerState} from {@code ready_idle} to {@code
-     * ready_backlogged} on the tick before dedupe reaps it.
+     * <p>Empty requests are counted separately because cancellation and dedupe drain a queued
+     * request's chunks in place, leaving the empty shell in {@code ccrWaiting} until the queue
+     * reaps it. Counting it as backlog would tip {@code workerState} from {@code ready_idle} to
+     * {@code ready_backlogged} on ticks where no real demand is waiting.
      *
      * <p>Index-bounded rather than a for-each: {@code sendArray} appends to {@code ccrWaiting} from
      * the worker thread while the main thread removes from the front, and an iterator over that
@@ -1306,25 +1252,6 @@ public final class ChunkStreamMetrics {
             enqueueFieldResolved = true;
             LOGGER.warn("Storm: cannot stamp chunk-request enqueue time", e);
         }
-    }
-
-    /**
-     * A request is never mixed: fresh chunks only ever come from {@code
-     * ClientChunkRequest.getChunk} with {@code retriesCount} reset to 0, retries only from {@code
-     * getRetryChunk} with it incremented, and the two are filled into different buckets. The first
-     * chunk therefore decides the whole batch.
-     */
-    private static String kindOf(List<ClientChunkRequest.Chunk> chunks) {
-        if (chunks.isEmpty()) {
-            return "fresh";
-        }
-        ClientChunkRequest.Chunk first;
-        try {
-            first = chunks.get(0);
-        } catch (IndexOutOfBoundsException e) {
-            return "fresh";
-        }
-        return first != null && first.retriesCount > 0 ? "retry" : "fresh";
     }
 
     private static void recordQueueWait(ClientChunkRequest ccr, String kind) {

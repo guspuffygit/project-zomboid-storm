@@ -31,8 +31,9 @@ each is different, and only three of them originate on the server.
                   |                                                    |
                   |                                                    v
                   |                                       worker: read save file -> deflate -> send
-                  |                                        (no save file = retry ladder, 3 strikes,
-                  |                                         then NotRequiredInZip with no data)
+                  |                                        (no save file = parked in
+                  |                                         queueUntilGenerated until world gen
+                  |                                         produces the chunk)
                   |                                                    |
                   |                                                    v
                   |                                       RakNet HIGH send queue        [wire]
@@ -57,7 +58,7 @@ Independent of all of that, the server has to have the chunk in memory before it
 chunk is unreachable until its entire 64-chunk `ServerCell` has been through three single-threaded
 stages (`LoadChunk` -> `RecalcAll` -> main-thread `Load2`) with **no budget or cap at any stage**.
 The download worker cannot generate terrain; for never-visited ground it just fails to find a save
-file and enters the retry ladder.
+file and parks the request in `queueUntilGenerated` until generation catches up.
 
 ## The hard ceiling
 
@@ -80,7 +81,7 @@ metrics separate them.
 |---|---|---|---|---|
 | 1 | Server dispatch ceiling — backlog grows, worker idle | Server | Raise dispatch rate | `storm_chunk_stream_worker_samples_total{state="ready_backlogged"}`, `storm_chunk_stream_queue_wait_seconds{kind="fresh"}` |
 | 2 | Server worker saturated — disk, deflate, wire | Server | Cheaper serialization | `storm_chunk_stream_worker_samples_total{state="busy"}` + `pz_chunk_save_loaded_call_duration_seconds{caller="download"}` |
-| 3 | Terrain not hydrated server-side — retry ladder, then empty reply | Server | Budget + prioritise cell hydration | `storm_chunk_stream_request_residency_total{state!="resident"}` (`state="cell_absent"` for the stuck half), `storm_chunk_stream_retry_exhausted_total`, `storm_chunk_hydration_oldest_pending_seconds` |
+| 3 | Terrain not hydrated server-side — request parked until generation | Server | Budget + prioritise cell hydration | `storm_chunk_stream_request_residency_total{state!="resident"}` (`state="cell_absent"` for the stuck half), `storm_chunk_hydration_oldest_pending_seconds` |
 | 4 | Client hydration budget — chunks arrived but aren't in the world | Client | Raise the per-frame drain | `storm_client_chunk_queue_depth{stage="hydration"}` |
 | 5 | Coarse server-cell mirror braking a car over terrain it already has | Both | Finer-grained `isNullChunk` | `storm_chunk_stream_peer_cell_holes_max` (server, production), `storm_client_chunk_ahead_samples_total{state="server_cell_missing"}` (client, exact) |
 | 6 | The wire — chunks compressed and handed to RakNet, still queued | Server | Rate-limit or reprioritise, or accept the link | `storm_peer_send_buffer_messages{priority="high"}`, `storm_peer_congestion_limited` |
@@ -158,9 +159,9 @@ histogram_quantile(0.95, sum by (le, kind) (rate(storm_chunk_stream_queue_wait_s
 ```
 
 This is the gap between a `ClientChunkRequest` being allocated for a peer and its worker starting on
-it. `kind="fresh"` is demand straight off the wire; `kind="retry"` is a rung of the three-strike
-ladder, which by construction waits at least a tick longer. A p95 of several hundred milliseconds on
-`fresh` with an idle worker is the one-request-per-tick rule, restated in seconds instead of sample
+it. `kind` is always `fresh` since 42.20.3 removed the chunk retry ladder; the label is kept for
+dashboard continuity. A p95 of several hundred milliseconds
+with an idle worker is the one-request-per-tick rule, restated in seconds instead of sample
 counts. Compare it against `storm_chunk_stream_batch_duration_seconds`: whichever is larger is the
 half worth optimising.
 
@@ -185,11 +186,13 @@ Then split the non-resident share, because the three reasons want opposite fixes
 sum by (state) (rate(storm_chunk_stream_request_residency_total{state!="resident"}[$__rate_interval]))
 ```
 
-`cell_loading` is a `ServerCell` that exists but has not finished hydrating: the request is early, a
-retry will probably land, and the fix is faster hydration. `chunk_absent` is a loaded cell with that
+`cell_loading` is a `ServerCell` that exists but has not finished hydrating: the request is early,
+the answer lands once hydration finishes, and the fix is faster hydration. `chunk_absent` is a
+loaded cell with that
 one slot empty, or holding a chunk that is not itself loaded; it should be rare and it points at the
 cell rather than at the stream. `cell_absent`
-is no `ServerCell` at all — nothing is loading it, so the request burns all three retries and the
+is no `ServerCell` at all — nothing is loading it, so the request parks in `queueUntilGenerated`
+while the
 client waits out its flat 8-second resend timer for a chunk the server never even started. That is
 the state that separates a player who is *stuck* from one who is merely waiting, and its fix is
 getting the cell requested sooner (warmer reach, lookahead), not making hydration quicker:
@@ -200,13 +203,9 @@ sum(rate(storm_chunk_stream_request_residency_total{state="cell_absent"}[$__rate
 sum(rate(storm_chunk_stream_request_residency_total[$__rate_interval]))
 ```
 
-```promql
-rate(storm_chunk_stream_retry_exhausted_total[$__rate_interval])
-```
-
-Non-zero means the server gave up after three attempts and sent `NotRequiredInZip` with no data. The
-client keeps a hole there. This is the direct counter for "the driver hit an invisible wall the
-server can never fill", and it points at hydration, not at streaming:
+A non-zero `cell_absent` rate is a driver asking for ground nothing is generating yet: the request
+sits parked and the client keeps a hole there until generation catches up. That points at
+hydration, not at streaming:
 
 ```promql
 storm_chunk_hydration_cells_pending

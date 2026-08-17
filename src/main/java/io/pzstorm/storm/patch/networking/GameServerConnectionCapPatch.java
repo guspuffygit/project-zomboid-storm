@@ -13,11 +13,14 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 import zombie.core.raknet.UdpEngine;
+import zombie.network.GameServer;
 import zombie.network.ServerOptions;
 
 /**
  * Gives the dedicated server's RakNet peer real headroom above {@code MaxPlayers} instead of the
- * vanilla hard-coded 101 incoming-connection cap.
+ * vanilla hard-coded incoming-connection cap (101 through 42.20.2; 255 since 42.20.3, which
+ * absorbed most of this fix — the resolved cap now usually matches vanilla and this patch mainly
+ * publishes the cap metrics and guards future regressions).
  *
  * <p>The substitution is scoped to {@code new UdpEngine(...)} calls occurring inside {@code
  * GameServer.startServer()}, which is the server's single listening peer. {@code
@@ -27,7 +30,7 @@ import zombie.network.ServerOptions;
  *
  * <p>See {@link RakNetConnectionCapConfig} for why the cap matters (clients wedged on "Getting
  * Server Info..." once the peer fills), why extra slots cannot admit players over {@code
- * MaxPlayers}, and the {@code SlotToConnection[512]} ceiling.
+ * MaxPlayers}, and the two hard ceilings (byte-wide wire index, {@code SlotToConnection.length}).
  *
  * <p>Raising the cap alone does not stop half-open connections leaking slots — {@link
  * io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper} is the fix for the
@@ -88,7 +91,9 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
             int maxPlayers;
             try {
                 maxPlayers = readMaxPlayers();
-                cap = RakNetConnectionCapConfig.resolveCap(maxConnections, maxPlayers);
+                cap =
+                        RakNetConnectionCapConfig.resolveCap(
+                                maxConnections, maxPlayers, readSlotTableLength());
             } catch (Throwable t) {
                 LOGGER.error(
                         "Storm: RakNet cap resolution failed; using the vanilla cap {}",
@@ -161,6 +166,24 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
          * save with the override enabled should get its connection headroom sized from the
          * override, not the {@code .ini} value.
          */
+        /**
+         * Length of {@code GameServer.SlotToConnection}, the hard bound the cap must respect —
+         * {@code GameServer.disconnect} scans that array up to {@code getMaxConnections()}, so a
+         * cap above its length throws on every disconnect (42.20.3 shrank it from 512 to 255).
+         * {@code create} runs inside {@code startServer}, so the class is already initialized.
+         */
+        private static int readSlotTableLength() {
+            try {
+                return GameServer.SlotToConnection.length;
+            } catch (Throwable t) {
+                LOGGER.warn(
+                        "Storm: could not read GameServer.SlotToConnection.length for the RakNet"
+                                + " cap; using the conservative fallback",
+                        t);
+                return 0;
+            }
+        }
+
         private static int readMaxPlayers() {
             try {
                 StormPerformanceSandboxApplier.applyMaxPlayersOverride();

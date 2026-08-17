@@ -82,7 +82,7 @@ import io.pzstorm.storm.patch.performance.BitHeaderShortReleasePatch;
 import io.pzstorm.storm.patch.performance.CalcCountPlayersInRelevantPositionPatch;
 import io.pzstorm.storm.patch.performance.ChunkChecksumMetricsPatch;
 import io.pzstorm.storm.patch.performance.ChunkStreamWorkerMetricsPatch;
-import io.pzstorm.storm.patch.performance.ClientChunkRequestRetryPatch;
+import io.pzstorm.storm.patch.performance.ClientChunkRequestPatch;
 import io.pzstorm.storm.patch.performance.ClientServerMapCharacterInPatch;
 import io.pzstorm.storm.patch.performance.ClimateManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
@@ -506,7 +506,7 @@ public class StormClassTransformers {
             registerTransformer(new PlayerDownloadServerUpdatePatch());
             registerTransformer(new ChunkStreamWorkerMetricsPatch());
             registerTransformer(new RequestZipListParsePatch());
-            registerTransformer(new ClientChunkRequestRetryPatch());
+            registerTransformer(new ClientChunkRequestPatch());
             registerTransformer(new IsoChunkSafeReadPatch());
             registerTransformer(new ChunkChecksumMetricsPatch());
             registerTransformer(new CalcCountPlayersInRelevantPositionPatch());
