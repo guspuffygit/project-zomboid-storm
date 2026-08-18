@@ -5,12 +5,16 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.pzstorm.storm.core.StormVersion;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Random;
 import org.jetbrains.annotations.Nullable;
+import zombie.core.random.RandAbstract;
+import zombie.core.random.RandStandard;
 import zombie.core.znet.SteamUser;
 import zombie.network.GameClient;
 
@@ -91,6 +95,9 @@ public final class StormTcpChannel {
     }
 
     private static void watch() {
+        if (!awaitGameRngInit()) {
+            return;
+        }
         boolean wasConnected = false;
         int attempts = 0;
         while (true) {
@@ -125,6 +132,45 @@ public final class StormTcpChannel {
                 Thread.currentThread().interrupt();
                 return;
             }
+        }
+    }
+
+    /**
+     * Block until the game main thread has initialized its RNG — the first thing {@code
+     * MainScreenState.main} does. Reading {@link GameClient#connection} any earlier
+     * class-initializes {@link GameClient} on this thread, and its static initializer draws from
+     * the RNG (via ServerOptions defaults): losing that race throws inside {@code
+     * GameClient.<clinit>}, which poisons the class for the whole JVM and crashes the client at its
+     * first debug print (vanilla touches GameClient right after RNG init). The RNG field is located
+     * by type rather than name so a decompiler rename can't silently break the gate.
+     *
+     * @return false if the channel must stay off (interrupted, or no RNG field after a game
+     *     update); the client then simply stays on plain UDP.
+     */
+    static boolean awaitGameRngInit() {
+        Field randField = null;
+        for (Field field : RandAbstract.class.getDeclaredFields()) {
+            if (field.getType() == Random.class) {
+                randField = field;
+                break;
+            }
+        }
+        if (randField == null) {
+            LOGGER.error("Storm TCP channel disabled: no RNG field on RandAbstract to gate on");
+            return false;
+        }
+        randField.setAccessible(true);
+        try {
+            while (randField.get(RandStandard.INSTANCE) == null) {
+                Thread.sleep(POLL_INTERVAL_MILLIS);
+            }
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Throwable t) {
+            LOGGER.error("Storm TCP channel disabled: cannot read game RNG state", t);
+            return false;
         }
     }
 

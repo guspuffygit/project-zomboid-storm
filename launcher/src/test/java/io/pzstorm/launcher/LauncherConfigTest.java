@@ -114,6 +114,48 @@ class LauncherConfigTest {
     }
 
     @Test
+    void localDevLauncherPrefersLocalDevBootstrap() throws IOException {
+        System.setProperty("storm.launcher.zomboidDir", tmp.resolve("Zomboid").toString());
+        try {
+            String id = LauncherInfo.workshopIds().get(0);
+            Path gameDir =
+                    tmp.resolve(Path.of("SteamLibrary", "steamapps", "common", "ProjectZomboid"));
+            Files.createDirectories(gameDir);
+            Path workshopBootstrap =
+                    tmp.resolve(
+                            Path.of(
+                                    "SteamLibrary",
+                                    "steamapps",
+                                    "workshop",
+                                    "content",
+                                    "108600",
+                                    id,
+                                    "mods",
+                                    "storm",
+                                    "bootstrap"));
+            Files.createDirectories(workshopBootstrap);
+            Files.write(workshopBootstrap.resolve("storm-bootstrap.jar"), new byte[] {1});
+            Path localDev = LauncherConfig.localDevBootstrap();
+            Files.createDirectories(localDev);
+            Files.write(localDev.resolve("storm-bootstrap.jar"), new byte[] {1});
+            Path localLauncherJar =
+                    localDev.getParent().resolve(Path.of("launcher", "storm-launcher.jar"));
+
+            LauncherConfig config = new LauncherConfig();
+            config.setStagedOrigin(localLauncherJar);
+            Path resolved = config.resolveBootstrapDir(gameDir);
+            assertEquals(localDev, resolved);
+            assertTrue(LauncherConfig.isLocalDevBootstrap(resolved));
+
+            // a local install missing the bootstrap falls back to the workshop item
+            Files.delete(localDev.resolve("storm-bootstrap.jar"));
+            assertEquals(workshopBootstrap, config.resolveBootstrapDir(gameDir));
+        } finally {
+            System.clearProperty("storm.launcher.zomboidDir");
+        }
+    }
+
+    @Test
     void nestedLinuxDepotLayoutIsDetected() throws IOException {
         Path depot = tmp.resolve(Path.of("SteamLibrary", "steamapps", "common", "ProjectZomboid"));
         Path nested = depot.resolve("projectzomboid");

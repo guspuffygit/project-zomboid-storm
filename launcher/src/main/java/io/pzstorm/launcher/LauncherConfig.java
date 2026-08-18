@@ -193,13 +193,19 @@ public final class LauncherConfig {
     /**
      * Directory holding storm-bootstrap.jar (and agentlib.dll on Windows), or null. Workshop
      * installs win: clients run the Storm that Steam downloaded, so the join flow can keep it
-     * current. The local-dev tree ({@code ~/Zomboid/Workshop/storm}) only applies when no workshop
-     * item is installed, or when set explicitly.
+     * current. The local-dev tree ({@code ~/Zomboid/Workshop/storm}) applies when this launcher
+     * itself runs from that tree (a dev started the installStorm copy — Steam launches spawn the
+     * workshop item's launcher, so players never hit this), when no workshop item is installed, or
+     * when set explicitly.
      */
     public Path resolveBootstrapDir(Path resolvedGameDir) {
         if (!bootstrapDir.isEmpty()) {
             Path dir = Paths.get(bootstrapDir);
             return hasBootstrap(dir) ? dir : null;
+        }
+        Path localDev = localDevBootstrap();
+        if (isLocalDevBootstrap(effectiveOwnLocation()) && hasBootstrap(localDev)) {
+            return localDev;
         }
         for (String workshopId : orderedWorkshopIds()) {
             Path candidate = workshopBootstrap(resolvedGameDir, workshopId);
@@ -207,7 +213,6 @@ public final class LauncherConfig {
                 return candidate;
             }
         }
-        Path localDev = localDevBootstrap();
         return hasBootstrap(localDev) ? localDev : null;
     }
 
