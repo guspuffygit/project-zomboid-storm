@@ -7,7 +7,7 @@ require("BuildingObjects/ISBrushToolTileCursor")
 -- client's local chunk copy, so it vanishes as soon as the chunk reloads from the
 -- server's authoritative state.
 --
--- Fix: in multiplayer the client sends the placement to the server instead of placing
+-- In multiplayer the client sends the placement to the server instead of placing
 -- locally. The server re-runs the vanilla create() logic; placeMoveableInternal's
 -- isServer() branches then transmit the object to every client (including the placer)
 -- and the object lives in the server's chunk, so it persists in the chunk save.

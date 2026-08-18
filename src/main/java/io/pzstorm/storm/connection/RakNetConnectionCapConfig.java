@@ -4,17 +4,13 @@ package io.pzstorm.storm.connection;
  * Resolves the RakNet incoming-connection cap the dedicated server's listening {@code UdpEngine} is
  * built with, replacing the vanilla hard-coded {@value #VANILLA_CAP}.
  *
- * <p>{@code GameServer.startServer()} passes a bare literal to {@code new UdpEngine(defaultPort,
- * udpPort, cap, serverPassword, true)} — it never consults {@code MaxPlayers}. Through 42.20.2 that
- * literal was {@code 101}; with {@code ServerOptions.getMaxPlayers()} then capped at {@code 100}, a
- * 100-player server had <b>one</b> spare RakNet slot for its entire login pipeline: every half-open
- * connection, every client still downloading mods, every stalled connect attempt shared that single
- * slot. Once the peer is full RakNet answers new joiners with {@code
+ * <p>{@code GameServer.startServer()} passes a bare literal ({@value #VANILLA_CAP}) to {@code new
+ * UdpEngine(defaultPort, udpPort, cap, serverPassword, true)} — it never consults {@code
+ * MaxPlayers}. Once the peer is full RakNet answers new joiners with {@code
  * ID_NO_FREE_INCOMING_CONNECTIONS}, which the vanilla client never handles — no {@code
- * OnConnectFailed}, no state change, so the connect UI sits on "Getting Server Info..." forever.
- * 42.20.3 absorbed the fix: the literal is now {@value #VANILLA_CAP}, so on an unmodified {@code
- * MaxPlayers} the patch resolves to the vanilla value and only the metrics publication remains
- * active.
+ * OnConnectFailed}, no state change, so the connect UI sits on "Getting Server Info..." forever. On
+ * an unmodified {@code MaxPlayers} (ceiling 254) the resolved cap matches vanilla and this patch
+ * mainly publishes the cap metrics and guards future regressions.
  *
  * <p><b>Extra RakNet slots cannot admit extra players.</b> The player-count gates are enforced
  * independently of this cap:
@@ -34,11 +30,10 @@ package io.pzstorm.storm.connection;
  * uses it to index {@code connectionArray}, which is a fixed {@code new UdpConnection[256]} — a
  * 257th concurrent connection would wrap to an index already owned by another client and silently
  * overwrite it in {@code addConnection}. That gives {@link #MAX_CAP}. The second is {@code
- * GameServer.SlotToConnection}: 42.20.3 shrank it from {@code new UdpConnection[512]} to exactly
- * {@code new UdpConnection[255]}, and {@code GameServer.disconnect} scans {@code
- * SlotToConnection[i]} for {@code i < udpEngine.getMaxConnections()} — a cap of 256 throws {@code
- * ArrayIndexOutOfBoundsException} on every disconnect. The caller passes the live {@code
- * SlotToConnection.length} so the clamp tracks whatever the running build ships.
+ * GameServer.SlotToConnection} ({@code new UdpConnection[255]}): {@code GameServer.disconnect}
+ * scans {@code SlotToConnection[i]} for {@code i < udpEngine.getMaxConnections()} — a cap of 256
+ * throws {@code ArrayIndexOutOfBoundsException} on every disconnect. The caller passes the live
+ * {@code SlotToConnection.length} so the clamp tracks whatever the running build ships.
  *
  * <p>Overrides (JVM properties, read once per {@link #resolveCap(int, int, int)} call so a restart
  * is enough):
@@ -51,16 +46,18 @@ package io.pzstorm.storm.connection;
  */
 public final class RakNetConnectionCapConfig {
 
-    /** The literal {@code GameServer.startServer()} hard-codes (101 through 42.20.2). */
+    /**
+     * The literal vanilla {@code GameServer.startServer()} passes to the RakNet peer constructor.
+     */
     public static final int VANILLA_CAP = 255;
 
     /** {@code UdpEngine.connectionArray.length}, and the range of the byte-wide wire index. */
     public static final int MAX_CAP = 256;
 
     /**
-     * {@code GameServer.SlotToConnection.length} as of 42.20.3, used when the live length cannot be
-     * read. Deliberately the smaller of the two known bounds so a failed read can never reintroduce
-     * the disconnect-sweep overrun.
+     * {@code GameServer.SlotToConnection.length}, used when the live length cannot be read.
+     * Deliberately the smaller of the two known bounds so a failed read can never reintroduce the
+     * disconnect-sweep overrun.
      */
     public static final int FALLBACK_SLOT_TABLE_LENGTH = 255;
 

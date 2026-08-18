@@ -12,11 +12,11 @@ import zombie.network.PacketTypes;
  * (GameClient.client && connection.isLimitExceeded(this)) connection.cancelPacket();}. It then
  * returns normally, so the caller cannot tell the packet went nowhere. For chunk streaming that is
  * the worst possible failure — {@code WorldStreamer.updateMain} has already moved those requests
- * into {@code sentRequests}, and since 42.20.3 removed the client's resend timer nothing ever
- * retries them: the server never saw the request, so its ChunkNotReady timeout never arms, and the
- * chunk stays missing until the chunk map re-wants it. The server's own call site only logs the
- * result and sends anyway, which is why this is gated on {@code GameClient.client}: it isolates the
- * call that actually drops.
+ * into {@code sentRequests}, and the client has no resend timer so nothing ever retries them: the
+ * server never saw the request, so its ChunkNotReady timeout never arms, and the chunk stays
+ * missing until the chunk map re-wants it. The server's own call site only logs the result and
+ * sends anyway, which is why this is gated on {@code GameClient.client}: it isolates the call that
+ * actually drops.
  *
  * <p>Fails soft by design. The catch covers {@code ExceptionInInitializerError} and {@code
  * NoClassDefFoundError} from the metrics class, which are {@code Error}s and would otherwise escape

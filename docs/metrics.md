@@ -202,10 +202,6 @@ Two members of the family are documented with the subsystem they belong to rathe
 `pz_chunk_save_loaded_call_duration_seconds` and `pz_player_download_dedupe_call_duration_seconds`
 both live in the [chunk streaming](#chunk-streaming-chunkstreammetrics) table.
 
-`pz_zombie_spot_player_call_duration_seconds` no longer exists. Its per-player x
-per-moving-object cardinality made the native histogram too expensive, so it was replaced by
-`pz_zombie_spot_player_calls_total` (`CounterWithCallback`, unlabelled).
-
 Useful PromQL:
 
 ```promql
@@ -549,7 +545,7 @@ lifetime unique logins.
 | `pz_chunk_save_loaded_call_duration_seconds` | Histogram (native) | `caller={download,save}` | Time in `IsoChunk.SaveLoadedChunk`, the serialize step for a resident chunk. Two unrelated callers share the method, so always filter on `caller`. `download` is `PlayerDownloadServer.update` on the main thread, up to 20 times per connection per tick — the chunk-streaming path, charged to the tick rather than the worker. `save` is `ServerCell.Save` going to disk via `ServerChunkLoader.addSaveLoadedJob`; it fires 64 chunks per loaded cell on every `SaveAll` and would otherwise swamp the download series by orders of magnitude. |
 | `storm_chunk_stream_serialized_total` | Counter | `caller={download,save}` | Chunks serialized by `SaveLoadedChunk`, split the same way as the histogram above. `caller="download"` is the resident chunks serialized on the main thread for the stream; `caller="save"` is persistence and has nothing to do with chunk streaming. |
 | `storm_chunk_stream_not_required_total` | Counter | `same_on_server={true,false}` | `NotRequiredInZip` replies. `true` means the client's copy already matched; `false` means it is being told the chunk is not coming. |
-| `storm_chunk_stream_duplicate_requests_total` | Counter | — | Queued requests dropped because a newer request for the same `wx,wy` was already waiting — since 42.20.3 the re-ask is driven by the server's own `ChunkNotReady` replies (the removed client 8-second resend timer used to be the cause). The best server-side proxy for client-perceived stall. Also increments `storm_chunk_stream_not_required_total{same_on_server="false"}`. |
+| `storm_chunk_stream_duplicate_requests_total` | Counter | — | Queued requests dropped because a newer request for the same `wx,wy` was already waiting. Re-asks are driven by the server's `ChunkNotReady` replies or the chunk map re-wanting a cancelled chunk. The best server-side proxy for client-perceived stall. Also increments `storm_chunk_stream_not_required_total{same_on_server="false"}`. |
 | `storm_chunk_stream_peer_cell_holes` | Gauge | `username` | Cells still flagged unloaded in the server's copy of one peer's cell mirror, summed over all four split-screen indices. Read from `UdpConnection.getLoadedCell(index).loaded`, the same `boolean[]` the client's `BaseVehicle.isInvalidChunkAhead` brake consults — one boolean per 64x64 tiles. The server pushes the array on change, so its copy is never fresher than the client's: treat this as a lower bound. Non-zero around a driving player is the bookkeeping brake, not a real chunk shortfall. |
 | `storm_chunk_stream_peer_cell_holes_max` | Gauge | — | Largest per-peer hole count this tick. Unlabelled companion for alerting without a `topk`. |
 | `storm_chunk_stream_peer_brake_cells` | Gauge | `username` | Unloaded mirror cells inside the 3x3 cell window around the peer's own cell. The mirror spans 256x256 tiles or more, but `BaseVehicle.isInvalidChunkAhead` only looks 16 tiles ahead, so only adjacent cells can actually force the brake. Sharper than `storm_chunk_stream_peer_cell_holes`, which sits high on distant edge cells that never matter. |

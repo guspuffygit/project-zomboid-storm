@@ -82,13 +82,11 @@ currently-applied value.
 
 ### Zombie culling is a vanilla option
 
-Storm used to ship `Storm.ZombieCullThreshold`. It is **gone** as of the 42.20.0 update — set
-vanilla's `ZombieConfig.ZombiesCountBeforeDelete` directly (world setup UI → Zombies, or
-`<SaveName>_SandboxVars.lua`). Through 42.19.1 the vanilla option was unusable (whole-map budget,
-capped at 500, minimum 10 so culling could not be turned off, and a missing decrement that
-mass-deleted ~10% of the population per frame on overshoot), which is why Storm patched around it.
-42.20.0 fixed all of that: the budget is the per-connection surplus of the zombie list actually
-streamed to each client, the range is now `0..5000`, and `0` means "never cull".
+Storm no longer ships `Storm.ZombieCullThreshold` — set vanilla's
+`ZombieConfig.ZombiesCountBeforeDelete` directly (world setup UI → Zombies, or
+`<SaveName>_SandboxVars.lua`). Vanilla's option is now usable: the budget is the per-connection
+surplus of the zombie list streamed to each client, the range is `0..5000`, and `0` means
+"never cull".
 
 Upgrading from a Storm build that had the option: any `Storm.ZombieCullThreshold` line left in
 `<SaveName>_SandboxVars.lua` is inert (unregistered options are never read and are dropped on the

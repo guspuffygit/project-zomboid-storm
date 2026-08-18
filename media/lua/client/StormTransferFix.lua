@@ -338,8 +338,7 @@ function ISInventoryTransferAction:start()
     -- Wait for server to tell us when the transfer is done
     self.action:setWaitForFinished(true)
 
-    -- KEY CHANGE: UUID-based transactions instead of the vanilla batched byte-ID
-    -- transaction. checkQueueList mirrors vanilla 42.20.0 start(): it merges queued
+    -- UUID-based transactions — checkQueueList mirrors vanilla's start(): it merges queued
     -- same-type light items into queueList[1] before the batch is authorized.
     local items = { self.item }
     self:checkQueueList()
@@ -478,11 +477,8 @@ function ISInventoryTransferAction:perform()
         return
     end
 
-    -- Replicate vanilla 42.20.0 perform() client path. transferItem() is NOT called:
-    -- 42.20.0 removed its isClient() early-return, so a client call now performs a
-    -- real local move (including transmitRemoveItemFromSquare for floor pickups) for
-    -- items the server never authorized. The server already moved every batch member;
-    -- the client only plays feedback, mirroring vanilla's `if not isClient()` split.
+    -- transferItem() is NOT called: the server already moved every batch member; the
+    -- client only plays feedback.
     self.item:setJobDelta(0.0)
     local queuedItem = table.remove(self.queueList, 1)
 
@@ -503,7 +499,7 @@ function ISInventoryTransferAction:perform()
         end
     end
 
-    -- Merge actions queued while this batch was in flight (vanilla 42.20.0 runs
+    -- Merge actions queued while this batch was in flight (vanilla runs
     -- checkQueueList here on the client, after the item loop)
     self:checkQueueList()
 
@@ -524,7 +520,7 @@ function ISInventoryTransferAction:perform()
             time = 0
         end
         self.action:reset()
-        -- KEY CHANGE: UUID-based transactions for the whole next batch
+        -- UUID-based transactions for the next batch
         self._stormTransfers =
             createStormBatch(self.character, nextItem.items, self.srcContainer, self.destContainer)
         self.maxTime = time

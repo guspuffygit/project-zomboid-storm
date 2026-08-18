@@ -15,10 +15,6 @@ import net.bytebuddy.pool.TypePool;
  * no spare slot to reuse — {@code minX/maxX/minY/maxY} are dead in 42.20.x but are still vanilla
  * state a future build could revive.
  *
- * <p>Until 42.20.2 this transformer also counted the 3-strike chunk retry ladder; 42.20.3 removed
- * {@code getRetryChunk} entirely (missing chunks are now parked via {@code
- * PlayerDownloadServer.queueUntilGenerated} until world generation produces them).
- *
  * <p>Pure measurement.
  */
 public class ClientChunkRequestPatch extends StormClassTransformer {

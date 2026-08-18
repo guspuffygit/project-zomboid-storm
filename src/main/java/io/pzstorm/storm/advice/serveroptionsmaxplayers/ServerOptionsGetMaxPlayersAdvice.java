@@ -7,8 +7,7 @@ import net.bytebuddy.asm.Advice;
  * Advice for {@code zombie.network.ServerOptions.getMaxPlayers()}.
  *
  * <p>The vanilla body is {@code return Math.min(254, getInstance().maxPlayers.getValue())} — a hard
- * ceiling on top of the option's own declared max of 254 (both were 100 through 42.20.2; 42.20.3
- * raised them alongside the 255-slot RakNet tables). The exit advice routes the vanilla return
+ * ceiling on top of the option's own declared max of 254. The exit advice routes the vanilla return
  * value through {@link StormMaxPlayersConfig#overrideOrVanilla(int)}: while the {@code
  * Storm.OverrideMaxPlayers} sandbox option is off (the default) the vanilla value passes through
  * untouched; while on, every caller sees the {@code Storm.MaxPlayers} override instead. Rewriting

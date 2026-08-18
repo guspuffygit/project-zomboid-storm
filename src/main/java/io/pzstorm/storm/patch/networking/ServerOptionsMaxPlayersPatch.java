@@ -10,9 +10,9 @@ import net.bytebuddy.pool.TypePool;
 /**
  * Routes the return value of {@code ServerOptions.getMaxPlayers()} through {@code
  * StormMaxPlayersConfig} so the {@code Storm.OverrideMaxPlayers} / {@code Storm.MaxPlayers} sandbox
- * pair can replace the {@code .ini} value (and bypass vanilla's hard cap — 254 since 42.20.3, 100
- * before) live. Registered server-only; a vanilla or Storm client keeps the vanilla getter. See
- * {@link io.pzstorm.storm.advice.serveroptionsmaxplayers.ServerOptionsGetMaxPlayersAdvice}.
+ * pair can replace the {@code .ini} value (and bypass vanilla's hard cap of 254) live. Registered
+ * server-only; a vanilla or Storm client keeps the vanilla getter. See {@link
+ * io.pzstorm.storm.advice.serveroptionsmaxplayers.ServerOptionsGetMaxPlayersAdvice}.
  */
 public class ServerOptionsMaxPlayersPatch extends StormClassTransformer {
 

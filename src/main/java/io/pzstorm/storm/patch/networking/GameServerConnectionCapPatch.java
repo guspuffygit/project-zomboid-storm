@@ -18,9 +18,9 @@ import zombie.network.ServerOptions;
 
 /**
  * Gives the dedicated server's RakNet peer real headroom above {@code MaxPlayers} instead of the
- * vanilla hard-coded incoming-connection cap (101 through 42.20.2; 255 since 42.20.3, which
- * absorbed most of this fix — the resolved cap now usually matches vanilla and this patch mainly
- * publishes the cap metrics and guards future regressions).
+ * vanilla hard-coded incoming-connection cap ({@value RakNetConnectionCapConfig#VANILLA_CAP}). The
+ * resolved cap usually matches vanilla; this patch publishes the cap metrics and guards
+ * regressions.
  *
  * <p>The substitution is scoped to {@code new UdpEngine(...)} calls occurring inside {@code
  * GameServer.startServer()}, which is the server's single listening peer. {@code

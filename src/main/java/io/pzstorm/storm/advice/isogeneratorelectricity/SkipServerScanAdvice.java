@@ -31,9 +31,9 @@ import zombie.network.ServerMap;
  *       update()}. The other callers of {@code setSurroundingElectricity} ({@code setActivated},
  *       {@code syncIsoObjectReceive}) are not patched, so the value is still refreshed whenever the
  *       generator is turned on/off. It drifts between activations as items in range change state
- *       &mdash; since 42.20.0 light switches register as generator loads and toggle at dusk/dawn
- *       with no activation change, so the drift is bounded by re-arming the vanilla scan at most
- *       once per in-game hour per activated generator ({@link
+ *       &mdash; light switches register as generator loads and toggle at dusk/dawn with no
+ *       activation change, so the drift is bounded by re-arming the vanilla scan at most once per
+ *       in-game hour per activated generator ({@link
  *       io.pzstorm.storm.patch.performance.IsoGeneratorScanRefresh}).
  *   <li>The chunk-position bookkeeping ({@code chunk.addGeneratorPos / removeGeneratorPos}) drives
  *       {@code IsoGridSquare.haveElectricity()} via {@code IsoChunk.isGeneratorPoweringSquare} and
@@ -72,8 +72,8 @@ public class SkipServerScanAdvice {
         }
         if (!updateSurrounding) {
             // Steady state. Re-arm the vanilla scan once per in-game hour so totalPowerUsing
-            // (fuel drain) tracks load changes between activations — e.g. 42.20.0's light
-            // switches toggling at dusk/dawn. The tail block runs the full scan and clears
+            // (fuel drain) tracks load changes between activations — e.g. light switches
+            // toggling at dusk/dawn. The tail block runs the full scan and clears
             // the flag itself.
             if (IsoGeneratorScanRefresh.shouldRefreshHourly(self)) {
                 updateSurrounding = true;

@@ -5,9 +5,9 @@
 -- server to delete the item from the player's inventory. The placed item therefore
 -- exists on the placing client and nowhere else: other players never see it, it is gone
 -- after a relog, and it cannot be picked up again, because every pickup path resolves the
--- ground item on the server. Before 42.20.0 the deprecated IsoObject:transmitCompleteItemToServer()
--- could paper over this; 42.20.0 deleted it along with AddItemToMapPacket.processServer, so
--- a client-built ground object can no longer reach the server by any route.
+-- ground item on the server. There is no vanilla client-to-server route:
+-- transmitCompleteItemToServer() and AddItemToMapPacket.processServer were removed, so
+-- a client-built ground object cannot reach the server.
 --
 -- Instead of touching the world locally, send the placement to StormTransferHandler and let
 -- the server move the item and broadcast AddItemToMap back to every relevant client -- the

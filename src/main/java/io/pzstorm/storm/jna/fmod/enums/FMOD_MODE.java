@@ -33,29 +33,21 @@ public enum FMOD_MODE {
 
     private final long value;
 
-    // Constructor to bind the hex value to the enum constant
     FMOD_MODE(long value) {
         this.value = value;
     }
 
-    // Getter to retrieve the long value
     public long getValue() {
         return value;
     }
 
     public static long combineModes(FMOD_MODE... modes) {
         long totalMode = 0;
-
-        // 2. Loop through every mode passed in
         if (modes != null) {
             for (FMOD_MODE m : modes) {
-                // Accumulate the flags using Bitwise OR (|=)
-                // Note: If FMOD_MODE is an Object/Enum, you likely need '.getValue()'
-                // instead of just 'm'. E.g.: totalMode |= m.getValue();
                 totalMode |= m.getValue();
             }
         }
-
         return totalMode;
     }
 }

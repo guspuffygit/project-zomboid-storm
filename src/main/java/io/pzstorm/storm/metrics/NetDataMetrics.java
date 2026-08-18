@@ -43,19 +43,16 @@ public final class NetDataMetrics {
                     .register(StormPrometheus.registry());
 
     /**
-     * @deprecated Misnomer — nothing is deferred; the packet is dropped. Kept publishing the same
-     *     count as {@link #DROPPED_TOTAL} for dashboard/alert backwards compatibility. Use {@code
-     *     pz_netdata_dropped_total}.
+     * @deprecated Use {@code pz_netdata_dropped_total}. Publishes the identical count for dashboard
+     *     compatibility.
      */
     @Deprecated
     private static final Counter DEFERRED_TOTAL_DEPRECATED =
             Counter.builder()
                     .name("pz_netdata_deferred_total")
                     .help(
-                            "DEPRECATED: renamed to pz_netdata_dropped_total (these packets are"
-                                    + " dropped, not deferred). Publishes the identical count for"
-                                    + " backwards compatibility; migrate dashboards and alerts to"
-                                    + " the new name.")
+                            "Use pz_netdata_dropped_total. Publishes the identical count for"
+                                    + " dashboard compatibility.")
                     .register(StormPrometheus.registry());
 
     private static final Counter VEHICLE_REQUEST_EXEMPT_TOTAL =

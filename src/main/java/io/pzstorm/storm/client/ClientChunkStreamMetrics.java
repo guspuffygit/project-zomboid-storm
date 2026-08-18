@@ -697,9 +697,9 @@ public final class ClientChunkStreamMetrics {
      * moved under us" and stops, since a partial sample of a racing list is fine and a thrown frame
      * is not.
      *
-     * <p>42.20.3 removed {@code ChunkRequest.time}, so the send stamp is this walk's own first
-     * observation — at most one frame after {@code updateMain} put the batch on the wire, since the
-     * walk runs unstrided every frame.
+     * <p>Vanilla has no per-request timestamp ({@code ChunkRequest.time} does not exist), so the
+     * send stamp is this walk's own first observation — at most one frame after {@code updateMain}
+     * put the batch on the wire, since the walk runs unstrided every frame.
      */
     private static void scanInFlight(WorldStreamer streamer) throws Exception {
         if (pendingRequests1 == null) {
