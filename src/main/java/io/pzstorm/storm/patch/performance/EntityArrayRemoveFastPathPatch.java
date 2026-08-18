@@ -2,20 +2,28 @@ package io.pzstorm.storm.patch.performance;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.modifier.FieldManifestation;
+import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Instruments {@code zombie.entity.util.Array} so removals from the engine's global entity array
- * ({@code EngineEntityManager.entities}, ~123k elements live at 79 players) resolve in O(1) instead
- * of a linear identity scan ({@code Array.removeValue} showed 3.1% main-thread self time during
- * cell-unload bursts — the dominant per-entity cost of {@code IsoChunk.removeFromWorld}).
+ * Instruments {@code zombie.entity.util.Array} so removals from the engine's entity arrays (the
+ * global {@code EngineEntityManager.entities}, ~123k elements live at 79 players, and every {@code
+ * EntityBucket.entities} re-scanned per removal by {@code updateBucketMembership}) resolve in O(1)
+ * instead of a linear identity scan ({@code Array.removeValue} showed 3.1% main-thread self time
+ * during cell-unload bursts pre-index; the bucket scans alone were ~2% at 116 players).
  *
- * <p>Two advices, both instance-gated inside {@code StormEntityIndex} so every {@code Array} other
- * than the tracked one pays a single reference compare:
+ * <p>The redefinition adds a {@code stormEntityArrayIndex} field (public volatile {@code Object})
+ * and implements {@link io.pzstorm.storm.entity.StormIndexedArray} with accessors over it, so each
+ * tracked array carries its own removal index and discrimination is one field read (null =
+ * untracked, fall through to vanilla).
+ *
+ * <p>Two advices, instance-gated inside {@code StormEntityIndex} through that field:
  *
  * <ul>
  *   <li>{@code EntityArrayAddAdvice} on the single-arg {@code add(T)} — index maintenance.
@@ -57,7 +65,14 @@ public class EntityArrayRemoveFastPathPatch extends StormClassTransformer {
                             + " no-op (or worse, desync the entity index). Re-verify the patch"
                             + " against the current game source.");
         }
-        return builder.visit(
+        return builder.defineField(
+                        "stormEntityArrayIndex",
+                        Object.class,
+                        Visibility.PUBLIC,
+                        FieldManifestation.VOLATILE)
+                .implement(typePool.describe("io.pzstorm.storm.entity.StormIndexedArray").resolve())
+                .intercept(FieldAccessor.ofField("stormEntityArrayIndex"))
+                .visit(
                         Advice.to(
                                         typePool.describe(PKG + "EntityArrayAddAdvice").resolve(),
                                         locator)

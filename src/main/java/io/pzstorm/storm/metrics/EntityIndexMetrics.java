@@ -27,7 +27,9 @@ public final class EntityIndexMetrics {
             CounterWithCallback.builder()
                     .name("pz_entity_array_removes_total")
                     .help(
-                            "Removals from the engine's global entity array by executed path: fast"
+                            "Removals from the engine's indexed entity arrays (global"
+                                    + " EngineEntityManager.entities plus every"
+                                    + " EntityBucket.entities) by executed path: fast"
                                     + " = O(1) indexed swap-with-last after the identity"
                                     + " self-check passed; scan = handled by Storm's inline linear"
                                     + " scan (index miss around a kill-switch toggle, or an"
@@ -54,6 +56,17 @@ public final class EntityIndexMetrics {
                                     + " mirrors the engine's global entity array size while the"
                                     + " fast path is active.")
                     .callback(callback -> callback.call(StormEntityIndex.indexSize()))
+                    .register(StormPrometheus.registry());
+
+    @SuppressWarnings("unused")
+    private static final GaugeWithCallback TRACKED_ARRAYS =
+            GaugeWithCallback.builder()
+                    .name("storm_entity_index_tracked_arrays")
+                    .help(
+                            "Entity arrays carrying a StormEntityIndex removal index in the"
+                                    + " current world generation: 1 for the engine's global array"
+                                    + " plus 1 per EntityBucket.")
+                    .callback(callback -> callback.call(StormEntityIndex.trackedArrayCount()))
                     .register(StormPrometheus.registry());
 
     private EntityIndexMetrics() {}

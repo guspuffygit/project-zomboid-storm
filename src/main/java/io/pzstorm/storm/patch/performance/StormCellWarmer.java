@@ -19,7 +19,6 @@ import zombie.MapCollisionData;
 import zombie.characters.IsoPlayer;
 import zombie.characters.animals.AnimalPopulationManager;
 import zombie.characters.animals.IsoAnimal;
-import zombie.core.raknet.UdpConnection;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
@@ -53,9 +52,10 @@ import zombie.vehicles.BaseVehicle;
  * {@code ServerCell.Unload} stays untouched (vanilla destructive behavior) because it's used by the
  * shutdown save flow; warming is invoked from postupdate only.
  *
- * <p>The warm set is bounded by {@link StormCellWarmingConfig#maxWarmCells()}; when exceeded, the
- * least-recently-warm cells are restored and destructively unloaded via the vanilla path (see
- * {@link #evictOverBudget(ServerMap, boolean)}).
+ * <p>The warm set is bounded by {@link StormCellWarmingConfig#maxWarmCells()}; when exceeded, warm
+ * cells are restored and destructively unloaded via the vanilla path — preferring victims no player
+ * is near over the strict LRU head, at most a few per tick (see {@link #evictOverBudget(ServerMap,
+ * boolean)}).
  *
  * <p>Gated server-side on {@link StormCellWarmingConfig#isEnabled()}. Single-threaded — all calls
  * happen from the server main thread.
@@ -73,6 +73,27 @@ public final class StormCellWarmer {
     // Server main-thread only — no synchronization needed.
     private static final Set<IsoAnimal> WARMED_ANIMALS =
             Collections.newSetFromMap(new IdentityHashMap<>());
+
+    // Per-tick influence set (see StormPlayerInfluenceGrid): rebuilt at the top of runPostUpdate,
+    // consulted once per cell instead of sweeping every connection per cell. Valid only within the
+    // tick that rebuilt it.
+    private static final StormPlayerInfluenceGrid INFLUENCE_GRID = new StormPlayerInfluenceGrid();
+
+    // releventNow.contains(cell) is a linear scan with identity equals (ServerCell overrides
+    // neither equals nor hashCode); mirrored into an identity set once per tick so the per-cell
+    // check is O(1) with identical semantics.
+    private static final Set<ServerMap.ServerCell> RELEVENT_SET =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+
+    // Eviction policy (see evictOverBudget). The strict LRU head is often a cell a player is
+    // pacing right next to — evicting it is the rewarm thrash this feature exists to avoid — so
+    // the victim search scans the first EVICT_SCAN_DEPTH LRU-ordered candidates for one with no
+    // influence within EVICT_NEAR_MARGIN cells (Chebyshev), falling back to the plain head when
+    // every candidate is near. EVICT_MAX_PER_TICK bounds the per-tick unload cost; the warm set
+    // floats above the cap transiently and is trimmed over the following ticks.
+    private static final int EVICT_SCAN_DEPTH = 8;
+    private static final int EVICT_NEAR_MARGIN = 2;
+    private static final int EVICT_MAX_PER_TICK = 4;
 
     // A cell that throws on rewarm would otherwise retry — and log — on every tick for as long as
     // a player stands next to it. Back the retry off linearly to a ten-second ceiling instead.
@@ -220,10 +241,17 @@ public final class StormCellWarmer {
         ArrayList<ServerMap.ServerCell> releventNow = serverMap.releventNow;
         try {
             projectDriverLookahead(serverMap);
+            RELEVENT_SET.clear();
+            RELEVENT_SET.addAll(releventNow);
+            INFLUENCE_GRID.rebuild(
+                    GameServer.udpEngine == null
+                            ? Collections.emptyList()
+                            : GameServer.udpEngine.connections);
             for (int n = 0; n < loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = loadedCells.get(n);
                 boolean shouldBeLoaded =
-                        releventNow.contains(cell) || !outsidePlayerInfluence(cell);
+                        RELEVENT_SET.contains(cell)
+                                || INFLUENCE_GRID.containsCell(cell.wx, cell.wy);
                 boolean warm = isWarm(cell);
 
                 if (warm) {
@@ -499,16 +527,96 @@ public final class StormCellWarmer {
     }
 
     /**
+     * Eviction-only variant of {@link #reconnectAndRestore}: these chunks go straight into {@code
+     * cell.Unload()}, so only the state that unload's own teardown consumes is re-attached.
+     *
+     * <ul>
+     *   <li>Population managers and the pathfinder are re-added per chunk — unload's {@code
+     *       removeChunkFromWorld} calls must stay balanced against an add (the native pathfind side
+     *       tracks loaded chunks, and the pop managers virtualize a chunk's population on remove).
+     *   <li>{@code MapCollisionData.addChunkToWorld} is skipped: its {@code removeChunkFromWorld}
+     *       is an empty no-op (vanilla), so the chunk never left collision during {@code warm()}
+     *       and the re-add would be pure wasted native work on a chunk that is leaving.
+     *   <li>Stashed animals are handed straight to {@code virtualizeAnimal} — vanilla's own
+     *       transition for an animal leaving the loaded world (its only vanilla caller is the
+     *       wander-out path in {@code IsoMovingObject.doDeferredMovement}). Relative to the full
+     *       path's re-place-then-unload, it additionally frees the {@code AnimalInstanceManager}
+     *       entry (which vanilla's server-side chunk unload leaks — its remove is client-gated) and
+     *       broadcasts the id through {@code AnimalSynchronizationManager.delete}, so a client
+     *       still near the evicted cell drops the instance instead of keeping a frozen ghost.
+     *   <li>Dead bodies are fully restored ({@link #restoreDeadBodies}) so unload's save path
+     *       serializes them under the ObjectIDs vanilla knows them by.
+     * </ul>
+     *
+     * Advances the shared {@code reconnectCursor} chunk by chunk like the full path, so a throw
+     * mid-sweep leaves an accurate record of what was re-added (the eviction caller unloads anyway,
+     * but never double-adds).
+     */
+    private static void evictLiteReconnect(ServerMap.ServerCell cell, WarmCell warm) {
+        while (warm.reconnectCursor < 64) {
+            IsoChunk chunk = cell.chunks[warm.reconnectCursor / 8][warm.reconnectCursor % 8];
+            if (chunk != null && chunk.jobType != IsoChunk.JobType.SoftReset) {
+                AnimalPopulationManager.getInstance().addChunkToWorld(chunk);
+                ZombiePopulationManager.instance.addChunkToWorld(chunk);
+                if (PathfindNative.useNativeCode) {
+                    PathfindNative.instance.addChunkToWorld(chunk);
+                } else {
+                    PolygonalMap2.instance.addChunkToWorld(chunk);
+                }
+            }
+            warm.reconnectCursor++;
+        }
+        virtualizeAnimals(warm.animals);
+        restoreDeadBodies(warm.deadBodies);
+    }
+
+    /**
+     * Hands every stashed animal to the population manager, the outcome a vanilla unload of its
+     * chunk would have produced (same terminal state as {@link #restoreAnimals}'s square-gone
+     * fallback). The animal is never serialized into the evicted chunk's save in either eviction
+     * path — {@code IsoChunk.removeFromWorld} clears every square's moving-object list before
+     * {@code ServerCell.Unload} queues the save job — so the native population record is the sole
+     * owner afterward. Clears the list so a retry can never virtualize the same animal twice.
+     */
+    private static void virtualizeAnimals(List<WarmAnimal> animals) {
+        for (WarmAnimal stash : animals) {
+            IsoAnimal animal = stash.animal;
+            WARMED_ANIMALS.remove(animal);
+            try {
+                AnimalPopulationManager.getInstance().virtualizeAnimal(animal);
+            } catch (Throwable t) {
+                StormLogger.LOGGER.error(
+                        "StormCellWarmer failed to virtualize animal at {},{},{}",
+                        stash.x,
+                        stash.y,
+                        stash.z,
+                        t);
+            }
+        }
+        animals.clear();
+    }
+
+    /**
      * Memory bound on the warm set. A warm cell keeps its full chunk/square state resident, so
-     * without a cap the map grows with every cell any player has ever walked away from. Evicts
-     * least-recently-warm cells above {@link StormCellWarmingConfig#maxWarmCells()} through the
-     * vanilla destructive path: reconnect + restore first, so the pop managers virtualize animals
-     * and the chunk save jobs persist state exactly as a vanilla Unload of a live cell would.
+     * without a cap the map grows with every cell any player has ever walked away from. Evicts warm
+     * cells above {@link StormCellWarmingConfig#maxWarmCells()} through the vanilla destructive
+     * path: reconnect first, so the pop managers virtualize animals and the chunk save jobs persist
+     * state exactly as a vanilla Unload of a live cell would — via {@link #evictLiteReconnect},
+     * which skips the re-attach work the immediate unload would only undo.
+     *
+     * <p>Victim choice is distance-aware (the influence grid is rebuilt every tick): the LRU head
+     * is often a cell a player is standing two cells away from — the very cell most likely to be
+     * rewarmed moments after eviction — so the first {@value #EVICT_SCAN_DEPTH} LRU-ordered
+     * candidates are scanned for one with no player influence within {@value #EVICT_NEAR_MARGIN}
+     * cells, falling back to the plain head when every candidate is near (which also guarantees a
+     * cell whose rewarm keeps throwing is eventually retired). At most {@value #EVICT_MAX_PER_TICK}
+     * cells are evicted per tick — each eviction is a full vanilla unload, so the cap keeps a warm
+     * burst from turning into one spike tick; the set floats above the cap transiently ({@code
+     * storm_cell_warm_over_cap}).
      *
      * <p>Everything still in {@code WARM_CELLS} at this point was either not relevant this tick or
      * failed to rewarm (relevant cells that rewarmed were removed by the caller's loop), so
-     * evicting the oldest is always safe — and it is what finally retires a cell whose rewarm keeps
-     * throwing, since that cell keeps its original position in the insertion order.
+     * evicting any of them is always safe.
      *
      * @return updated pathfindPaused flag — caller's finally block resumes ServerLOS.
      */
@@ -518,15 +626,32 @@ public final class StormCellWarmer {
             return pathfindPaused;
         }
         boolean evicted = false;
-        while (WARM_CELLS.size() > max) {
+        int evictions = 0;
+        long nearSkips = 0;
+        while (WARM_CELLS.size() > max && evictions < EVICT_MAX_PER_TICK) {
+            int depth = Math.min(EVICT_SCAN_DEPTH, WARM_CELLS.size());
+            int[] wxs = new int[depth];
+            int[] wys = new int[depth];
+            Iterator<WarmCell> scan = WARM_CELLS.values().iterator();
+            for (int i = 0; i < depth; i++) {
+                WarmCell candidate = scan.next();
+                wxs[i] = candidate.cell.wx;
+                wys[i] = candidate.cell.wy;
+            }
+            int victimIndex = selectEvictionVictim(wxs, wys, INFLUENCE_GRID, EVICT_NEAR_MARGIN);
+            nearSkips += victimIndex;
             Iterator<WarmCell> it = WARM_CELLS.values().iterator();
+            for (int i = 0; i < victimIndex; i++) {
+                it.next();
+            }
             WarmCell oldest = it.next();
             it.remove();
+            evictions++;
             ServerMap.ServerCell cell = oldest.cell;
             try {
                 // No OnChunkRewarmedEvent here — these chunks are leaving the world, not
                 // re-entering the active set; mods must not be told they are live again.
-                reconnectAndRestore(cell, oldest);
+                evictLiteReconnect(cell, oldest);
             } catch (Throwable t) {
                 StormLogger.LOGGER.error(
                         "StormCellWarmer eviction restore failed for cell {},{} — unloading anyway",
@@ -552,27 +677,26 @@ public final class StormCellWarmer {
         if (evicted) {
             StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
         }
+        if (nearSkips > 0) {
+            StormCellWarmingMetrics.incEvictNearSkips(nearSkips);
+        }
+        StormCellWarmingMetrics.setWarmOverCap(Math.max(0, WARM_CELLS.size() - max));
         return pathfindPaused;
     }
 
-    // Re-implementation of ServerMap.outsidePlayerInfluence(ServerCell) which is private. Kept
-    // byte-for-byte in sync with vanilla — used only inside runPostUpdate's body replacement.
-    private static boolean outsidePlayerInfluence(ServerMap.ServerCell cell) {
-        int x1 = cell.wx * 64;
-        int y1 = cell.wy * 64;
-        int x2 = (cell.wx + 1) * 64;
-        int y2 = (cell.wy + 1) * 64;
-        List<UdpConnection> connections = GameServer.udpEngine.connections;
-        for (int n = 0; n < connections.size(); n++) {
-            UdpConnection c = connections.get(n);
-            if (c.isRelevantTo(x1, y1)
-                    || c.isRelevantTo(x2, y1)
-                    || c.isRelevantTo(x2, y2)
-                    || c.isRelevantTo(x1, y2)) {
-                return false;
+    /**
+     * Index of the eviction victim among LRU-ordered candidate cell coordinates: the first with no
+     * player influence within {@code margin} cells (Chebyshev), else {@code 0} — the plain LRU
+     * head. Package-private for tests; the grid must have been rebuilt this tick.
+     */
+    static int selectEvictionVictim(
+            int[] candidateWx, int[] candidateWy, StormPlayerInfluenceGrid grid, int margin) {
+        for (int i = 0; i < candidateWx.length; i++) {
+            if (!grid.nearInfluence(candidateWx[i], candidateWy[i], margin)) {
+                return i;
             }
         }
-        return true;
+        return 0;
     }
 
     private static String ineligibleReason(ServerMap.ServerCell cell) {

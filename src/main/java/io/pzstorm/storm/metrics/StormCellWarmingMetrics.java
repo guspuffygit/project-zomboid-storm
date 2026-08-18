@@ -82,6 +82,24 @@ public final class StormCellWarmingMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
+    private static final Counter EVICT_NEAR_SKIPS =
+            Counter.builder()
+                    .name("storm_cell_warm_evict_near_skip_total")
+                    .help(
+                            "LRU-head eviction candidates spared because player influence was"
+                                    + " within the near margin — a farther warm cell was evicted"
+                                    + " instead of one likely to be rewarmed moments later.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge WARM_OVER_CAP =
+            Gauge.builder()
+                    .name("storm_cell_warm_over_cap")
+                    .help(
+                            "Warm cells above -Dstorm.cells.maxWarm after this tick's evictions;"
+                                    + " the per-tick eviction cap trims the excess over the"
+                                    + " following ticks.")
+                    .register(StormPrometheus.registry());
+
     private static final Histogram REWARM_OP_DURATION =
             Histogram.builder()
                     .name("storm_cell_rewarm_op_duration_seconds")
@@ -123,5 +141,13 @@ public final class StormCellWarmingMetrics {
 
     public static void recordRewarmOpNanos(long nanos) {
         REWARM_OP_DURATION.observe(nanos / 1e9);
+    }
+
+    public static void incEvictNearSkips(long count) {
+        EVICT_NEAR_SKIPS.inc(count);
+    }
+
+    public static void setWarmOverCap(int count) {
+        WARM_OVER_CAP.set(count);
     }
 }

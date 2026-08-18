@@ -5,12 +5,12 @@ import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 
 /**
- * Enter-skip hook on {@code zombie.entity.util.Array.removeValue(T, boolean)}: for the tracked
- * global entity array, {@link StormEntityIndex#onRemoveValue} performs the removal via index lookup
- * + swap-with-last {@code removeIndex} (with an identity self-check first) and the vanilla linear
- * scan is skipped; the exit advice then materializes {@code removeValue}'s boolean result from the
- * verdict. Untracked arrays — the overwhelming majority of calls — fall through to the vanilla body
- * after one reference compare.
+ * Enter-skip hook on {@code zombie.entity.util.Array.removeValue(T, boolean)}: for a tracked array
+ * (the global entity array or a bucket's), {@link StormEntityIndex#onRemoveValue} performs the
+ * removal via index lookup + swap-with-last {@code removeIndex} (with an identity self-check first)
+ * and the vanilla linear scan is skipped; the exit advice then materializes {@code removeValue}'s
+ * boolean result from the verdict. Untracked arrays — the overwhelming majority of calls — fall
+ * through to the vanilla body after one field read (the injected index slot is null).
  */
 public class EntityArrayRemoveValueAdvice {
 

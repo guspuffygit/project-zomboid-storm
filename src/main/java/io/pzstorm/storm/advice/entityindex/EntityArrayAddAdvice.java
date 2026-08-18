@@ -6,9 +6,10 @@ import zombie.network.GameServer;
 
 /**
  * Exit hook on the single-arg {@code zombie.entity.util.Array.add(T)}: keeps the {@link
- * StormEntityIndex} in sync at the exact instant an entity is appended to the tracked global entity
- * array. For every other {@code Array} instance in the JVM the helper bails after one reference
- * compare, so the per-add overhead off the tracked array is negligible.
+ * StormEntityIndex} in sync at the exact instant an entity is appended to a tracked array (the
+ * global entity array or a bucket's). For every other {@code Array} instance in the JVM the helper
+ * bails after one field read (the injected index slot is null), so the per-add overhead off tracked
+ * arrays is negligible.
  */
 public class EntityArrayAddAdvice {
 

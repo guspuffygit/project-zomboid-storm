@@ -96,6 +96,7 @@ import io.pzstorm.storm.patch.performance.EngineEntityManagerIndexPatch;
 import io.pzstorm.storm.patch.performance.EngineUpdatePatch;
 import io.pzstorm.storm.patch.performance.EngineUpdateSimulationPatch;
 import io.pzstorm.storm.patch.performance.EntityArrayRemoveFastPathPatch;
+import io.pzstorm.storm.patch.performance.EntityBucketIndexPatch;
 import io.pzstorm.storm.patch.performance.EntitySimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquarePatch;
 import io.pzstorm.storm.patch.performance.EventTriggerFastPathPatch;
@@ -360,6 +361,7 @@ public class StormClassTransformers {
             registerTransformer(new FluidContainerUpdateSimulationFastPathPatch());
             registerTransformer(new EcsGetClassCachePatch());
             registerTransformer(new EngineEntityManagerIndexPatch());
+            registerTransformer(new EntityBucketIndexPatch());
             registerTransformer(new EntityArrayRemoveFastPathPatch());
             registerTransformer(new GameEntityManagerUpdatePatch());
             registerTransformer(new NetworkZombieManagerAuthPatch());
