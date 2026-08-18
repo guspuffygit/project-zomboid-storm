@@ -90,7 +90,7 @@ public final class ServerDialog extends JDialog {
         setLocationRelativeTo(owner);
     }
 
-    private static int addRow(JPanel form, int row, String label, JComponent field) {
+    static int addRow(JPanel form, int row, String label, JComponent field) {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(4, 4, 4, 4);
         gbc.gridy = row;

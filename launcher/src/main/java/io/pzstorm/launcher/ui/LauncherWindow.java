@@ -241,7 +241,9 @@ public final class LauncherWindow extends JFrame {
                     launchOnlyButton,
                     Box.createVerticalStrut(14),
                     joinForceButton,
-                    Box.createVerticalGlue()
+                    Box.createVerticalGlue(),
+                    Box.createVerticalStrut(14),
+                    new SponsorPanel(this::onPlayOnAtf)
                 }) {
             if (c instanceof javax.swing.JComponent) {
                 ((javax.swing.JComponent) c).setAlignmentX(LEFT_ALIGNMENT);
@@ -432,6 +434,67 @@ public final class LauncherWindow extends JFrame {
                     gameDir != null
                             ? "Game directory: " + gameDir
                             : "Game directory still not found.");
+        }
+    }
+
+    /**
+     * Sponsored-card one-click flow: offer any existing After The Fall profile first, else create
+     * one pre-filled with the server's address (no access password) so the player only enters
+     * character credentials, then save it and connect.
+     */
+    private void onPlayOnAtf() {
+        java.util.List<ServerProfile> existing = new java.util.ArrayList<>();
+        for (ServerProfile p : config.servers) {
+            if (p.host.equals(SponsorPanel.ATF_HOST) && p.port == SponsorPanel.ATF_PORT) {
+                existing.add(p);
+            }
+        }
+        if (!existing.isEmpty()) {
+            JList<ServerProfile> picker = new JList<>(existing.toArray(new ServerProfile[0]));
+            picker.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            picker.setCellRenderer(new ServerCellRenderer());
+            picker.setBackground(StormTheme.BG_INSET);
+            picker.setFixedCellHeight(52);
+            picker.setVisibleRowCount(Math.min(existing.size(), 6));
+            picker.setSelectedIndex(0);
+            JScrollPane scroll = new JScrollPane(picker);
+            scroll.setBorder(BorderFactory.createLineBorder(StormTheme.BORDER));
+            scroll.getViewport().setBackground(StormTheme.BG_INSET);
+            Object[] message = {"Existing After The Fall profiles", scroll};
+            String[] options = {"Play", "Create new profile", "Cancel"};
+            int choice =
+                    JOptionPane.showOptionDialog(
+                            this,
+                            message,
+                            "Play on After The Fall",
+                            JOptionPane.DEFAULT_OPTION,
+                            JOptionPane.QUESTION_MESSAGE,
+                            null,
+                            options,
+                            options[0]);
+            if (choice == 0) {
+                ServerProfile picked = picker.getSelectedValue();
+                if (picked != null) {
+                    serverList.setSelectedValue(picked, true);
+                    onJoin(false);
+                }
+                return;
+            }
+            if (choice != 1) {
+                return;
+            }
+        }
+        ServerProfile profile = new ServerProfile();
+        profile.name = "After The Fall";
+        profile.host = SponsorPanel.ATF_HOST;
+        profile.port = SponsorPanel.ATF_PORT;
+        if (AtfSetupDialog.setup(this, profile)) {
+            ServerStore.save(config, profile);
+            config.servers.add(profile);
+            model.addElement(profile);
+            serverList.setSelectedValue(profile, true);
+            saveConfig();
+            onJoin(false);
         }
     }
 
