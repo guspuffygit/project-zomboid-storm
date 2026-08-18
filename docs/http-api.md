@@ -30,6 +30,31 @@ with `@HttpEndpoint(path = "...", method = "GET"|"POST")` on any class discovere
 by `StormEventDispatcher`. The dispatcher rejects handlers with the wrong return
 type or signature at registration time and serves them on a shared thread pool.
 
+## Game-Port TCP Server
+
+Separate from the backend server above, Storm servers also open a **TCP** HTTP
+server on the game's UDP port number (`DefaultPort`, usually 16261 — TCP and
+UDP port spaces are independent, so both bind simultaneously). It starts on
+`OnServerStarted`, is **on by default**, and is disabled with
+`-Dstorm.gameport.http.enabled=false`. Storm clients use it to move
+connection-phase data off RakNet's 1&nbsp;KB-packet UDP transfer machinery.
+
+This surface is **internet-facing**: it uses a fully separate endpoint registry
+(`@GameHttpEndpoint`), so backend endpoints (`/eval`, `/reload`, client-mod
+files, …) can never leak onto it. Firewall note: port-forward rules are
+per-protocol — an existing UDP rule for the game port does **not** open TCP;
+forward TCP on the same port or clients silently fall back to UDP.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/storm/ping` | Plain-text Storm version. Client reachability/capability probe. |
+| POST | `/storm/handshake` | Marks the caller's RakNet connection as a Storm connection. Body `{"steamId": "...", "stormVersion": "..."}`; the claim binds only if a live UDP connection matches the steamId **and** the TCP source IP. Returns `{sessionToken, serverStormVersion}`; the token authenticates later requests via the `X-Storm-Session` header and expires with the RakNet connection. |
+
+Handlers register with `@GameHttpEndpoint(path = "...", method = ...)` — same
+signature rules as `@HttpEndpoint`, different registry. Client-side, the
+`storm-tcp-channel` watcher dials the handshake automatically once the UDP
+connection is up.
+
 ## Developer Hot-Reload Endpoints
 
 Storm ships two optional HTTP endpoints for iterating on a running game without restarting it:

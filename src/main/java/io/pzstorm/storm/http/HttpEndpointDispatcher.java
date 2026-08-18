@@ -1,176 +1,34 @@
 package io.pzstorm.storm.http;
 
-import static io.pzstorm.storm.logging.StormLogger.LOGGER;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import io.pzstorm.storm.metrics.HttpEndpointMetrics;
-import java.io.IOException;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Registry and dispatcher for {@link HttpEndpoint}-annotated handler methods. Exact path matching
- * only; query strings are read from the event but not used for routing.
- *
- * <p>Handler methods may declare a second parameter of any non-{@link HttpRequestEvent} type. That
- * parameter is treated as the JSON request body and is deserialized by Jackson before the handler
- * runs. The dispatcher rejects empty or malformed bodies with a 400 response, so handlers can
- * assume the bound argument is non-null and well-formed.
+ * Registry and dispatcher for {@link HttpEndpoint}-annotated handler methods served by Storm's
+ * backend HTTP server ({@link StormHttpServer}). Routing, body binding, and error handling live in
+ * {@link HttpEndpointRegistry}; this registry is separate from the game-port server's ({@link
+ * GameHttpEndpointDispatcher}) so backend endpoints are never exposed on the game port.
  */
 public class HttpEndpointDispatcher {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final HttpEndpointRegistry REGISTRY =
+            new HttpEndpointRegistry("@HttpEndpoint", HttpEndpointMetrics.STORM);
 
-    private static final Map<String, HandlerMethod> HANDLERS = new HashMap<>();
-
-    /**
-     * Paths that exist for any method, used to distinguish 404 (no path) from 405 (wrong method).
-     */
-    private static final Set<String> KNOWN_PATHS = new HashSet<>();
+    private HttpEndpointDispatcher() {}
 
     public static void reset() {
-        HANDLERS.clear();
-        KNOWN_PATHS.clear();
+        REGISTRY.reset();
     }
 
     public static void registerHandler(Method method, @Nullable Object handler) {
         HttpEndpoint annotation = method.getAnnotation(HttpEndpoint.class);
-        String path = annotation.path();
-        String httpMethod = annotation.method().toUpperCase(Locale.ROOT);
-        String key = key(httpMethod, path);
-
-        HandlerMethod existing = HANDLERS.get(key);
-        if (existing != null) {
-            LOGGER.warn(
-                    "Duplicate @HttpEndpoint for {} {}: {}.{} replaces {}.{}",
-                    httpMethod,
-                    path,
-                    method.getDeclaringClass().getSimpleName(),
-                    method.getName(),
-                    existing.method.getDeclaringClass().getSimpleName(),
-                    existing.method.getName());
-        }
-        HANDLERS.put(key, new HandlerMethod(method, handler));
-        KNOWN_PATHS.add(path);
-
-        LOGGER.debug(
-                "Registered @HttpEndpoint handler: {} {} -> {}.{}",
-                httpMethod,
-                path,
-                method.getDeclaringClass().getSimpleName(),
-                method.getName());
+        REGISTRY.registerHandler(annotation.method(), annotation.path(), method, handler);
     }
 
-    /**
-     * Entry point invoked by {@link StormHttpServer}. Resolves the handler, invokes it, and sends a
-     * 404, 405, or 500 if the handler is missing or throws.
-     */
+    /** Entry point invoked by {@link StormHttpServer}. */
     public static void dispatch(HttpExchange exchange) {
-        long startNanos = System.nanoTime();
-        String httpMethod = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
-        String path = exchange.getRequestURI().getPath();
-        HandlerMethod handler = HANDLERS.get(key(httpMethod, path));
-        String metricPath = (handler != null || KNOWN_PATHS.contains(path)) ? path : "unknown";
-
-        HttpRequestEvent event = null;
-        int fallbackStatus = -1;
-        try {
-            if (handler == null) {
-                fallbackStatus = KNOWN_PATHS.contains(path) ? 405 : 404;
-                sendStatus(exchange, fallbackStatus);
-                return;
-            }
-
-            event = new HttpRequestEvent(exchange);
-            try {
-                handler.invoke(event);
-                if (!event.wasResponseSent()) {
-                    event.sendEmpty(204);
-                }
-            } catch (Throwable t) {
-                LOGGER.error(
-                        "@HttpEndpoint handler {}.{} threw while serving {} {}",
-                        handler.method.getDeclaringClass().getSimpleName(),
-                        handler.method.getName(),
-                        httpMethod,
-                        path,
-                        t);
-                if (!event.wasResponseSent()) {
-                    fallbackStatus = 500;
-                    sendStatus(exchange, fallbackStatus);
-                }
-            }
-        } finally {
-            int status =
-                    (event != null && event.getResponseStatus() != -1)
-                            ? event.getResponseStatus()
-                            : fallbackStatus;
-            if (status != -1) {
-                HttpEndpointMetrics.recordRequest(httpMethod, metricPath, status);
-            }
-            HttpEndpointMetrics.recordDuration(
-                    httpMethod, metricPath, System.nanoTime() - startNanos);
-            exchange.close();
-        }
-    }
-
-    private static void sendStatus(HttpExchange exchange, int status) {
-        try {
-            exchange.sendResponseHeaders(status, -1);
-        } catch (IOException e) {
-            LOGGER.error("Failed to send status {} response", status, e);
-        }
-    }
-
-    private static String key(String method, String path) {
-        return method + " " + path;
-    }
-
-    private static class HandlerMethod {
-        private final Method method;
-        private final @Nullable Object handler;
-        private final @Nullable Class<?> bodyType;
-
-        private HandlerMethod(Method method, @Nullable Object handler) {
-            this.method = method;
-            this.handler = handler;
-            Class<?>[] params = method.getParameterTypes();
-            this.bodyType = params.length == 2 ? params[1] : null;
-        }
-
-        private void invoke(HttpRequestEvent event) throws Throwable {
-            Object[] args;
-            if (bodyType == null) {
-                args = new Object[] {event};
-            } else {
-                String raw = event.getRequestBodyAsString();
-                if (raw == null || raw.isBlank()) {
-                    event.send(400, "missing request body");
-                    return;
-                }
-                Object body;
-                try {
-                    body = MAPPER.readValue(raw, bodyType);
-                } catch (JsonProcessingException e) {
-                    event.send(400, "invalid JSON: " + e.getOriginalMessage());
-                    return;
-                }
-                args = new Object[] {event, body};
-            }
-            try {
-                method.invoke(handler, args);
-            } catch (java.lang.reflect.InvocationTargetException e) {
-                throw e.getCause() != null ? e.getCause() : e;
-            } catch (ReflectiveOperationException e) {
-                throw new RuntimeException(e);
-            }
-        }
+        REGISTRY.dispatch(exchange);
     }
 }

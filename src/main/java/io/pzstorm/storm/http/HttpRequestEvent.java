@@ -62,6 +62,11 @@ public class HttpRequestEvent {
         return params;
     }
 
+    /** Remote (client) address of the underlying TCP socket. */
+    public java.net.InetSocketAddress getRemoteAddress() {
+        return exchange.getRemoteAddress();
+    }
+
     public Map<String, String> getRequestHeaders() {
         Map<String, String> result = new HashMap<>();
         for (Map.Entry<String, java.util.List<String>> e :
