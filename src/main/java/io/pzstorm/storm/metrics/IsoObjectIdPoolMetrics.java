@@ -65,6 +65,27 @@ public final class IsoObjectIdPoolMetrics {
                                     + " allocate is also in effect — non-zero indicates recovery from prior bad state.")
                     .register(StormPrometheus.registry());
 
+    private static final Counter ANIMAL_MAP_ORPHAN_FIXES =
+            Counter.builder()
+                    .name("storm_animal_map_orphan_fixes_total")
+                    .help(
+                            "Times the IsoAnimal.update() exit advice put an animal back into"
+                                    + " AnimalInstanceManager.AnimalMap under its existing onlineID because the slot"
+                                    + " was empty. Dominant source is AnimalPopulationManager.virtualizeAnimal ->"
+                                    + " IsoAnimal.delete() followed by AnimalManagerMain.fromWorker re-realizing the"
+                                    + " same instance without re-registering it; an unregistered animal is skipped"
+                                    + " by AnimalSynchronizationManager and is invisible to every client.")
+                    .register(StormPrometheus.registry());
+
+    private static final Counter ANIMAL_MAP_COLLISIONS =
+            Counter.builder()
+                    .name("storm_animal_map_collision_total")
+                    .help(
+                            "Times the IsoAnimal.update() exit advice had to allocate a fresh onlineID because the"
+                                    + " animal's slot was held by a different animal, or because it still carried the"
+                                    + " IsoPlayer.onlineId default of 1 and had never been registered.")
+                    .register(StormPrometheus.registry());
+
     private IsoObjectIdPoolMetrics() {}
 
     /** No-op; calling forces class load so the static initializer fires. */
@@ -78,6 +99,21 @@ public final class IsoObjectIdPoolMetrics {
     /** Increments the collision counter (zombie's id was held by a different zombie). */
     public static void recordZombieMapCollision() {
         ZOMBIE_MAP_COLLISIONS.inc();
+    }
+
+    /**
+     * Increments the animal orphan-fix counter (animal had id, map slot was empty, we put it back).
+     */
+    public static void recordAnimalOrphanFix() {
+        ANIMAL_MAP_ORPHAN_FIXES.inc();
+    }
+
+    /**
+     * Increments the animal collision counter (slot held by another animal, or no id ever
+     * assigned).
+     */
+    public static void recordAnimalMapCollision() {
+        ANIMAL_MAP_COLLISIONS.inc();
     }
 
     private static int zombiePoolSize() {

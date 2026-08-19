@@ -1050,7 +1050,7 @@ histogram_quantile(0.5, rate(storm_connection_login_duration_seconds[15m]))
 
 PZ addresses networked zombies and animals by a 16-bit `IsoObjectID`, which leaves 65535 usable slots per pool once the `-1` sentinel is reserved. Vanilla's allocator wraps silently on exhaustion and hands out an ID that is already in use, so two entities share an identity and the server starts moving the wrong one; `IsoObjectIDAllocateFixPatch` makes exhaustion fail loudly instead. These series are how you see it coming — a pool climbing toward 65535 on a long-uptime server is a leak worth chasing well before it wraps.
 
-The two sizes are scrape-time callbacks straight off the live maps, so they read `0` before the world exists rather than being absent. The two counters come from `IsoZombieMapInvariant`, checked on the `IsoZombie.update()` exit advice; both are normally flat, and any sustained rate is a real identity bug rather than noise. Registration is triggered by whichever of `IsoZombieUpdateFixPatch` / `IsoObjectIDAllocateFixPatch` loads first.
+The two sizes are scrape-time callbacks straight off the live maps, so they read `0` before the world exists rather than being absent. The four counters come from `IsoZombieMapInvariant` / `IsoAnimalMapInvariant`, checked on the `IsoZombie.update()` and `IsoAnimal.update()` exit advices. The zombie pair is normally flat, and any sustained rate is a real identity bug rather than noise; the animal pair is *not* — `storm_animal_map_orphan_fixes_total` climbs continuously on any world with animals, because it is healing a vanilla lifecycle bug that fires on every wander-out/re-realize round trip (see [Livestock and wildlife go invisible](what-storm-changes.md)). Registration is triggered by whichever of `IsoZombieUpdateFixPatch` / `IsoAnimalRegistryFixPatch` / `IsoObjectIDAllocateFixPatch` loads first.
 
 | Name | Type | Labels | What |
 |------|------|--------|------|
@@ -1058,6 +1058,8 @@ The two sizes are scrape-time callbacks straight off the live maps, so they read
 | `storm_animal_id_pool_size` | GaugeWithCallback | — | Live entries in `AnimalInstanceManager.getInstance().getAnimals()`, against the same 65535-slot budget. Animals are longer-lived than zombies and are not culled by the zombie ceiling, so this pool drifts upward more readily. |
 | `storm_zombie_map_orphan_fixes_total` | Counter | — | Zombies found updating with a valid `onlineId` that had no entry in `zombieMap`, re-inserted by the invariant check. An orphan is invisible to every lookup that goes through the map — ownership transfer, packet routing, the ceiling sweep — so it desyncs rather than crashes. Non-zero means something removed the map entry without ending the zombie's life. |
 | `storm_zombie_map_collision_total` | Counter | — | Zombies whose `onlineId` was already mapped to a *different* live zombie; the newcomer's ID is invalidated rather than allowed to overwrite the incumbent. This is the ID-reuse failure mode the allocate fix exists to prevent, so any increase warrants reading `storm/main.log` around it. |
+| `storm_animal_map_orphan_fixes_total` | Counter | — | Animals found updating with an allocated `onlineID` that had no entry in `AnimalMap`, re-inserted under the same ID. Unlike the zombie counterpart this is expected to rise steadily: `AnimalPopulationManager.virtualizeAnimal` calls `IsoAnimal.delete()` (which unregisters) and `AnimalManagerMain.fromWorker` re-realizes the same instance without re-registering, so every animal that wanders out of the loaded area and comes back needs one fix. Before the patch those animals stayed unregistered and were invisible to every client until a restart. Read the *rate* as a measure of virtualization churn, not as an error signal. |
+| `storm_animal_map_collision_total` | Counter | — | Animals that needed a *fresh* ID because their slot was held by a different animal, or because they still carried the `IsoPlayer.onlineId` default of `1` and had never been registered at all. Unlike the orphan counter this one should stay near zero — a sustained rate means IDs are being reused, which the probe-for-free `allocateID()` is supposed to prevent. |
 
 ```promql
 # how close either pool is to the 65535-slot ID ceiling
@@ -1065,6 +1067,12 @@ max(storm_zombie_id_pool_size, storm_animal_id_pool_size) / 65535
 
 # identity bugs — both should be flat forever
 rate(storm_zombie_map_orphan_fixes_total[1h]) + rate(storm_zombie_map_collision_total[1h]) > 0
+
+# animal ID reuse — should be flat; the orphan counter is churn, not an error
+rate(storm_animal_map_collision_total[1h]) > 0
+
+# animal virtualization churn being healed, per second
+rate(storm_animal_map_orphan_fixes_total[5m])
 ```
 
 #### World-wide zombie ceiling
