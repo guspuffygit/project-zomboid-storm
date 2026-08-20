@@ -36,7 +36,11 @@ workshop updates.
    client. See
    [Mod list from the login handshake](#mod-list-from-the-login-handshake).
    A Storm version skew between client and server (reported by the UDP query)
-   logs a warning.
+   logs a warning. The client side of that comparison is the core the game will
+   actually run: the workshop item's `storm-<pz>_<storm>.jar` name, overridden
+   by the CDN-published core version when it is strictly higher for the same PZ
+   build (same rule as the bootstrap's `StormCoreUpdate`; `-SNAPSHOT` items are
+   never overridden).
 3. **Steam workshop pre-update** — the server publishes its required workshop
    item ids (`WorkshopItems` in `server.ini`), read via the sources above.
    Before

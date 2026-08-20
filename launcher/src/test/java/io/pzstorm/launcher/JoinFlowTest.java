@@ -131,6 +131,18 @@ class JoinFlowTest {
     }
 
     @Test
+    void cdnCoreOverridesItemJarOnlyWhenStrictlyNewerAndNotSnapshot() {
+        assertEquals("42.20.3_2.6.11", JoinFlow.withCdnCore("42.20.3_2.6.0", "2.6.11"));
+        assertEquals("42.20.3_2.6.11", JoinFlow.withCdnCore("42.20.3_2.6.11", "2.6.11"));
+        assertEquals("42.20.3_2.6.12", JoinFlow.withCdnCore("42.20.3_2.6.12", "2.6.11"));
+        assertEquals(
+                "42.20.3_2.6.0-SNAPSHOT", JoinFlow.withCdnCore("42.20.3_2.6.0-SNAPSHOT", "2.6.11"));
+        assertEquals("42.20.3_2.6.0", JoinFlow.withCdnCore("42.20.3_2.6.0", null));
+        assertEquals("garbage", JoinFlow.withCdnCore("garbage", "2.6.11"));
+        assertNull(JoinFlow.withCdnCore(null, "2.6.11"));
+    }
+
+    @Test
     void readsLocalStormVersionFromLibJarName() throws IOException {
         assertEquals(
                 "42.20.2_2.5.1-SNAPSHOT",

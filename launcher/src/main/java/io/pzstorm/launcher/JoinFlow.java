@@ -36,6 +36,11 @@ public final class JoinFlow {
      */
     static final String MIN_INTEGRATION_STORM_VERSION = "2.5.1";
 
+    /** Same key the bootstrap's StormCoreUpdate HEADs: {@code storm/core/<pzVersion>/storm.jar}. */
+    static final String CORE_CDN_URL_TEMPLATE = "https://guspuffy.com/storm/core/%s/storm.jar";
+
+    private static final String SNAPSHOT_SUFFIX = "-SNAPSHOT";
+
     private JoinFlow() {}
 
     /** Runs the full pre-launch pipeline and starts the game. */
@@ -223,7 +228,7 @@ public final class JoinFlow {
             clearAutoJoinHandoff();
             return false;
         }
-        String stormVersion = localStormVersion(config);
+        String stormVersion = effectiveStormVersion(config);
         if (!supportsLauncherIntegration(stormVersion)) {
             Log.info(
                     "Client Storm "
@@ -351,7 +356,7 @@ public final class JoinFlow {
     }
 
     private static void checkStormVersionSkew(LauncherConfig config, String serverVersion) {
-        String local = localStormVersion(config);
+        String local = effectiveStormVersion(config);
         if (local == null
                 || serverVersion == null
                 || serverVersion.isEmpty()
@@ -369,6 +374,41 @@ public final class JoinFlow {
         } else {
             Log.info("Storm version matches server (" + local + ").");
         }
+    }
+
+    /**
+     * Mirrors the bootstrap's {@code StormCoreUpdate}: the core the game will actually run is the
+     * CDN-staged build whenever it publishes a strictly higher stormVersion for the same PZ build
+     * and the item jar is not a SNAPSHOT; otherwise the item's jar. One HEAD; any failure falls
+     * back to the item jar's version so the callers degrade to the old behaviour.
+     */
+    static String effectiveStormVersion(LauncherConfig config) {
+        String local = localStormVersion(config);
+        if (local == null) {
+            return null;
+        }
+        int split = local.indexOf('_');
+        if (split <= 0 || local.endsWith(SNAPSHOT_SUFFIX)) {
+            return local;
+        }
+        CdnUpdate.Remote remote =
+                CdnUpdate.fetch(String.format(CORE_CDN_URL_TEMPLATE, local.substring(0, split)));
+        return withCdnCore(local, remote == null ? null : remote.version());
+    }
+
+    /** Pure half of {@link #effectiveStormVersion}: {@code <pz>_<storm>} vs the published core. */
+    static String withCdnCore(String local, String publishedStormVersion) {
+        if (local == null || publishedStormVersion == null || local.endsWith(SNAPSHOT_SUFFIX)) {
+            return local;
+        }
+        int split = local.indexOf('_');
+        if (split <= 0) {
+            return local;
+        }
+        String ownStorm = local.substring(split + 1);
+        return CdnUpdate.isNewer(publishedStormVersion, ownStorm)
+                ? local.substring(0, split + 1) + publishedStormVersion
+                : local;
     }
 
     /** Best-effort: read the client's Storm version off the lib jar filename. */

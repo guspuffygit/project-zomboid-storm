@@ -4,7 +4,10 @@
 -- storm.jar instead of media/lua/client keeps it out of the server's client-file checksum.
 --
 -- Client half of the "which players run Storm" column (server half: StormPlayersHandler):
---  * announces this client's Storm version to the server (StormPlayers.hello) on game start;
+--  * announces this client's Storm version to the server (StormPlayers.hello) on the first
+--    tick after OnGameStart (IngameState.enter fires OnGameStart *before* it sends
+--    PlayerConnect, so a hello sent from the event itself reaches the server before it has a
+--    player for the connection and GameServer.receiveClientCommand drops it);
 --  * for admins holding Capability.SeePlayersConnected, asks the server (StormPlayers.request)
 --    for the { [username] = version } list whenever the scoreboard refreshes, and caches the
 --    async StormPlayers.list reply;
@@ -86,8 +89,18 @@ function Players.drawLabel(listbox, username, rightX, y, rowHeight, font)
     return width
 end
 
-local function onGameStart()
+local function onHelloTick()
+    Events.OnTick.Remove(Players.onHelloTick)
+    Players.onHelloTick = nil
     Players.sendHello()
+end
+
+local function onGameStart()
+    if Players.onHelloTick then
+        Events.OnTick.Remove(Players.onHelloTick)
+    end
+    Players.onHelloTick = onHelloTick
+    Events.OnTick.Add(onHelloTick)
 end
 
 local function onScoreboardUpdate()
