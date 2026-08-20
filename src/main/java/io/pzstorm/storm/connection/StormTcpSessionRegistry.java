@@ -109,6 +109,14 @@ public final class StormTcpSessionRegistry {
         return session != null && liveConnection(session) != null;
     }
 
+    /** Storm version the client on this connection sent in its handshake, or {@code null}. */
+    public static @Nullable String clientStormVersion(UdpConnection connection) {
+        Session session = BY_GUID.get(connection.getConnectedGUID());
+        return session != null && liveConnection(session) != null
+                ? session.clientStormVersion()
+                : null;
+    }
+
     /** The live {@link UdpConnection} behind a session, or {@code null} if it has dropped. */
     public static @Nullable UdpConnection liveConnection(Session session) {
         UdpEngine engine = GameServer.udpEngine;

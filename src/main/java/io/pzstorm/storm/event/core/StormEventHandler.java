@@ -145,6 +145,11 @@ public class StormEventHandler {
 
             List<String> luaPaths = discoverLuaResources();
             for (String luaPath : luaPaths) {
+                if (luaPath.startsWith("lua/stubs/")) {
+                    // LuaLS @meta stubs: running them replaces the Java-backed Storm table
+                    LOGGER.debug("Skipping stub lua: {}", luaPath);
+                    continue;
+                }
                 if (luaPath.startsWith("lua/client/") && !GameClient.client) {
                     LOGGER.debug("Skipping client lua (not a client): {}", luaPath);
                     continue;
