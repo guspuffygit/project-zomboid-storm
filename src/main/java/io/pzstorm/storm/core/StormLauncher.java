@@ -121,6 +121,12 @@ public class StormLauncher {
                 eventDispatcher
                         .getDeclaredMethod("registerEventHandler", Class.class)
                         .invoke(null, gamePortHandshakeEndpoints);
+
+                Class<?> rolePositionPin =
+                        classLoader.loadClass("io.pzstorm.storm.connection.RolePositionPin");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, rolePositionPin);
             }
 
             // Property name mirrors io.pzstorm.storm.client.LauncherAutoJoin.AUTOJOIN_FILE_PROPERTY
