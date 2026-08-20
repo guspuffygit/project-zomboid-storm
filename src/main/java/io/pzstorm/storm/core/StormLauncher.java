@@ -127,6 +127,15 @@ public class StormLauncher {
                 eventDispatcher
                         .getDeclaredMethod("registerEventHandler", Class.class)
                         .invoke(null, rolePositionPin);
+
+                // Reclaims AnimationPlayers stranded by characters that left the world; runs
+                // on the main-thread EveryOneMinuteEvent.
+                Class<?> animPlayerSweep =
+                        classLoader.loadClass(
+                                "io.pzstorm.storm.patch.performance.StormAnimationPlayerSweep");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, animPlayerSweep);
             }
 
             // Property name mirrors io.pzstorm.storm.client.LauncherAutoJoin.AUTOJOIN_FILE_PROPERTY

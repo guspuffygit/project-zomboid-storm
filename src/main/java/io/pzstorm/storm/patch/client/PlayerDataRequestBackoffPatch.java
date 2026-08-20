@@ -16,7 +16,7 @@ import net.bytebuddy.pool.TypePool;
  * <p>Vanilla clients re-fire {@code PlayerDataRequest} on every received {@code PlayerPacket}
  * carrying an unknown online id, and the server refuses irrelevant/invisible targets silently, so
  * any relay of a non-resolvable player's updates becomes an unbounded request/refusal loop (96% of
- * ATF's inbound packet volume at peak). See {@link
+ * inbound packet volume on a production server at peak). See {@link
  * io.pzstorm.storm.connection.StormPlayerDataRequestBackoff} for the backoff semantics.
  *
  * <p>Why a client bytecode patch: the request fires from compiled packet-parse code with no Lua or

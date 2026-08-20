@@ -73,12 +73,26 @@ public final class MainLoopDrainCap {
     // - RequestData: the world-download chain sends each request/ACK once and spins waiting;
     //   today it runs pre-join (covered by isPreJoinExempt) — listed as insurance against a PZ
     //   update moving it after PlayerConnect.
+    // - RequestZipList: the in-game chunk request. Client tracks
+    //   sent chunks in WorldStreamer.pendingRequests1 and only re-queues on a server reply —
+    //   ChunkNotReady sets flagsUdp bit 8, or SentChunk sets bit 16 — or a main-thread cancel
+    //   (flagsWs bit 1). A silent server-side drop trips none of those, and 42.20.3 removed the
+    //   client's 8-second flat resend timer, so the chunks in the dropped batch stay in
+    //   pendingRequests1 forever: the player sees terrain-missing until they walk out of the
+    //   chunk map's reach and back. The parse cost scales with the batch, so RequestZipList both
+    //   contributes to blowing the cap during scroll/teleport storms and is the packet the cap
+    //   is most likely to drop then — self-reinforcing wedge. Not covered by isPreJoinExempt:
+    //   only the initial world load uses RequestLargeAreaZip pre-join; in-game grid scroll,
+    //   teleport, and ChunkNotReady-driven re-queues all send RequestZipList on a fully-
+    //   connected connection. Same failure shape as the client-side MaxPacketsPerSecond drop
+    //   documented in ClientChunkStreamMetrics.SUPPRESSED_PACKETS.
     private static final EnumSet<PacketTypes.PacketType> EXEMPT_TYPES =
             EnumSet.of(
                     PacketTypes.PacketType.CreatePlayer,
                     PacketTypes.PacketType.ConnectCoop,
                     PacketTypes.PacketType.TimeSync,
                     PacketTypes.PacketType.RequestData,
+                    PacketTypes.PacketType.RequestZipList,
                     PacketTypes.PacketType.NetTimedAction,
                     PacketTypes.PacketType.BuildAction,
                     PacketTypes.PacketType.FishingAction);

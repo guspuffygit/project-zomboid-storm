@@ -12,13 +12,13 @@ import zombie.iso.Vector3;
  *
  * <p>Vanilla's predicate asks, for every loaded cell, whether any of its 4 corners is {@code
  * UdpConnection.isRelevantTo} for any connection — O(loadedCells × connections × 4) full relevance
- * tests per tick (~600k point tests at 1024 warm cells and 116 players on ATF, ~1.4% of the main
- * thread). This class inverts the loop: each connection's influence primitives (up to 4 {@code
- * connectArea} rectangles and 4 {@code releventPos} squares) are rasterized to a conservative
- * candidate cell range, and each candidate is verified with the exact vanilla predicate — the same
- * {@code isRelevantTo} calls on the same 4 corner points, so a cell is in the set if and only if
- * vanilla's {@code !outsidePlayerInfluence} would return true. Cost is O(connections ×
- * influence-area cells), independent of how many cells are loaded or warm.
+ * tests per tick (~600k point tests at 1024 warm cells and 116 players on a production server,
+ * ~1.4% of the main thread). This class inverts the loop: each connection's influence primitives
+ * (up to 4 {@code connectArea} rectangles and 4 {@code releventPos} squares) are rasterized to a
+ * conservative candidate cell range, and each candidate is verified with the exact vanilla
+ * predicate — the same {@code isRelevantTo} calls on the same 4 corner points, so a cell is in the
+ * set if and only if vanilla's {@code !outsidePlayerInfluence} would return true. Cost is
+ * O(connections × influence-area cells), independent of how many cells are loaded or warm.
  *
  * <p>The rasterization is only a candidate generator, so it may over-approximate freely (bounds are
  * widened by one cell against float edge cases); correctness rests solely on it never

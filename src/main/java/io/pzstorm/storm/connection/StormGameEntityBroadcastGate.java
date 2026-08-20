@@ -24,8 +24,8 @@ import zombie.network.packets.INetworkPacket;
  * every craft-progress tick ({@code CraftLogicSync}, re-sent every 1000 ms per running station),
  * every component dump ({@code SyncGameEntity}), and every using-player change goes to every
  * connection. A client without the entity's chunk loaded has no registered entity to apply it to;
- * at 103 players on ATF this stream measured ~1.06 MB/s at ~1080 pkts/s, the #1 outbound packet
- * count. The gate applies vanilla's own object-sync precedent ({@code
+ * at 103 players on a production server this stream measured ~1.06 MB/s at ~1080 pkts/s, the #1
+ * outbound packet count. The gate applies vanilla's own object-sync precedent ({@code
  * INetworkPacket.sendToRelative}, used for {@code UpdateItemSprite}/{@code SendCustomColor}/{@code
  * AddItemToMap}): skip connections failing {@code isFullyConnected() && isRelevantTo(x, y)}.
  *

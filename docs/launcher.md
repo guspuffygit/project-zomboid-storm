@@ -344,8 +344,8 @@ JVM, driven by `io.pzstorm.launcher.ServerModList`.
   - In Steam mode the native callback reaches the engine through
     `GameClient.instance.udpEngine`, not through whichever engine owns the
     socket, so the probe assigns itself there.
-- **Chunked payload.** ATF's list arrives as ~2.3 MB in 1024-byte `PartData`
-  frames; the server bursts 200 KB then waits for an ACK. The probe ACKs
+- **Chunked payload.** A heavily-modded server's list arrives as ~2.3 MB in
+  1024-byte `PartData` frames; the server bursts 200 KB then waits for an ACK. The probe ACKs
   mid-transfer only — vanilla's `RequestDataManager.ACKWasReceived` walks its
   request list with an `i <= size` bound and throws server-side if an ACK
   arrives after the transfer is done.

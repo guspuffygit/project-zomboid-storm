@@ -466,7 +466,7 @@ The same idea as the SyncIsoObject gate, applied to the broadcast branch of
 packet to `INetworkPacket.sendToAll`, whose only filter is `isFullyConnected()` — so every
 `CraftLogicSync` progress tick (re-sent every 1000 ms per running station), every `SyncGameEntity`
 component dump and every using-player change goes to every connection whether or not that client
-holds the entity's chunk. At 103 players on ATF that stream measured ~1.06 MB/s at ~1080 pkt/s, the
+holds the entity's chunk. At 103 players on a production server that stream measured ~1.06 MB/s at ~1080 pkt/s, the
 single largest outbound packet count on the server. The gate applies vanilla's own `sendToRelative`
 precedent per recipient: `isFullyConnected() && isRelevantTo(x, y)`.
 
@@ -765,6 +765,41 @@ rate(storm_client_chunk_timeouts_total[$__rate_interval])
 max_over_time(storm_client_chunk_oldest_inflight_seconds[$__rate_interval])
 storm_client_chunk_inflight_timed_out
 ```
+
+### Pool compaction (StormPoolCompactionMetrics)
+
+Health of `zombie.util.Pool`'s per-thread in-use `THashSet`s, measured and (when degenerate) compacted at the start of every world save by `StormPoolCompaction`. See the *Pool in-use set compaction* entry in [what-storm-changes.md](what-storm-changes.md) for the mechanism.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_pool_max_probe_estimate` | Gauge | — | Worst `capacity / (_free + 1)` across all swept in-use sets. |
+| `storm_pool_compactions_total` | Counter | `pool` | Tables compacted, by pool name (e.g. `Pool<AnimatorsBoneTransform>`; the vanilla `_<id>` suffix is stripped). |
+| `storm_pool_compact_duration_seconds` | Histogram (native) | — | Wall-clock time inside `THashSet.compact()`. |
+
+`storm_pool_max_probe_estimate` is the leading indicator: a healthy open-addressed set at Trove's 0.5 load factor sits at 1-2. Unmitigated it has been observed at 102,889 on a busy production server. Alert above ~16 — if it climbs while `storm_pool_compactions_total` stays flat, saves are not reaching the sweep (check that `QueuedSaveAll` is being called at all, and that `SaveWorldEveryMinutes` is non-zero), the sweep is latched off by an earlier throwable, or the table is under the internal `minCapacity`.
+
+Compaction cost scales with the *old* capacity (the rehash walks every slot), not the live size: 823k slots with 316k live elements took 9 ms. That is roughly a tick, which is why the rehash rides the world save the server is already blocking on.
+
+### Animation player sweep (StormAnimationPlayerSweepMetrics)
+
+Orphaned `AnimationPlayer` reclaim, swept on the main thread by `StormAnimationPlayerSweep`. See the *Orphaned animation player reclaim* entry in [what-storm-changes.md](what-storm-changes.md) for the mechanism.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_animation_players_in_use` | Gauge | — | `AnimationPlayer`s checked out of the pool, across every thread's stacks. |
+| `storm_animation_players_stranded` | Gauge | — | Checked-out players whose character no longer points back at them. |
+| `storm_animation_players_out_of_world` | Gauge | — | Checked-out players whose character has left the world but has not yet aged past the grace period. |
+| `storm_animation_players_reclaimed_total` | Counter | `holder` | Players released, by holder class (`IsoAnimal`, `IsoPlayer`, ...). |
+| `storm_recently_removed_players` | Gauge | — | Size of `IsoPlayer.RecentlyRemoved`, which vanilla drains only client-side. |
+| `storm_recently_removed_players_drained_total` | Counter | — | Entries dropped from that list by the sweep. |
+
+`storm_animation_players_in_use` should track the number of animated characters in the world. Compare it against player count and `cell.objectList` size: growth while population is flat is the leak, and it feeds `storm_pool_max_probe_estimate` above via the ~34:1 `AnimatorsBoneTransform` children.
+
+`storm_animation_players_reclaimed_total` is expected to be non-zero and roughly proportional to animal and player churn — it is the leak being paid down, not an error. `storm_recently_removed_players` should sit near zero once the sweep runs; without the sweep it grows one entry per player removal for the life of the process.
+
+`storm_animation_players_out_of_world` is the sweep's backlog: characters it has seen leave but not yet reclaimed. It should stay small and stable — roughly the churn of one grace period. A value that climbs sweep over sweep means holders are leaving the world faster than `graceMs` lets them be reclaimed, or that something keeps them out of `objectList` while still animating them.
+
+`storm_animation_players_stranded` should stay at 0. A non-zero value means an `AnimationPlayer` is held by the pool while its character references a different one — a leak path the sweep cannot reclaim through `releaseAnimationPlayer()`, and worth investigating rather than ignoring.
 
 ### BitHeader pool
 

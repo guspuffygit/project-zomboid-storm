@@ -22,8 +22,8 @@ import zombie.network.NetChecksum;
  * GameWindow.fileSystem.hasWork()} all go quiet — so one wedged asset job freezes loading forever
  * with nothing in any log. The client then never sends its Lua checksum, the server reaps the
  * connection in stage {@code checksum} after {@code StalledConnectionReaper}'s budget, and the
- * player sees a bare "connection failed" (ATF reaps 40–80 of these per 6 hours; see report
- * 8h02l4jb93, 2026-08-09).
+ * player sees a bare "connection failed" — a busy production server reaps 40–80 of these per 6
+ * hours.
  *
  * <p>A daemon thread samples the loader every {@link #POLL_MS} while it is alive: a heartbeat line
  * every {@link #HEARTBEAT_MS} (stage string + the wait-gate flags), and once nothing has changed

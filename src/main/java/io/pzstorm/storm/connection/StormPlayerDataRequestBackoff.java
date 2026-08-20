@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * received {@code PlayerPacket} carrying an unknown online id ({@code PlayerPacket.processClient},
  * {@code VehiclePassengers.parsePlayer}). Any relay of updates for a player the receiver is not
  * allowed to resolve therefore produces an infinite request/refusal loop — measured at 5,800
- * packets/s inbound (96% of all inbound) on ATF at 130 players, driven by the role-position relay
- * bypass in {@code PlayerPacket.processServer}.
+ * packets/s inbound (96% of all inbound) on a production server at 130 players, driven by the
+ * role-position relay bypass in {@code PlayerPacket.processServer}.
  *
  * <p>The backoff lets the first request for an online id through immediately — the legitimate
  * "player became relevant" flow is unaffected — and suppresses repeats for the same id for {@code

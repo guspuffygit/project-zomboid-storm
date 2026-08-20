@@ -13,7 +13,7 @@ import net.bytebuddy.pool.TypePool;
  * array with {@code StormEntityIndex}. Extends the O(1) entity-removal fast path from the global
  * array to the per-bucket arrays: {@code EngineEntityManager.removeEntityInternal} calls {@code
  * EntityBucketManager.updateBucketMembership}, which runs {@code entities.removeValue(entity,
- * true)} in every bucket the entity is leaving — at ATF scale those bucket scans were ~2% of
+ * true)} in every bucket the entity is leaving — at production scale those bucket scans were ~2% of
  * main-thread time (415/418 remaining {@code Array.removeValue} JFR samples after the global-array
  * index shipped).
  *

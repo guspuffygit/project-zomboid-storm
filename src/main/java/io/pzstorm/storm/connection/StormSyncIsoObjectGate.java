@@ -22,12 +22,12 @@ import zombie.network.PacketTypes;
  * generators, hutches, rain barrels, dropped items…) to <b>every</b> connection. A client without
  * the object's square loaded discards the packet on arrival ({@code
  * GameClient.receiveSyncIsoObject} finds no square), so sends outside a connection's relevant range
- * are pure waste — 972 KB/s at 103 players on ATF, the #2 outbound packet type. Vanilla itself
- * gates {@code IsoDoor.syncIsoObject} (and {@code IsoLightSwitch}'s server-initiated branch) with
- * {@code isFullyConnected() && isRelevantTo(x, y)}; this gate applies that same precedent to the
- * ungated loops. Everything else — error guards and their exact console output, receive-side field
- * application, source-connection exclusion, {@code flagForHotSave()} — reproduces the vanilla
- * bodies expression for expression.
+ * are pure waste — 972 KB/s at 103 players on a production server, the #2 outbound packet type.
+ * Vanilla itself gates {@code IsoDoor.syncIsoObject} (and {@code IsoLightSwitch}'s server-initiated
+ * branch) with {@code isFullyConnected() && isRelevantTo(x, y)}; this gate applies that same
+ * precedent to the ungated loops. Everything else — error guards and their exact console output,
+ * receive-side field application, source-connection exclusion, {@code flagForHotSave()} —
+ * reproduces the vanilla bodies expression for expression.
  *
  * <p>{@code isRelevantTo} covers each player's connected chunk area plus relevant-range window, the
  * exact region whose squares the client keeps loaded; {@code UdpConnectionRelevancePatch}
