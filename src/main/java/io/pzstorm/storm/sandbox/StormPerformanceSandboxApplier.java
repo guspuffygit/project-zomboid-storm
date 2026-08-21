@@ -28,6 +28,8 @@ import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
+import io.pzstorm.storm.vehicles.StormVehicleAlphaCheckSkip;
+import io.pzstorm.storm.vehicles.StormVehicleSoundRelevance;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import zombie.SandboxOptions;
 import zombie.core.znet.SteamGameServer;
@@ -74,6 +76,9 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ANIMAL_ZONE_CONTAINMENT = "Storm.AnimalZoneContainment";
     public static final String OPT_ANIMAL_ZONE_LEASH_DISTANCE = "Storm.AnimalZoneLeashDistance";
     public static final String OPT_ENTITY_REMOVE_FAST_PATH = "Storm.EntityRemoveFastPath";
+    public static final String OPT_VEHICLE_ALPHA_CHECK_SKIP = "Storm.VehicleAlphaCheckSkip";
+    public static final String OPT_VEHICLE_SOUND_RELEVANCE_FAST_PATH =
+            "Storm.VehicleSoundRelevanceFastPath";
     public static final String OPT_OVERRIDE_MAX_PLAYERS = "Storm.OverrideMaxPlayers";
     public static final String OPT_MAX_PLAYERS = "Storm.MaxPlayers";
     public static final String OPT_LOGIN_QUEUE_MAX_CONCURRENT_LOADERS =
@@ -128,6 +133,8 @@ public final class StormPerformanceSandboxApplier {
         applyAnimalZoneContainment();
         applyAnimalZoneLeashDistance();
         applyEntityRemoveFastPath();
+        applyVehicleAlphaCheckSkip();
+        applyVehicleSoundRelevanceFastPath();
         applyMaxPlayersOverride();
         applyLoginQueueMaxConcurrentLoaders();
         applyMaxWarmCells();
@@ -303,6 +310,32 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormEntityIndex.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_VEHICLE_ALPHA_CHECK_SKIP} through {@link
+     * StormVehicleAlphaCheckSkip#setEnabled(boolean)} — the kill switch for skipping the
+     * server-dead {@code BaseVehicle.couldSeeIntersectedSquare} computation.
+     */
+    private static void applyVehicleAlphaCheckSkip() {
+        Boolean value = readBooleanOption(OPT_VEHICLE_ALPHA_CHECK_SKIP);
+        if (value == null) {
+            return;
+        }
+        StormVehicleAlphaCheckSkip.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_VEHICLE_SOUND_RELEVANCE_FAST_PATH} through {@link
+     * StormVehicleSoundRelevance#setEnabled(boolean)} — the kill switch for the per-tick hoist of
+     * the vehicle-sound audible-radius predicates.
+     */
+    private static void applyVehicleSoundRelevanceFastPath() {
+        Boolean value = readBooleanOption(OPT_VEHICLE_SOUND_RELEVANCE_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        StormVehicleSoundRelevance.setEnabled(value);
     }
 
     /**

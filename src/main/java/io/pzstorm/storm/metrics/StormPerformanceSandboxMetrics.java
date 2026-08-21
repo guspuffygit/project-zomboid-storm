@@ -23,6 +23,8 @@ import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
+import io.pzstorm.storm.vehicles.StormVehicleAlphaCheckSkip;
+import io.pzstorm.storm.vehicles.StormVehicleSoundRelevance;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 
 /**
@@ -310,6 +312,27 @@ public final class StormPerformanceSandboxMetrics {
                                     + " identity scan of the whole array.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge VEHICLE_ALPHA_CHECK_SKIP =
+            Gauge.builder()
+                    .name("storm_vehicle_alpha_check_skip")
+                    .help(
+                            "Whether BaseVehicle.couldSeeIntersectedSquare (client-only vehicle"
+                                    + " fade check) is skipped on the dedicated server. Sourced"
+                                    + " from the Storm.VehicleAlphaCheckSkip sandbox option. 1 ="
+                                    + " skipped (default); 0 = vanilla computation.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge VEHICLE_SOUND_RELEVANCE_FAST_PATH =
+            Gauge.builder()
+                    .name("storm_vehicle_sound_relevance_fast_path")
+                    .help(
+                            "Whether the per-tick hoist of the vehicle-sound audible-radius"
+                                    + " predicates (vehicleNetworkSound Manager.update) is active."
+                                    + " Sourced from the Storm.VehicleSoundRelevanceFastPath"
+                                    + " sandbox option. 1 = fast path (default); 0 = vanilla"
+                                    + " per-connection scan.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge MAX_PLAYERS_OVERRIDE_ENABLED =
             Gauge.builder()
                     .name("storm_max_players_override_enabled")
@@ -392,6 +415,8 @@ public final class StormPerformanceSandboxMetrics {
         ANIMAL_ZONE_LEASH_DISTANCE.set(AnimalZoneContainment.DEFAULT_LEASH_DISTANCE);
         CELL_UNLOAD_BUDGET_PER_TICK.set(StormCellUnloadBudget.DEFAULT_BUDGET);
         ENTITY_REMOVE_FAST_PATH.set(StormEntityIndex.DEFAULT_ENABLED ? 1 : 0);
+        VEHICLE_ALPHA_CHECK_SKIP.set(StormVehicleAlphaCheckSkip.DEFAULT_ENABLED ? 1 : 0);
+        VEHICLE_SOUND_RELEVANCE_FAST_PATH.set(StormVehicleSoundRelevance.DEFAULT_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE_ENABLED.set(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE.set(StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
         LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(
@@ -492,6 +517,14 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setEntityRemoveFastPath(boolean enabled) {
         ENTITY_REMOVE_FAST_PATH.set(enabled ? 1 : 0);
+    }
+
+    public static void setVehicleAlphaCheckSkip(boolean enabled) {
+        VEHICLE_ALPHA_CHECK_SKIP.set(enabled ? 1 : 0);
+    }
+
+    public static void setVehicleSoundRelevanceFastPath(boolean enabled) {
+        VEHICLE_SOUND_RELEVANCE_FAST_PATH.set(enabled ? 1 : 0);
     }
 
     public static void setMaxPlayersOverrideEnabled(boolean enabled) {

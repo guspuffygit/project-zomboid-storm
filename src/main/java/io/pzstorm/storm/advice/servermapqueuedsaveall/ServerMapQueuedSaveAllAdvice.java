@@ -1,5 +1,7 @@
 package io.pzstorm.storm.advice.servermapqueuedsaveall;
 
+import io.pzstorm.storm.event.core.StormEventDispatcher;
+import io.pzstorm.storm.event.zomboid.OnPreSaveEvent;
 import io.pzstorm.storm.metrics.MainLoopStepTimings;
 import io.pzstorm.storm.patch.performance.StormPoolCompaction;
 import net.bytebuddy.asm.Advice;
@@ -12,11 +14,13 @@ public class ServerMapQueuedSaveAllAdvice {
         if (!GameServer.server) {
             return 0L;
         }
+        long startNanos = System.nanoTime();
         // quit=true runs on the shutdown-hook thread, and Pool's stacks are ThreadLocal
         if (!quit) {
             StormPoolCompaction.compactAtSaveWindow();
         }
-        return System.nanoTime();
+        StormEventDispatcher.dispatchEvent(new OnPreSaveEvent(quit));
+        return startNanos;
     }
 
     @Advice.OnMethodExit(onThrowable = Throwable.class)

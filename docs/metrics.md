@@ -393,6 +393,27 @@ applied kill-switch value is exposed as `storm_ecs_class_cache` alongside the ot
 |------|------|--------|------|
 | `storm_ecs_class_cache_misses_total` | CounterWithCallback | — | Distinct classes memoized (`computeValue` executions); hits are intentionally uncounted. |
 
+### Vehicle server fast paths (StormVehicleAlphaCheckSkip, StormVehicleSoundRelevance)
+
+Two server-only vehicle fast paths, each with a sandbox kill switch (`Storm.VehicleAlphaCheckSkip`,
+`Storm.VehicleSoundRelevanceFastPath`; applied values exposed as `storm_vehicle_alpha_check_skip`
+and `storm_vehicle_sound_relevance_fast_path` alongside the other sandbox gauges). The alpha-check
+skip only counts; the relevance hoist records the per-tick snapshot it builds at
+`vehicleNetworkSound.server.Manager.update()` entry and which path answered each connection's
+`getVehiclesRelevantToConnection`. A non-zero `vanilla` path count with the option enabled means the
+fast path latched off (`snapshots_total{outcome="failed"}` > 0) or a caller other than `update()`
+reached the method; `noisy_vehicles` is the working-set size every connection is now tested against
+(vs `scanned_vehicles`, the vanilla per-connection walk).
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_vehicle_alpha_check_skips_total` | CounterWithCallback | — | `BaseVehicle.couldSeeIntersectedSquare` calls skipped on the server (one per loaded vehicle per tick while enabled). |
+| `storm_vehicle_sound_relevance_snapshot_duration_seconds` | Histogram (native) | — | Time to evaluate every loaded vehicle's audible radius once per tick. |
+| `storm_vehicle_sound_relevance_scanned_vehicles` | Gauge | — | Loaded vehicles walked by the last snapshot. |
+| `storm_vehicle_sound_relevance_noisy_vehicles` | Gauge | — | Vehicles with a non-zero audible radius in the last snapshot. |
+| `storm_vehicle_sound_relevance_connections_total` | CounterWithCallback | `path` = `fast` / `vanilla` | `getVehiclesRelevantToConnection` calls answered from the snapshot vs by the vanilla per-connection scan. |
+| `storm_vehicle_sound_relevance_snapshots_total` | CounterWithCallback | `outcome` = `ok` / `failed` | Per-tick snapshots; a failed outcome latches the fast path off. |
+
 ### Cell-unload budget (StormCellUnloadBudget)
 
 Tallies for the budgeted replacement of the `ServerMap.postupdate()` cell-unload loop

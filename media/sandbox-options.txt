@@ -54,6 +54,12 @@ option Storm.CellUnloadBudgetPerTick
 option Storm.EntityRemoveFastPath
 {type = boolean, default = true, page = Storm, translation = Storm_EntityRemoveFastPath,}
 
+option Storm.VehicleAlphaCheckSkip
+{type = boolean, default = true, page = Storm, translation = Storm_VehicleAlphaCheckSkip,}
+
+option Storm.VehicleSoundRelevanceFastPath
+{type = boolean, default = true, page = Storm, translation = Storm_VehicleSoundRelevanceFastPath,}
+
 option Storm.OverrideMaxPlayers
 {type = boolean, default = false, page = Storm, translation = Storm_OverrideMaxPlayers,}
 

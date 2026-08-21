@@ -9,6 +9,7 @@ import io.pzstorm.storm.commands.TestSeedActionCommand;
 import io.pzstorm.storm.commands.TestStatsGetCommand;
 import io.pzstorm.storm.commands.TestStormKahluaTableCommand;
 import io.pzstorm.storm.commands.TestStormLuaCallFrameCommand;
+import io.pzstorm.storm.commands.TestVehicleSoundRelevanceCommand;
 import io.pzstorm.storm.commands.TestWhisperChatStateCommand;
 import io.pzstorm.storm.commands.TestWorldMapVisibilityParityCommand;
 import io.pzstorm.storm.mod.ZomboidMod;
@@ -43,6 +44,7 @@ public class StormCommandRegistry {
             MOD_COMMANDS.add(TestStormKahluaTableCommand.class);
             MOD_COMMANDS.add(TestWhisperChatStateCommand.class);
             MOD_COMMANDS.add(TestWorldMapVisibilityParityCommand.class);
+            MOD_COMMANDS.add(TestVehicleSoundRelevanceCommand.class);
         }
     }
 
