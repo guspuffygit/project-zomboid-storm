@@ -4,12 +4,16 @@ import io.pzstorm.storm.cache.ServerLOSPlayerDataCache;
 import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.metrics.PlayerLosFastPathMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
+import io.pzstorm.storm.spatial.StormChunkIndex;
+import io.pzstorm.storm.spatial.StormObjectList;
+import io.pzstorm.storm.spatial.StormSpatialIndex;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Stack;
 import zombie.GameTime;
+import zombie.MovingObjectUpdateScheduler;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoSurvivor;
@@ -72,8 +76,17 @@ import zombie.vehicles.BaseVehicle;
  * ServerLOS$PlayerData} cached yet (first tick after join), and permanently if the fast path ever
  * throws.
  *
+ * <p><b>Candidate source.</b> When the shared per-tick {@link StormSpatialIndex} snapshot is
+ * published for the current scheduler frame, the loop walks only the objects bucketed in the chunk
+ * rectangle covering the (slack-widened) visibility cube plus {@link #SNAPSHOT_SLACK_CHUNKS} of
+ * movement slack, instead of the whole {@code IsoCell.objectList}. The per-object cube cull and
+ * every downstream check still run against live positions, so the result is identical to the full
+ * walk for any object that moved less than a chunk since tick start; if the index is not ready
+ * (rebuild failed this tick, or patch not woven) the full walk runs as before.
+ *
  * <p>Single-threaded by design: {@code IsoPlayer.updateLOS()} only runs on the server main thread
- * (via {@code ServerLOS.updateLOS}), so the counters and latch need no synchronization.
+ * (via {@code ServerLOS.updateLOS}), so the counters, scratch list and latch need no
+ * synchronization.
  */
 public final class StormPlayerLos {
 
@@ -86,6 +99,15 @@ public final class StormPlayerLos {
      * {@code fastfloor(getX())}; the vanilla visibility read uses the square's own coordinates).
      */
     private static final int CULL_SLACK = 1;
+
+    /**
+     * Chunks of tolerance added around the cube's chunk rectangle when querying the spatial index,
+     * covering movement between the tick-start snapshot and this call.
+     */
+    private static final int SNAPSHOT_SLACK_CHUNKS = 1;
+
+    /** Candidate objects for the current call; main-thread only, reused across calls. */
+    private static final StormObjectList CANDIDATES = new StormObjectList(1024);
 
     /**
      * Kill switch, driven by the {@code Storm.PlayerLosFastPath} sandbox option through {@link
@@ -164,6 +186,7 @@ public final class StormPlayerLos {
             return true;
         } catch (Throwable t) {
             failed = true;
+            CANDIDATES.clear();
             StormLogger.LOGGER.error(
                     "StormPlayerLos failed — reverting to vanilla IsoPlayer.updateLOS", t);
             PlayerLosFastPathMetrics.recordVanilla();
@@ -196,7 +219,7 @@ public final class StormPlayerLos {
         stats.musicZombiesVisible = 0;
         player.setNumSurvivorsInVicinity(0);
         if (player.getCurrentSquare() == null) {
-            PlayerLosFastPathMetrics.recordOptimized(0, 0);
+            PlayerLosFastPathMetrics.recordOptimized(0, 0, false);
             return;
         }
 
@@ -220,12 +243,19 @@ public final class StormPlayerLos {
         int minY = py - yDim / 2;
         int minZ = pz - zDim / 2;
 
-        for (IsoMovingObject movingObject : player.getCell().getObjectList()) {
+        // Vanilla adds the player itself to spottedList when the walk reaches it; order within
+        // the Stack is arbitrary in vanilla (HashSet iteration), so adding self up front is
+        // equivalent and keeps it present even if the snapshot missed a teleport.
+        spottedList.add(player);
+        boolean indexed = gatherCandidates(player, minX, minY, xDim, yDim);
+        int candidateCount = CANDIDATES.size();
+
+        for (int ci = 0; ci < candidateCount; ci++) {
+            IsoMovingObject movingObject = (IsoMovingObject) CANDIDATES.get(ci);
             if (movingObject instanceof IsoPhysicsObject || movingObject instanceof BaseVehicle) {
                 continue;
             }
             if (movingObject == player) {
-                spottedList.add(movingObject);
                 continue;
             }
             float movingObjectX = movingObject.getX();
@@ -369,7 +399,39 @@ public final class StormPlayerLos {
         stats.lastNumVisibleZombies = stats.numVisibleZombies;
         stats.lastVeryCloseZombies = vclose;
 
-        PlayerLosFastPathMetrics.recordOptimized(culled, processed);
+        CANDIDATES.clear();
+        PlayerLosFastPathMetrics.recordOptimized(culled, processed, indexed);
+    }
+
+    /**
+     * Fills {@link #CANDIDATES} with the objects this call must examine: the spatial-index
+     * snapshot's contents for the chunk rectangle around the visibility cube when a snapshot for
+     * the current frame is published, otherwise the whole {@code objectList} (vanilla's set).
+     *
+     * @return {@code true} if the index supplied the candidates
+     */
+    private static boolean gatherCandidates(
+            IsoPlayer player, int minX, int minY, int xDim, int yDim) {
+        CANDIDATES.clear();
+        long frame = MovingObjectUpdateScheduler.instance.getFrameCounter();
+        if (StormSpatialIndex.isReadyFor(frame)) {
+            int cx0 = StormChunkIndex.chunkOf(minX - CULL_SLACK) - SNAPSHOT_SLACK_CHUNKS;
+            int cy0 = StormChunkIndex.chunkOf(minY - CULL_SLACK) - SNAPSHOT_SLACK_CHUNKS;
+            int cx1 = StormChunkIndex.chunkOf(minX + xDim + CULL_SLACK) + SNAPSHOT_SLACK_CHUNKS;
+            int cy1 = StormChunkIndex.chunkOf(minY + yDim + CULL_SLACK) + SNAPSHOT_SLACK_CHUNKS;
+            StormSpatialIndex.collectChunkRect(
+                    cx0,
+                    cy0,
+                    cx1,
+                    cy1,
+                    StormChunkIndex.MASK_ALL & ~StormChunkIndex.MASK_VEHICLE,
+                    CANDIDATES);
+            return true;
+        }
+        for (IsoMovingObject movingObject : player.getCell().getObjectList()) {
+            CANDIDATES.add(movingObject);
+        }
+        return false;
     }
 
     private static void ensureInit() throws ReflectiveOperationException {

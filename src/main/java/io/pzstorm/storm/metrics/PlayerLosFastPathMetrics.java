@@ -21,6 +21,8 @@ public final class PlayerLosFastPathMetrics {
     public static long vanillaCalls;
     public static long culledObjects;
     public static long processedObjects;
+    public static long indexedCalls;
+    public static long fullScanCalls;
 
     @SuppressWarnings("unused")
     private static final CounterWithCallback CALLS =
@@ -56,13 +58,38 @@ public final class PlayerLosFastPathMetrics {
                             })
                     .register(StormPrometheus.registry());
 
+    @SuppressWarnings("unused")
+    private static final CounterWithCallback CANDIDATE_SOURCE =
+            CounterWithCallback.builder()
+                    .name("pz_player_update_los_candidate_source_total")
+                    .help(
+                            "Fast-path updateLOS() calls by where the candidate objects came from:"
+                                    + " index = the shared per-tick StormSpatialIndex chunk query;"
+                                    + " fullscan = the whole IsoCell.objectList (index not ready"
+                                    + " for this frame).")
+                    .labelNames("source")
+                    .callback(
+                            callback -> {
+                                callback.call((double) indexedCalls, "index");
+                                callback.call((double) fullScanCalls, "fullscan");
+                            })
+                    .register(StormPrometheus.registry());
+
     private PlayerLosFastPathMetrics() {}
 
-    /** One fast-path call completed; {@code culled}/{@code processed} are its per-call tallies. */
-    public static void recordOptimized(long culled, long processed) {
+    /**
+     * One fast-path call completed; {@code culled}/{@code processed} are its per-call tallies and
+     * {@code indexed} says whether the candidates came from the spatial index.
+     */
+    public static void recordOptimized(long culled, long processed, boolean indexed) {
         optimizedCalls++;
         culledObjects += culled;
         processedObjects += processed;
+        if (indexed) {
+            indexedCalls++;
+        } else {
+            fullScanCalls++;
+        }
     }
 
     /** One call fell through to the vanilla body. */

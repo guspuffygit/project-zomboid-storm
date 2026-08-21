@@ -184,7 +184,7 @@ on it.
 | `pz_public_server_util_update_player_count_call_duration_seconds` | `PublicServerUtilUpdatePlayerCountAdvice` |
 | `pz_rcon_server_update_call_duration_seconds` | `RCONServerUpdateAdvice` |
 | `pz_safe_house_update_call_duration_seconds` | `SafeHouseUpdateAdvice` |
-| `pz_send_world_map_player_position_call_duration_seconds` | `SendWorldMapPlayerPositionAdvice` |
+| `pz_send_world_map_player_position_call_duration_seconds` | `SendWorldMapPlayerPositionAdvice` | — times only the once-a-second all-connections batch (the no-arg overload); per-connection calls are no longer timed separately, which previously double-counted the batch.
 | `pz_server_cell_load2_call_duration_seconds` | `ServerCellLoad2Advice` |
 | `pz_server_gui_update_call_duration_seconds` | `ServerGUIUpdateAdvice` |
 | `pz_server_map_character_in_call_duration_seconds` | `ServerMapCharacterInAdvice` |
@@ -269,6 +269,43 @@ visibility-cube reads.
 |------|------|--------|------|
 | `pz_player_update_los_calls_total` | CounterWithCallback | `path={optimized,vanilla}` | `updateLOS()` invocations by executed path (`vanilla` = kill switch off, failure latch, or no `PlayerData` cached yet). |
 | `pz_player_update_los_objects_total` | CounterWithCallback | `outcome={culled,processed}` | Moving objects rejected by the visibility-cube distance check vs walked through the stripped loop body. |
+| `pz_player_update_los_candidate_source_total` | CounterWithCallback | `source={index,fullscan}` | Fast-path calls by candidate source: the shared per-tick `StormSpatialIndex` chunk query, or the whole `IsoCell.objectList` because no snapshot was published for this frame. |
+
+### Shared spatial index (SpatialIndexMetrics)
+
+`StormSpatialIndex` is rebuilt once per tick at the end of `MovingObjectUpdateScheduler.startFrame`
+(one walk of `IsoCell.objectList`, bucketed by 8×8-tile chunk and type) and queried by the
+player-LOS and animal-LOS fast paths instead of their own whole-cell walks. The rebuild runs on the
+main thread; the histogram is native-only.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_spatial_index_rebuild_duration_seconds` | Histogram | — | Wall-clock time of the per-tick rebuild. |
+| `storm_spatial_index_rebuilds_total` | CounterWithCallback | `outcome={ok,failed}` | Rebuilds that published a snapshot vs threw (consumers fell back to full scans for that tick). |
+| `storm_spatial_index_objects` | GaugeWithCallback | — | Moving objects captured by the latest rebuild. |
+| `storm_spatial_index_buckets` | GaugeWithCallback | — | Non-empty chunk buckets in the latest rebuild. |
+
+### Animal-LOS fast path (StormAnimalLos)
+
+Tallies for the radius-query `IsoAnimal.updateLOS()` replacement. Calls skipped by the
+`Storm.AnimalLOSTickInterval` stride are not counted anywhere here; the existing
+`pz_animal_update_los_call_duration_seconds` histogram keeps timing both paths.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_animal_update_los_calls_total` | CounterWithCallback | `path={optimized,vanilla}` | Calls that ran the radius query vs fell through to the vanilla whole-cell walk (index not ready, failure latch, or animal missing behavior/definition). |
+| `pz_animal_update_los_objects_total` | CounterWithCallback | `outcome={candidate,spotted,emulated}` | Candidates returned by the chunk query; real `spotted()` calls made; far zombies/players whose effect-free call was replaced by the `lastAlerted`/`spottedChr` emulation. |
+
+### World-map visibility memo (WorldMapVisibilityMemoMetrics)
+
+Per-batch username index behind `GameServer.shouldSendWorldMapPlayerPosition` (see
+`StormWorldMapVisibilityMemo`).
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_world_map_visibility_predicate_total` | CounterWithCallback | `path={memo,vanilla}` | Predicate evaluations answered from the memo vs. run through vanilla's linear faction/safehouse scans (outside a batch, or memo latched off). |
+| `storm_worldmap_visibility_memo_builds_total` | CounterWithCallback | `outcome={ok,failed}` | Table builds per batch; one failure latches the memo off for the session. |
+| `storm_worldmap_visibility_memo_build_duration_seconds` | Histogram (native) | — | Time to index all factions and safehouses by username at batch start. |
 
 ### Parallel ServerLOS engine (StormServerLosMetrics)
 

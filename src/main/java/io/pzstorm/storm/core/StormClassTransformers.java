@@ -183,6 +183,7 @@ import io.pzstorm.storm.patch.performance.MapCollisionDataSavePatch;
 import io.pzstorm.storm.patch.performance.MapCollisionDataUpdateGameStatePatch;
 import io.pzstorm.storm.patch.performance.MovingObjectSchedulerBucketAddPatch;
 import io.pzstorm.storm.patch.performance.MovingObjectSchedulerPostupdatePatch;
+import io.pzstorm.storm.patch.performance.MovingObjectSchedulerStartFramePatch;
 import io.pzstorm.storm.patch.performance.NetworkPlayerManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.NetworkZombieManagerAuthPatch;
 import io.pzstorm.storm.patch.performance.NetworkZombiePackerPostUpdatePatch;
@@ -368,6 +369,7 @@ public class StormClassTransformers {
         registerTransformer(new ServerLOSIsCouldSeePatch());
         if (StormEnv.isStormServer()) {
             registerTransformer(new StatsGetPatch());
+            registerTransformer(new MovingObjectSchedulerStartFramePatch());
             registerTransformer(new IsoPlayerUpdateRemotePatch());
             registerTransformer(new IsoPlayerUpdateLOSFastPathPatch());
             registerTransformer(new IsoPlayerUpdateLOSPatch());
