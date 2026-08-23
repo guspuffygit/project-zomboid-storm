@@ -58,9 +58,10 @@ public final class JoinFlow {
             LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
             throws IOException, InterruptedException {
         GameProcessTracker.reapLeftover();
-        updateWorkshopItems(config, profile, forceModUpdates);
+        ServerRequirements required = serverRequirements(config, profile);
+        updateWorkshopItems(config, profile, forceModUpdates, required);
         boolean handoffActive = prepareAutoJoin(config, profile);
-        return launch(config, profile, handoffActive);
+        return launch(config, profile, handoffActive, required.mods);
     }
 
     /**
@@ -71,7 +72,10 @@ public final class JoinFlow {
      * keep) Storm from the workshop by default, even when the server publishes no items of its own.
      */
     public static void updateWorkshopItems(
-            LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
+            LauncherConfig config,
+            ServerProfile profile,
+            boolean forceModUpdates,
+            ServerRequirements required)
             throws IOException, InterruptedException {
         if (!profile.updateWorkshopMods) {
             return;
@@ -82,7 +86,7 @@ public final class JoinFlow {
             items.add(stormItem);
             Log.info("Storm workshop item " + stormItem + " added to the pre-update.");
         }
-        for (String item : serverWorkshopItems(config, profile)) {
+        for (String item : required.workshopItems) {
             if (!items.contains(item)) {
                 items.add(item);
             }
@@ -152,6 +156,22 @@ public final class JoinFlow {
     }
 
     /**
+     * What the target server requires. {@code workshopItems} feeds the Steam pre-update; {@code
+     * mods} (PZ mod ids, or null when no source answered) feeds {@code -Dstorm.workshop.mods} so
+     * the client's Storm only catalogs workshop mods this server enables — an absent list makes
+     * Storm load no workshop mods at all (see {@code io.pzstorm.storm.core.StormWorkshopModGate}).
+     */
+    static final class ServerRequirements {
+        final List<String> workshopItems;
+        final List<String> mods;
+
+        ServerRequirements(List<String> workshopItems, List<String> mods) {
+            this.workshopItems = workshopItems;
+            this.mods = mods;
+        }
+    }
+
+    /**
      * The server's own requirement list, from the cheapest source that answers:
      *
      * <ol>
@@ -162,17 +182,24 @@ public final class JoinFlow {
      *
      * <p>An answering Storm server also names its Storm version, which feeds the skew warning.
      */
-    static List<String> serverWorkshopItems(LauncherConfig config, ServerProfile profile)
+    static ServerRequirements serverRequirements(LauncherConfig config, ServerProfile profile)
             throws InterruptedException {
         ServerQuery.Result queried = ServerQuery.run(config, profile);
         if (queried != null) {
             checkStormVersionSkew(config, queried.stormVersion);
-            if (!queried.workshopItems.isEmpty()) {
-                return queried.workshopItems;
+            if (!queried.workshopItems.isEmpty() || !queried.mods.isEmpty()) {
+                return new ServerRequirements(queried.workshopItems, queried.mods);
             }
         }
         ServerModList.Result probed = ServerModList.run(config, profile);
-        return probed == null ? Collections.emptyList() : probed.workshopItems;
+        if (probed == null) {
+            Log.warn(
+                    "No mod list from "
+                            + profile.connectAddress()
+                            + " — the game will start with no workshop java mods loaded.");
+            return new ServerRequirements(Collections.emptyList(), null);
+        }
+        return new ServerRequirements(probed.workshopItems, probed.mods);
     }
 
     /**
@@ -331,9 +358,21 @@ public final class JoinFlow {
     public static Process launch(
             LauncherConfig config, ServerProfile profile, boolean handoffActive)
             throws IOException {
+        return launch(config, profile, handoffActive, null);
+    }
+
+    public static Process launch(
+            LauncherConfig config,
+            ServerProfile profile,
+            boolean handoffActive,
+            List<String> serverMods)
+            throws IOException {
         GameLaunch.LaunchPlan plan =
                 GameLaunch.plan(
-                        config, profile, handoffActive ? LauncherPaths.autoJoinFile() : null);
+                        config,
+                        profile,
+                        handoffActive ? LauncherPaths.autoJoinFile() : null,
+                        serverMods);
         for (String warning : plan.warnings) {
             Log.warn(warning);
         }

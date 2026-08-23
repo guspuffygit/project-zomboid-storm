@@ -1,7 +1,6 @@
 package io.pzstorm.storm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,9 +51,9 @@ class StormWorkshopModGateTest {
     }
 
     @Test
-    void clientWithoutOverrideIsNotGated() {
+    void clientWithoutOverrideLoadsNothingFromWorkshop() {
         System.setProperty("storm.server", "false");
-        assertNull(StormWorkshopModGate.enabledMods());
+        assertEquals(Set.of(), StormWorkshopModGate.enabledMods());
     }
 
     @Test

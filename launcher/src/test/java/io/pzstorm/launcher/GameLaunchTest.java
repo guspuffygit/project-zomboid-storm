@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -182,6 +183,25 @@ class GameLaunchTest {
                 plan.command.toString());
         assertFalse(plan.command.contains("+connect"), "auto-join must suppress +connect");
         assertFalse(plan.command.contains("+password"), "auto-join must suppress +password");
+    }
+
+    @Test
+    void serverModListRidesAlongAsWorkshopModsProperty() throws IOException {
+        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null, List.of("modA", "modB"));
+        assertTrue(
+                plan.command.contains("-D" + GameLaunch.WORKSHOP_MODS_PROPERTY + "=modA;modB"),
+                plan.command.toString());
+    }
+
+    @Test
+    void absentServerModListSendsNoWorkshopModsProperty() throws IOException {
+        for (List<String> mods : Arrays.asList(null, List.<String>of())) {
+            GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null, mods);
+            assertTrue(
+                    plan.command.stream()
+                            .noneMatch(a -> a.startsWith("-D" + GameLaunch.WORKSHOP_MODS_PROPERTY)),
+                    "no list must mean no property — Storm then loads no workshop mods");
+        }
     }
 
     @Test

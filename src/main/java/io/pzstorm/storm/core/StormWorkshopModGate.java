@@ -20,10 +20,15 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  *   <li>On server JVMs the enabled set is the {@code Mods=} line of {@code
  *       <cachedir>/Server/<servername>.ini} — the same list PZ itself loads.
- *   <li>{@code -Dstorm.workshop.mods=<id;id;…>} overrides the set on any JVM.
- *   <li>A client JVM without the override loads everything, as before — at bootstrap time it has no
- *       server context (the joined server's mod list only arrives in-game, long after mod
- *       transformers must be registered).
+ *   <li>{@code -Dstorm.workshop.mods=<id;id;…>} overrides the set on any JVM. The Storm Launcher
+ *       sets it from the target server's queried mod list when it launches a join.
+ *   <li>A client JVM without the override loads <b>no</b> workshop-folder mods. A client can't
+ *       learn the server's list itself at bootstrap time (it only arrives in-game, long after mod
+ *       transformers must be registered), so an absent override means "no server context" — e.g. a
+ *       plain launch to the main menu — and loading arbitrary subscribed jars there has taken
+ *       clients down (a server-only mod logging inside its {@code GameServer} transformer threw
+ *       {@code ClassCircularityError} during {@code DebugLog.init}). Storm core itself is untouched
+ *       by the gate: it loads from the bootstrap classpath, not through {@code StormModLoader}.
  * </ul>
  */
 public final class StormWorkshopModGate {
@@ -73,7 +78,8 @@ public final class StormWorkshopModGate {
     /**
      * The mod ids allowed to load from workshop folders, or {@code null} when workshop mods are not
      * gated on this JVM. A server whose ini is missing or has no {@code Mods=} line gets an empty
-     * set — same as PZ, which would load no mods either.
+     * set — same as PZ, which would load no mods either. A client without the {@code
+     * -Dstorm.workshop.mods} override gets an empty set too: no server context, no workshop mods.
      */
     public static @Nullable Set<String> enabledMods() {
         String override = System.getProperty(WORKSHOP_MODS_PROPERTY);
@@ -81,7 +87,11 @@ public final class StormWorkshopModGate {
             return parseModList(override);
         }
         if (!StormEnv.isStormServer()) {
-            return null;
+            LOGGER.info(
+                    "No -D{} set — this client will load no workshop-folder mods."
+                            + " Joining through the Storm Launcher provides the server's list.",
+                    WORKSHOP_MODS_PROPERTY);
+            return Collections.emptySet();
         }
         Path ini = serverIniPath();
         if (!Files.isRegularFile(ini)) {

@@ -38,6 +38,13 @@ public final class GameLaunch {
     public static final String SKIP_MENUS_PROPERTY = "storm.skipmenus";
 
     /**
+     * The target server's PZ mod ids ({@code ;}-separated), queried before launch. Storm's client
+     * only catalogs workshop-folder mods on this list; without the property it catalogs none. Keep
+     * the name in sync with {@code io.pzstorm.storm.core.StormWorkshopModGate}.
+     */
+    public static final String WORKSHOP_MODS_PROPERTY = "storm.workshop.mods";
+
+    /**
      * A game JVM started with the Storm agent but without this property set to false hands itself
      * off to the launcher and exits — that is how the Steam Launch Options paste opens the
      * launcher. The game the launcher spawns must boot the game, not another launcher, so this is
@@ -113,6 +120,21 @@ public final class GameLaunch {
      */
     public static LaunchPlan plan(LauncherConfig config, ServerProfile profile, Path autoJoinFile)
             throws IOException {
+        return plan(config, profile, autoJoinFile, null);
+    }
+
+    /**
+     * A non-null {@code serverMods} is the joined server's mod-id list; it rides along as {@code
+     * -Dstorm.workshop.mods} so the game's Storm only loads those workshop mods. Null (list never
+     * obtained, or a plain launch to the main menu) sends nothing — Storm then loads no workshop
+     * mods at all.
+     */
+    public static LaunchPlan plan(
+            LauncherConfig config,
+            ServerProfile profile,
+            Path autoJoinFile,
+            List<String> serverMods)
+            throws IOException {
         Path gameDir = config.resolveGameDir();
         if (gameDir == null) {
             throw new IOException(
@@ -182,6 +204,10 @@ public final class GameLaunch {
                             + AUTOJOIN_FILE_PROPERTY
                             + "="
                             + pathArgFor(jvm, autoJoinFile.toAbsolutePath()));
+        }
+
+        if (serverMods != null && !serverMods.isEmpty()) {
+            command.add("-D" + WORKSHOP_MODS_PROPERTY + "=" + String.join(";", serverMods));
         }
 
         // user-supplied args go last so they win over anything above
