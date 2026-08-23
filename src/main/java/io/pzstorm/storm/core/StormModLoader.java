@@ -96,60 +96,74 @@ public class StormModLoader extends URLClassLoader {
         GameVersion gameVersion = Core.getInstance().getGameVersion();
 
         for (Path modDir : modDirectories) {
-            Path commonDir = modDir.resolve("common");
-            if (!Files.exists(commonDir) || !Files.isDirectory(commonDir)) {
-                LOGGER.debug("Skipping loading, common/ not found: {}", modDir.toAbsolutePath());
-                continue;
+            try {
+                catalogModDir(modDir, gameVersion, gatedDirectories, enabledMods);
+            } catch (Exception e) {
+                LOGGER.error("Skipping mod, unable to catalog: {}", modDir.toAbsolutePath(), e);
             }
-
-            // B42: mod.info lives in the best matching version folder; fall back to root.
-            Path versionDir = findBestVersionFolder(modDir, gameVersion);
-
-            Path modInfoPath = null;
-            if (versionDir != null) {
-                Path candidate = versionDir.resolve("mod.info");
-                if (Files.isRegularFile(candidate)) {
-                    modInfoPath = candidate;
-                }
-            }
-            if (modInfoPath == null) {
-                modInfoPath = modDir.resolve("mod.info");
-            }
-
-            if (!Files.isRegularFile(modInfoPath)) {
-                LOGGER.debug("Skipping loading, mod.info not found: {}", modDir.toAbsolutePath());
-                continue;
-            }
-
-            ModInfo modInfo = new ModInfo(Files.readString(modInfoPath));
-            if (modInfo.getName().isEmpty() || modInfo.getId().isEmpty()) {
-                LOGGER.debug("Skipping loading, name or id not found: {}", modDir.toAbsolutePath());
-                continue;
-            }
-
-            String modId = modInfo.getId().get();
-            if (enabledMods != null
-                    && gatedDirectories.contains(modDir.toAbsolutePath().normalize())
-                    && !enabledMods.contains(modId)) {
-                LOGGER.info(
-                        "Skipping workshop mod '{}', not enabled by the server: {}",
-                        modId,
-                        modDir.toAbsolutePath());
-                continue;
-            }
-
-            List<ModJar> modJars = new ArrayList<>();
-            if (versionDir != null) {
-                collectJarsFromDirectory(versionDir, modJars);
-            }
-
-            if (modJars.isEmpty()) {
-                LOGGER.debug("Skipping loading, no jars found in: {}", modDir.toAbsolutePath());
-                continue;
-            }
-
-            STORM_MODS.put(modId, new StormMod(modInfo, modJars));
         }
+    }
+
+    /** Catalogs a single mod directory. Throwing here skips the mod, never the whole catalog. */
+    private static void catalogModDir(
+            Path modDir,
+            GameVersion gameVersion,
+            Set<Path> gatedDirectories,
+            @Nullable Set<String> enabledMods)
+            throws IOException {
+        Path commonDir = modDir.resolve("common");
+        if (!Files.exists(commonDir) || !Files.isDirectory(commonDir)) {
+            LOGGER.debug("Skipping loading, common/ not found: {}", modDir.toAbsolutePath());
+            return;
+        }
+
+        // B42: mod.info lives in the best matching version folder; fall back to root.
+        Path versionDir = findBestVersionFolder(modDir, gameVersion);
+
+        Path modInfoPath = null;
+        if (versionDir != null) {
+            Path candidate = versionDir.resolve("mod.info");
+            if (Files.isRegularFile(candidate)) {
+                modInfoPath = candidate;
+            }
+        }
+        if (modInfoPath == null) {
+            modInfoPath = modDir.resolve("mod.info");
+        }
+
+        if (!Files.isRegularFile(modInfoPath)) {
+            LOGGER.debug("Skipping loading, mod.info not found: {}", modDir.toAbsolutePath());
+            return;
+        }
+
+        ModInfo modInfo = new ModInfo(StormTextFiles.read(modInfoPath));
+        if (modInfo.getName().isEmpty() || modInfo.getId().isEmpty()) {
+            LOGGER.debug("Skipping loading, name or id not found: {}", modDir.toAbsolutePath());
+            return;
+        }
+
+        String modId = modInfo.getId().get();
+        if (enabledMods != null
+                && gatedDirectories.contains(modDir.toAbsolutePath().normalize())
+                && !enabledMods.contains(modId)) {
+            LOGGER.info(
+                    "Skipping workshop mod '{}', not enabled by the server: {}",
+                    modId,
+                    modDir.toAbsolutePath());
+            return;
+        }
+
+        List<ModJar> modJars = new ArrayList<>();
+        if (versionDir != null) {
+            collectJarsFromDirectory(versionDir, modJars);
+        }
+
+        if (modJars.isEmpty()) {
+            LOGGER.debug("Skipping loading, no jars found in: {}", modDir.toAbsolutePath());
+            return;
+        }
+
+        STORM_MODS.put(modId, new StormMod(modInfo, modJars));
     }
 
     /** Collects all {@code .jar} files directly inside {@code dir} into {@code modJars}. */

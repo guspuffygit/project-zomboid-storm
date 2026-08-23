@@ -93,7 +93,7 @@ public final class StormWorkshopModGate {
             return Collections.emptySet();
         }
         try {
-            for (String line : Files.readAllLines(ini)) {
+            for (String line : StormTextFiles.readLines(ini)) {
                 String trimmed = line.trim();
                 if (trimmed.startsWith("Mods=")) {
                     return parseModList(trimmed.substring("Mods=".length()));
