@@ -1,7 +1,6 @@
 package io.pzstorm.storm.patch.performance;
 
 import io.pzstorm.storm.logging.StormLogger;
-import java.util.HashSet;
 import java.util.List;
 import zombie.core.raknet.UdpConnection;
 import zombie.iso.Vector3;
@@ -41,7 +40,7 @@ final class StormPlayerInfluenceGrid {
 
     private static boolean loggedSpanClamp;
 
-    private final HashSet<Long> influenced = new HashSet<>();
+    private final StormLongHashSet influenced = new StormLongHashSet();
 
     private static long key(int wx, int wy) {
         return ((long) wx & 0xffffffffL) | (((long) wy & 0xffffffffL) << 32);

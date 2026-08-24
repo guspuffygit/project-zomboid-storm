@@ -171,6 +171,7 @@ import io.pzstorm.storm.patch.performance.IsoPlayerUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.IsoRegionsUpdatePatch;
 import io.pzstorm.storm.patch.performance.IsoRoomOnSeePatch;
+import io.pzstorm.storm.patch.performance.IsoThumpableUpdateSkipPatch;
 import io.pzstorm.storm.patch.performance.IsoWaterFlowMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateBuildingsPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateDBsPatch;
@@ -389,6 +390,7 @@ public class StormClassTransformers {
             registerTransformer(new BaseVehicleCropCheckSkipPatch());
             registerTransformer(new WorldSoundServerChunkIndexPatch());
             registerTransformer(new IsoGameCharacterCheckIsNearVehiclePatch());
+            registerTransformer(new IsoThumpableUpdateSkipPatch());
             registerTransformer(new CorpseCountZombieIndexPatch());
             registerTransformer(new VehicleSoundRelevancePatch());
             registerTransformer(new GameServerNetDataPatch());

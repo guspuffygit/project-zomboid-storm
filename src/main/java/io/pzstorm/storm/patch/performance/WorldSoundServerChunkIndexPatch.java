@@ -15,15 +15,21 @@ import net.bytebuddy.pool.TypePool;
  * dedicated server instead of the global {@code soundList} scan. Vanilla builds and reads the
  * per-chunk index only on the client, so every animal's per-tick {@code getSoundAnimal} and every
  * zombie {@code getSoundZomb}/{@code getBiggestSoundZomb} query walks all live sounds in the world.
- * Four coordinated changes on {@code zombie.WorldSoundManager} (see {@code
- * StormServerChunkSoundIndex} for the index semantics and failure fallback):
+ * Five coordinated changes on {@code zombie.WorldSoundManager} (see {@code
+ * StormServerChunkSoundIndex} for the index semantics and failure fallback, and {@code
+ * StormRepeatingSoundCoalescer} for the repeating-sound dedup semantics):
  *
  * <ol>
- *   <li>Exit advice on the 13-arg body overload of {@code addSound} indexes each new sound into the
- *       chunks of its client-identical hearing footprint (via {@code ServerMap.getChunk}).
+ *   <li>Enter advice on the 13-arg body overload of {@code addSound} coalesces a matching repeating
+ *       emission into its source's live slot sound (skipping the vanilla body); exit advice indexes
+ *       each genuinely new sound into the chunks of its client-identical hearing footprint (via
+ *       {@code ServerMap.getChunk}) and registers repeating sounds as coalescer slots.
  *   <li>Enter advice on {@code update()} un-indexes the sounds vanilla is about to remove and
  *       release to its object pool that tick.
  *   <li>Enter advice on {@code KillCell()} un-indexes everything on world teardown.
+ *   <li>Enter advice on {@code getStressFromSounds} replaces the additive loop with {@code
+ *       StormRepeatingSoundCoalescer.stressFromSounds}, which weights each coalesced slot by the
+ *       copy count vanilla would have alive so stress accumulation is unchanged by coalescing.
  *   <li>{@code MemberSubstitution} redirects the single {@code GameServer.server} field read in
  *       each of {@code getSoundZomb}, {@code getSoundAnimal} and {@code getBiggestSoundZomb} to
  *       {@code StormServerChunkSoundIndex.readServerFlag()}, steering them onto the vanilla client
@@ -34,8 +40,10 @@ import net.bytebuddy.pool.TypePool;
  * <p>Server-only by registration gate. Re-validate on game update: the addSound body overload is
  * matched by name + 13 parameters, {@code addSound} must remain the only writer of the sound lists,
  * each read method must contain exactly one {@code GameServer.server} read with the {@code chunk !=
- * null && !GameServer.server} shape, and {@code IsoChunk.updateSounds()} must stay client-only
- * (WorldSoundManager.java:134/160/235/258/301/428 in 42.20.3).
+ * null && !GameServer.server} shape, {@code getStressFromSounds} must keep the {@code stresshumans
+ * && radius != 0} Manhattan-distance sum its replacement replicates, and {@code
+ * IsoChunk.updateSounds()} must stay client-only (WorldSoundManager.java:134/160/235/258/301/428 in
+ * 42.20.3).
  */
 public class WorldSoundServerChunkIndexPatch extends StormClassTransformer {
 
@@ -80,6 +88,14 @@ public class WorldSoundServerChunkIndexPatch extends StormClassTransformer {
                         .filter(ElementMatchers.named("getBiggestSoundZomb"))
                         .isEmpty(),
                 "getBiggestSoundZomb");
+        requireDeclared(
+                target.getDeclaredMethods()
+                                .filter(
+                                        ElementMatchers.named("getStressFromSounds")
+                                                .and(ElementMatchers.takesArguments(3)))
+                                .size()
+                        == 1,
+                "exactly one 3-arg getStressFromSounds");
 
         MethodDescription readServerFlag =
                 typePool.describe(INDEX)
@@ -112,6 +128,15 @@ public class WorldSoundServerChunkIndexPatch extends StormClassTransformer {
                                                 .resolve(),
                                         locator)
                                 .on(ElementMatchers.named("KillCell")));
+        builder =
+                builder.visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "WorldSoundManagerGetStressAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("getStressFromSounds")
+                                                .and(ElementMatchers.takesArguments(3))));
         builder =
                 builder.visit(
                         MemberSubstitution.relaxed()
