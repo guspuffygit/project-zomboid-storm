@@ -111,6 +111,7 @@ import io.pzstorm.storm.patch.performance.ClimateManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerInitUpdatePatch;
 import io.pzstorm.storm.patch.performance.CollisionManagerResolveContactsPatch;
 import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
+import io.pzstorm.storm.patch.performance.CorpseCountZombieIndexPatch;
 import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
 import io.pzstorm.storm.patch.performance.CutawayVisitFastPathPatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
@@ -388,6 +389,7 @@ public class StormClassTransformers {
             registerTransformer(new BaseVehicleCropCheckSkipPatch());
             registerTransformer(new WorldSoundServerChunkIndexPatch());
             registerTransformer(new IsoGameCharacterCheckIsNearVehiclePatch());
+            registerTransformer(new CorpseCountZombieIndexPatch());
             registerTransformer(new VehicleSoundRelevancePatch());
             registerTransformer(new GameServerNetDataPatch());
             registerTransformer(new IsoChunkLoadPatch());
