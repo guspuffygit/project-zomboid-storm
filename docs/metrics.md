@@ -378,7 +378,22 @@ is exposed as `storm_fluid_container_update_fast_path` alongside the other sandb
 | Name | Type | Labels | What |
 |------|------|--------|------|
 | `pz_fluid_container_update_passes_total` | CounterWithCallback | `path={optimized,vanilla}` | `updateSimulation()` invocations by executed path (`vanilla` = kill switch off or failure latch). |
-| `pz_fluid_container_update_entities_total` | CounterWithCallback | `outcome={short_circuited,worked}` | Entities examined by the optimized pass: exited on the cheap guards before any fluid-list work vs ran the petrol comparison and/or rain-fill branch. |
+| `pz_fluid_container_update_entities_total` | CounterWithCallback | `outcome={short_circuited,worked}` | Entities examined by the optimized pass: exited on the cheap shared-prefix guards before the validity machinery and fluid-list work vs ran the petrol comparison and/or rain-fill branch. |
+
+### Zombie ownership scan (StormZombieAuthScan)
+
+Tallies for the snapshot-backed replacement of `NetworkZombieManager.updateAuth(IsoZombie)`
+(`Storm.ZombieAuthFastPath`). Vanilla walks every connection and player slot per zombie and reaches
+the owner through repeated ECS component probes; the optimized pass flattens the (connection,
+player) rows once per `NetworkZombiePacker.updateAuth()` pass and scans the rows with one component
+fetch per zombie. Tallies are plain non-atomic `long`s (main-thread writers only) read at scrape
+time via `CounterWithCallback`. The applied kill-switch value is exposed as
+`storm_zombie_auth_fast_path` alongside the other sandbox gauges.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_zombie_auth_scan_passes_total` | CounterWithCallback | `path={optimized,vanilla}` | Packer auth passes by executed path (`vanilla` = kill switch off, failure latch, rotate-ownership debug option, or no engine yet). |
+| `pz_zombie_auth_scan_zombies_total` | CounterWithCallback | `outcome={gate_closed,branch_moved,scan_unchanged,scan_moved}` | Zombies handled by the optimized scan: 2 s gate still closed; moved by the grapple/target early-outs; scan kept the current owner (no-op `moveZombie` skipped); scan moved ownership. |
 
 ### ECS class cache (EcsClassCache)
 
@@ -1014,6 +1029,7 @@ what reports that, not this table.
 | `storm_player_los_fast_path` | Gauge | `1` = the distance-culled `IsoPlayer.updateLOS()` replacement is active (default); `0` = vanilla whole-cell moving-object walk. `Storm.PlayerLosFastPath`; the executed-path split is `pz_player_update_los_calls_total`. |
 | `storm_using_player_sweep_fast_path` | Gauge | `1` = the registry-backed `UsingPlayerUpdateSystem.update()` sweep is active (default); `0` = vanilla full iso-bucket scan. `Storm.UsingPlayerSweepFastPath`. |
 | `storm_fluid_container_update_fast_path` | Gauge | `1` = the hoisted/reordered `FluidContainerUpdateSystem.updateSimulation()` is active (default); `0` = vanilla per-entity climate re-reads and fluid-list scans. `Storm.FluidContainerUpdateFastPath`. |
+| `storm_zombie_auth_fast_path` | Gauge | `1` = the snapshot-backed `NetworkZombieManager.updateAuth(IsoZombie)` scan is active (default); `0` = vanilla per-zombie connection/player walk. `Storm.ZombieAuthFastPath`. |
 | `storm_ecs_class_cache` | Gauge | `1` = the `ClassValue` memoization of `ECSComponent.getECSClass(Class)` is active (default); `0` = vanilla superclass walk on every component lookup. `Storm.EcsClassCache`. |
 | `storm_entity_remove_fast_path` | Gauge | `1` = O(1) indexed removal from the engine's global entity array is active (default); `0` = vanilla linear identity scan of the whole array. `Storm.EntityRemoveFastPath`. A self-check failure latches the fast path off without moving this gauge — watch `pz_entity_array_removes_total{path="mismatch"}`. |
 | `storm_cell_unload_budget_per_tick` | Gauge | Maximum stale cells `ServerMap.postupdate` may destructively unload per tick; the rest stay loaded and are re-evaluated next tick. Default 2; `0` = vanilla (unload every stale cell in one tick). `Storm.CellUnloadBudgetPerTick`. Has no effect while [cell warming](#cell-warming-stormcellwarmingmetrics) owns `postupdate`. |

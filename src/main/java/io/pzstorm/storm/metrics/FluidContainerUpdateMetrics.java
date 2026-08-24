@@ -43,12 +43,13 @@ public final class FluidContainerUpdateMetrics {
             CounterWithCallback.builder()
                     .name("pz_fluid_container_update_entities_total")
                     .help(
-                            "FluidContainer entities examined by the optimized pass (validity- and"
-                                    + " meta-filtered entities excluded, as in vanilla):"
-                                    + " short_circuited = exited on the cheap guards (cannot be"
-                                    + " emptied, no rain catcher, or empty with no rain applicable)"
-                                    + " before any fluid-list work; worked = ran the petrol"
-                                    + " comparison and/or the rain-fill branch.")
+                            "FluidContainer entities examined by the optimized pass:"
+                                    + " short_circuited = exited on the cheap shared-prefix guards"
+                                    + " (no rain catcher or cannot be emptied), evaluated before"
+                                    + " the validity/meta machinery since such entities do no"
+                                    + " observable work in vanilla either; worked = passed the"
+                                    + " prefix and validity gates and ran the petrol comparison"
+                                    + " and/or the rain-fill branch.")
                     .labelNames("outcome")
                     .callback(
                             callback -> {

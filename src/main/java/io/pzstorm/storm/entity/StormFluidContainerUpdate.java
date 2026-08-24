@@ -28,7 +28,7 @@ import zombie.iso.weather.ClimateManager;
  * {@code SandboxOptions.getDayLengthMinutes()}, and runs {@code getPrimaryFluid()} (a fluid-list
  * scan) plus {@code getFluidTypeString().equals("Petrol")} before the rain branch's cheap guards.
  * Only the network sync is throttled ({@code objectSyncLimiter}, 1000ms) — the scan itself is not.
- * This replacement applies exactly three safe transformations:
+ * This replacement applies exactly five safe transformations:
  *
  * <ol>
  *   <li><b>Hoists per-call invariants out of the per-entity loop:</b> precipitation intensity,
@@ -50,6 +50,19 @@ import zombie.iso.weather.ClimateManager;
  *       side-effect-free read, and for entities that do qualify, every fluid mutation ({@code
  *       adjustAmount}, {@code addFluid}) runs in the exact vanilla order: petrol branch first, then
  *       rain branch.
+ *   <li><b>Evaluates that shared prefix before the entity/component validity gates.</b> Live
+ *       profiling (ATF 2026-08-24, 112 players) attributed ~2% of the main thread to the per-entity
+ *       validity machinery ({@code isEntityValid}/{@code isValidEngineEntity}/{@code
+ *       Component.isValid} and the meta gate) running for every registered fluid container — nearly
+ *       all of which (water bottles, jerrycans) then exit on {@code rainCatcher == 0}. The validity
+ *       gates are themselves pure reads that only decide whether {@code updateEntity} runs, and an
+ *       entity failing the shared prefix does no observable work in vanilla regardless of its
+ *       validity, so hoisting the prefix above them is outcome-identical; the component is fetched
+ *       first ({@code getComponent} is null-safe on any entity) and a null component — impossible
+ *       for an entity vanilla's gates would pass — skips like an invalid one. For prefix-passing
+ *       candidates the vanilla gate order resumes unchanged, with the meta gate reduced to {@code
+ *       isValid()} because {@code isQualifiesForMetaStorage()} is exactly {@code getRainCatcher() >
+ *       0}, already established true.
  *   <li><b>Replaces the {@code "Petrol"} string comparison with an enum identity compare.</b>
  *       {@code getPrimaryFluid().getFluidType() == FluidType.Petrol} is exactly equivalent to
  *       vanilla's {@code getPrimaryFluid().getFluidTypeString().equals("Petrol")}: a builtin {@code
@@ -183,27 +196,33 @@ public final class StormFluidContainerUpdate {
 
             for (int i = 0; i < entities.size(); i++) {
                 GameEntity entity = entities.get(i);
-                // Vanilla isValidEntity(entity) — inlined (it is private on the system).
-                if (!entity.isEntityValid() || !entity.isValidEngineEntity()) {
-                    continue;
-                }
+                // Most-selective prefilter first — see class doc item 3. Every expression here
+                // through the validity gates is a side-effect-free read, and an entity failing
+                // the shared branch prefix (canPlayerEmpty() && getRainCatcher() > 0) does no
+                // observable work in vanilla either, so evaluating the prefix before the
+                // validity machinery is outcome-identical. Almost every fluid container on a
+                // live server (water bottles, jerrycans, ...) exits on the rainCatcher check.
                 FluidContainer fluidContainer = entity.getComponent(ComponentType.FluidContainer);
-                if (!fluidContainer.isValid()
-                        || (!entity.isMeta() && !fluidContainer.isQualifiesForMetaStorage())) {
-                    continue;
-                }
-
-                // ==== vanilla updateEntity(entity, fluidContainer, doSync), reordered ====
-                // Shared prefix of both vanilla branches; both are pure reads, stable within
-                // the call (owner and rainCatcher are untouched by adjustAmount/addFluid/sync),
-                // so evaluating them once up front is outcome-identical.
-                if (!fluidContainer.canPlayerEmpty()) {
+                if (fluidContainer == null) {
+                    // Unreachable when vanilla's validity gates would pass (bucket membership
+                    // implies the component); vanilla would NPE here otherwise.
                     shortCircuited++;
                     continue;
                 }
                 float rainCatcher = fluidContainer.getRainCatcher();
-                if (!(rainCatcher > 0.0F)) {
+                if (!(rainCatcher > 0.0F) || !fluidContainer.canPlayerEmpty()) {
                     shortCircuited++;
+                    continue;
+                }
+
+                // Vanilla isValidEntity(entity) — inlined (it is private on the system). Only
+                // rain-catcher candidates pay for these now.
+                if (!entity.isEntityValid() || !entity.isValidEngineEntity()) {
+                    continue;
+                }
+                // Vanilla's meta gate (!isMeta() && !isQualifiesForMetaStorage()) is subsumed:
+                // isQualifiesForMetaStorage() is getRainCatcher() > 0, already known true.
+                if (!fluidContainer.isValid()) {
                     continue;
                 }
 
@@ -253,7 +272,7 @@ public final class StormFluidContainerUpdate {
                 }
 
                 // Coalesced sync — one full-state send after the last mutation instead of
-                // vanilla's per-branch sends; see class doc item 4.
+                // vanilla's per-branch sends; see class doc item 5.
                 if (needSync && entity instanceof IsoObject isoObject) {
                     isoObject.sync();
                 }

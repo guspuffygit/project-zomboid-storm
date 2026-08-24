@@ -30,6 +30,7 @@ import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
 import io.pzstorm.storm.vehicles.StormVehicleAlphaCheckSkip;
 import io.pzstorm.storm.vehicles.StormVehicleSoundRelevance;
+import io.pzstorm.storm.zombie.StormZombieAuthScan;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import zombie.SandboxOptions;
 import zombie.core.znet.SteamGameServer;
@@ -68,6 +69,7 @@ public final class StormPerformanceSandboxApplier {
             "Storm.ZombieSightVehicleFastPath";
     public static final String OPT_PLAYER_LOS_FAST_PATH = "Storm.PlayerLosFastPath";
     public static final String OPT_USING_PLAYER_SWEEP_FAST_PATH = "Storm.UsingPlayerSweepFastPath";
+    public static final String OPT_ZOMBIE_AUTH_FAST_PATH = "Storm.ZombieAuthFastPath";
     public static final String OPT_FLUID_CONTAINER_UPDATE_FAST_PATH =
             "Storm.FluidContainerUpdateFastPath";
     public static final String OPT_ECS_CLASS_CACHE = "Storm.EcsClassCache";
@@ -126,6 +128,7 @@ public final class StormPerformanceSandboxApplier {
         applyZombieSightVehicleFastPath();
         applyPlayerLosFastPath();
         applyUsingPlayerSweepFastPath();
+        applyZombieAuthFastPath();
         applyFluidContainerUpdateFastPath();
         applyEcsClassCache();
         applyCellUnloadBudgetPerTick();
@@ -376,6 +379,19 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         UsingPlayerRegistry.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_ZOMBIE_AUTH_FAST_PATH} through {@link
+     * StormZombieAuthScan#setEnabled(boolean)} — the kill switch for the snapshot-backed {@code
+     * NetworkZombieManager.updateAuth(IsoZombie)} ownership scan.
+     */
+    private static void applyZombieAuthFastPath() {
+        Boolean value = readBooleanOption(OPT_ZOMBIE_AUTH_FAST_PATH);
+        if (value == null) {
+            return;
+        }
+        StormZombieAuthScan.setEnabled(value);
     }
 
     /**
