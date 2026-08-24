@@ -156,6 +156,7 @@ import io.pzstorm.storm.patch.performance.IsoChunkSafeReadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSaveLoadedChunkPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
 import io.pzstorm.storm.patch.performance.IsoDeadBodyUpdateBodiesPatch;
+import io.pzstorm.storm.patch.performance.IsoGameCharacterCheckIsNearVehiclePatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterIsRagdollPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterRagdollMirrorsPatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
@@ -382,6 +383,7 @@ public class StormClassTransformers {
             registerTransformer(new VehicleManagerSendVehiclesPatch());
             registerTransformer(new BaseVehicleUpdatePatch());
             registerTransformer(new BaseVehicleAlphaCheckSkipPatch());
+            registerTransformer(new IsoGameCharacterCheckIsNearVehiclePatch());
             registerTransformer(new VehicleSoundRelevancePatch());
             registerTransformer(new GameServerNetDataPatch());
             registerTransformer(new IsoChunkLoadPatch());
