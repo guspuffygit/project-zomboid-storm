@@ -7,6 +7,7 @@ import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.client.PlayerDataRequestBackoffPatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
+import io.pzstorm.storm.patch.client.VehicleTowConstraintSnapPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
 import io.pzstorm.storm.patch.client.experimental.VehicleModDataRequestPatch;
 import io.pzstorm.storm.patch.core.CommandBasePatch;
@@ -392,6 +393,7 @@ public class StormClassTransformers {
             registerTransformer(new VehicleModDataRequestPatch());
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
+            registerTransformer(new VehicleTowConstraintSnapPatch());
             registerTransformer(new PacketLimitMetricsPatch());
             registerTransformer(new PlayerDataRequestBackoffPatch());
         }

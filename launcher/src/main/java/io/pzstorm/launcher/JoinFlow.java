@@ -65,11 +65,12 @@ public final class JoinFlow {
     }
 
     /**
-     * Best-effort: failures fall back to the game's own in-game workshop flow — except when Steam
-     * refused every single item ({@link WorkshopUpdate.Result#nothingUpdated}), which aborts the
-     * join: the in-game flow talks to the same stuck Steam client and can only strand the player at
-     * the workshop screen. Storm's own workshop item is always first in the list — clients get (and
-     * keep) Storm from the workshop by default, even when the server publishes no items of its own.
+     * Any item Steam leaves not join-ready aborts the join: the client would be mismatched with the
+     * server, and the in-game workshop flow talks to the same stuck Steam client, so launching
+     * anyway can only strand the player at the workshop screen. Only a Steam that never answered at
+     * all falls back to the game's own flow. Storm's own workshop item is always first in the list
+     * — clients get (and keep) Storm from the workshop by default, even when the server publishes
+     * no items of its own.
      */
     public static void updateWorkshopItems(
             LauncherConfig config,
@@ -136,23 +137,39 @@ public final class JoinFlow {
                             + " — the game's own join flow will handle items.");
             return;
         }
-        if (result.nothingUpdated()) {
-            throw new SteamRestartRequiredException(
-                    "Steam refused to update all "
-                            + result.attempted
-                            + " workshop item(s) this server needs, so the join was cancelled —"
-                            + " the game would only get stuck at its workshop screen.",
-                    "Restart Steam and press Join again; if it keeps happening, use \"Launch to"
-                            + " Main Menu\" and join from inside the game.");
+        SteamRestartRequiredException blocker = joinBlocker(result);
+        if (blocker != null) {
+            throw blocker;
         }
-        if (stormItem != null && result.failedItemIds.contains(stormItem)) {
-            throw new SteamRestartRequiredException(
-                    "Steam couldn't update the Storm workshop item ("
-                            + stormItem
-                            + ") — the version this server needs won't load, so the join was"
-                            + " cancelled.",
-                    "Restart Steam and press Join again.");
+    }
+
+    /**
+     * Non-null when the update outcome must cancel the join: Steam answered yet left at least one
+     * item not join-ready. A client missing any required item is mismatched with the server, and
+     * the in-game workshop flow talks to the same stuck Steam client — launching anyway can only
+     * strand the player at the workshop screen. A child that never ran (Steam unreachable) stays
+     * best-effort: vanilla's own connect flow is the only path that can still work there.
+     */
+    static SteamRestartRequiredException joinBlocker(WorkshopUpdate.Result result) {
+        if (!result.childRan || result.allOk) {
+            return null;
         }
+        String failed =
+                result.failedItemIds.isEmpty()
+                        ? Math.max(result.failures, 1) + " of " + result.attempted
+                        : result.failedItemIds.size()
+                                + " of "
+                                + result.attempted
+                                + " ("
+                                + String.join(", ", result.failedItemIds)
+                                + ")";
+        return new SteamRestartRequiredException(
+                "Steam failed to update "
+                        + failed
+                        + " workshop item(s) this server needs, so the join was cancelled —"
+                        + " a client missing any of them mismatches the server.",
+                "Restart Steam and press Join again; if it keeps happening, use \"Send Logs to"
+                        + " Developer\" so it can be investigated.");
     }
 
     /**

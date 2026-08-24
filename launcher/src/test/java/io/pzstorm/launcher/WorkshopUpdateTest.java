@@ -2,6 +2,7 @@ package io.pzstorm.launcher;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashSet;
@@ -11,27 +12,53 @@ import org.junit.jupiter.api.Test;
 class WorkshopUpdateTest {
 
     @Test
-    void allItemsRefusedByARunningSteamIsDefinitive() {
-        assertTrue(new WorkshopUpdate.Result(false, 67, 67, true).nothingUpdated());
-        assertTrue(new WorkshopUpdate.Result(false, 1, 1, true).nothingUpdated());
+    void anyFailureFromARunningSteamBlocksTheJoin() {
+        assertTrue(joinBlocked(new WorkshopUpdate.Result(false, 67, 67, true)));
+        assertTrue(joinBlocked(new WorkshopUpdate.Result(false, 1, 1, true)));
+        assertTrue(
+                joinBlocked(new WorkshopUpdate.Result(false, 2, 67, true)),
+                "a client missing even one item is mismatched with the server");
     }
 
     @Test
-    void partialFailuresFallBackToTheInGameFlow() {
-        assertFalse(new WorkshopUpdate.Result(false, 3, 67, true).nothingUpdated());
-    }
-
-    @Test
-    void steamUnavailableOrNoChildIsNotDefinitive() {
+    void steamUnavailableOrNoChildFallsBackToTheInGameFlow() {
         assertFalse(
-                new WorkshopUpdate.Result(false, 67, 67, false).nothingUpdated(),
+                joinBlocked(new WorkshopUpdate.Result(false, 67, 67, false)),
                 "the in-game flow may still succeed when the child never ran");
-        assertFalse(new WorkshopUpdate.Result(true, 0, 0, false).nothingUpdated());
+        assertFalse(joinBlocked(new WorkshopUpdate.Result(true, 0, 0, false)));
     }
 
     @Test
-    void successIsNeverDefinitiveFailure() {
-        assertFalse(new WorkshopUpdate.Result(true, 0, 67, true).nothingUpdated());
+    void successNeverBlocksTheJoin() {
+        assertFalse(joinBlocked(new WorkshopUpdate.Result(true, 0, 67, true)));
+        assertNull(JoinFlow.joinBlocker(new WorkshopUpdate.Result(true, 0, 67, true)));
+    }
+
+    @Test
+    void blockerNamesTheFailedItems() {
+        Set<String> failed = new LinkedHashSet<>();
+        failed.add("3752227135");
+        failed.add("3671847630");
+        SteamRestartRequiredException blocker =
+                JoinFlow.joinBlocker(new WorkshopUpdate.Result(false, 2, 67, true, failed));
+        assertTrue(blocker.summary().contains("2 of 67"));
+        assertTrue(blocker.summary().contains("3752227135, 3671847630"));
+        assertTrue(blocker.getMessage().contains("Restart Steam"));
+        assertTrue(blocker.getMessage().contains("Send Logs"));
+    }
+
+    @Test
+    void blockerCountsFailuresWhenNoIdsWereParsed() {
+        SteamRestartRequiredException blocker =
+                JoinFlow.joinBlocker(new WorkshopUpdate.Result(false, 3, 67, true));
+        assertTrue(blocker.summary().contains("3 of 67"));
+    }
+
+    @Test
+    void nonZeroExitWithNoParsedFailuresStillBlocks() {
+        SteamRestartRequiredException blocker =
+                JoinFlow.joinBlocker(new WorkshopUpdate.Result(false, 0, 67, true));
+        assertTrue(blocker.summary().contains("1 of 67"));
     }
 
     @Test
@@ -41,12 +68,15 @@ class WorkshopUpdateTest {
         WorkshopUpdate.Result r = new WorkshopUpdate.Result(false, 1, 67, true, failed);
         assertTrue(r.failedItemIds.contains("3670772371"));
         assertEquals(1, r.failedItemIds.size());
-        assertFalse(r.nothingUpdated());
     }
 
     @Test
     void failedItemIdsDefaultsEmptyOnLegacyConstructor() {
         WorkshopUpdate.Result r = new WorkshopUpdate.Result(true, 0, 0, false);
         assertTrue(r.failedItemIds.isEmpty());
+    }
+
+    private static boolean joinBlocked(WorkshopUpdate.Result result) {
+        return JoinFlow.joinBlocker(result) != null;
     }
 }

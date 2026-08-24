@@ -62,14 +62,6 @@ public final class WorkshopUpdate {
         Result(boolean allOk, int failures, int attempted, boolean childRan) {
             this(allOk, failures, attempted, childRan, Collections.emptySet());
         }
-
-        /**
-         * Steam was reachable yet not one required item came out join-ready — the in-game workshop
-         * flow talks to the same stuck Steam client, so launching the game cannot end differently.
-         */
-        public boolean nothingUpdated() {
-            return childRan && attempted > 0 && failures >= attempted;
-        }
     }
 
     private static final Pattern FAILED_ITEM_ID =
