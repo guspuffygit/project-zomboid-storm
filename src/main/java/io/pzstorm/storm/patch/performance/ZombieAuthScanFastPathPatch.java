@@ -21,9 +21,8 @@ import net.bytebuddy.pool.TypePool;
  * arrays once per pass and fetches the zombie's {@code NetworkZombieComponent} once — see {@code
  * StormZombieAuthScan} for the outcome-identity argument.
  *
- * <p>Kill switch: the {@code Storm.ZombieAuthFastPath} sandbox option ({@code false} restores the
- * vanilla scan; live-appliable); auto-reverts to vanilla permanently if the fast path ever throws.
- * Server-only by registration gate.
+ * <p>Always on; auto-reverts to vanilla permanently if the fast path ever throws. Server-only by
+ * registration gate.
  *
  * <p>Re-validate on game update: the fast path mirrors the vanilla body of {@code
  * updateAuth(IsoZombie)} — the 2s {@code lastChangeOwner} gate, the rotate-ownership option branch

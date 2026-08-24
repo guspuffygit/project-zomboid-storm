@@ -1,7 +1,6 @@
 package io.pzstorm.storm.zombie;
 
 import io.pzstorm.storm.logging.StormLogger;
-import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import io.pzstorm.storm.metrics.ZombieAuthScanMetrics;
 import java.util.Arrays;
 import java.util.List;
@@ -64,30 +63,19 @@ import zombie.popman.NetworkZombieManager;
  * of a per-zombie read; a zombie on the boundary re-scans at most one tick later than vanilla.
  *
  * <p>Outside a packer pass (e.g. {@code clearTargetAuth} on player disconnect) the advice falls
- * through to the untouched vanilla body. Kill switch: the {@code Storm.ZombieAuthFastPath} sandbox
- * option (live-appliable); permanent revert to vanilla if the fast path ever throws. Composes with
- * {@code Storm.ZombieAuthTickInterval}: the stride advice is woven outermost and still skips
- * off-phase unowned zombies before this code runs.
+ * through to the untouched vanilla body. Always on; permanent revert to vanilla if the fast path
+ * ever throws. Composes with {@code Storm.ZombieAuthTickInterval}: the stride advice is woven
+ * outermost and still skips off-phase unowned zombies before this code runs.
  *
  * <p>Single-threaded by design: every entry point runs on the server main thread inside {@code
  * NetworkZombiePacker.postupdate()}, so the snapshot arrays and tallies need no synchronization.
  */
 public final class StormZombieAuthScan {
 
-    /** Default for {@code Storm.ZombieAuthFastPath}: fast path on. */
-    public static final boolean DEFAULT_ENABLED = true;
-
     /** Golden-ratio hysteresis from vanilla — a new owner must be this factor closer. */
     private static final float OWNER_SWITCH_HYSTERESIS = 1.618034F;
 
     private static final long OWNER_RESCAN_GATE_MILLIS = 2000L;
-
-    /**
-     * Kill switch, driven by the {@code Storm.ZombieAuthFastPath} sandbox option through {@link
-     * #setEnabled(boolean)}. Volatile because the sandbox applier may push updates from outside the
-     * main thread; the per-call read is a single volatile load.
-     */
-    private static volatile boolean enabled = DEFAULT_ENABLED;
 
     /** Permanent revert-to-vanilla latch; set on the first {@link Throwable} out of the body. */
     private static boolean failed;
@@ -112,30 +100,13 @@ public final class StormZombieAuthScan {
     private StormZombieAuthScan() {}
 
     /**
-     * Applies the {@code Storm.ZombieAuthFastPath} sandbox option ({@code false} = vanilla scan,
-     * {@code true} = snapshot-backed scan) and pushes the applied value to the Prometheus gauge.
-     * Single mutation point — sandbox apply and tests both funnel through here.
-     *
-     * @return the applied value
-     */
-    public static boolean setEnabled(boolean value) {
-        enabled = value;
-        StormPerformanceSandboxMetrics.setZombieAuthFastPath(value);
-        return value;
-    }
-
-    public static boolean isEnabled() {
-        return enabled;
-    }
-
-    /**
      * Builds the per-pass snapshot. Called at the entry of {@code NetworkZombiePacker.updateAuth()}
      * on the server main thread. Leaves the pass inactive (vanilla per-zombie bodies run) when the
-     * kill switch is off, the failure latch is set, the engine is not up yet, or the
-     * rotate-ownership server option is on (that mode is routed wholesale to vanilla).
+     * failure latch is set, the engine is not up yet, or the rotate-ownership server option is on
+     * (that mode is routed wholesale to vanilla).
      */
     public static void beginPass() {
-        if (failed || !enabled || !GameServer.server || GameServer.udpEngine == null) {
+        if (failed || !GameServer.server || GameServer.udpEngine == null) {
             ZombieAuthScanMetrics.vanillaPasses++;
             return;
         }
@@ -196,8 +167,7 @@ public final class StormZombieAuthScan {
      * @param managerObj the {@code NetworkZombieManager} ({@code @Advice.This}; typed {@code
      *     Object} so the advice never references the transform target)
      * @return {@code true} if the fast path handled the zombie (the advice skips the vanilla body);
-     *     {@code false} to fall through to vanilla (no active pass, kill switch off, or failure
-     *     latch tripped)
+     *     {@code false} to fall through to vanilla (no active pass or failure latch tripped)
      */
     public static boolean updateAuthFast(Object managerObj, IsoZombie zombie) {
         if (!passActive) {

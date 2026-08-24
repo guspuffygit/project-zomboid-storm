@@ -12,9 +12,6 @@ option Storm.VirtualAnimalTickInterval
 option Storm.ZombieAuthTickInterval
 {type = integer, min = 1, max = 16, default = 1, page = Storm, translation = Storm_ZombieAuthTickInterval,}
 
-option Storm.ZombieAuthFastPath
-{type = boolean, default = true, page = Storm, translation = Storm_ZombieAuthFastPath,}
-
 option Storm.InventoryItemSweepTickInterval
 {type = integer, min = 1, max = 64, default = 1, page = Storm, translation = Storm_InventoryItemSweepTickInterval,}
 

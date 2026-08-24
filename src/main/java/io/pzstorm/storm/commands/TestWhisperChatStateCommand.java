@@ -18,8 +18,8 @@ import zombie.network.chat.ChatServer;
  * Inspects {@link ChatServer#chats} server-side and returns either the count of {@link WhisperChat}
  * instances or the {@code player1}/{@code player2} field values of the most-recently-created one.
  * Used by {@code io.pzstorm.storm.liveserver.WhisperChatCaseInsensitiveLiveTest} to assert that
- * {@link io.pzstorm.storm.advice.whisperchatfix.ChatServerWhisperAdvice} stored canonical (case-
- * correct) usernames after the bug-bare wire packet was processed.
+ * {@link io.pzstorm.storm.advice.whisperchatfix.GameServerStartPMChatAdvice} stored canonical
+ * (case- correct) usernames after the bug-bare wire packet was processed.
  *
  * <p>Usage: {@code stormtestwhisperchatstate}.
  */
@@ -50,6 +50,10 @@ public class TestWhisperChatStateCommand extends CommandBase {
             @SuppressWarnings("unchecked")
             Map<Integer, ChatBase> chats = (Map<Integer, ChatBase>) chatsField.get(null);
 
+            Field playersField = ChatServer.class.getDeclaredField("players");
+            playersField.setAccessible(true);
+            int chatPlayers = ((java.util.Set<?>) playersField.get(null)).size();
+
             int whisperCount = 0;
             WhisperChat latest = null;
             int latestId = -1;
@@ -64,7 +68,8 @@ public class TestWhisperChatStateCommand extends CommandBase {
             }
 
             if (latest == null) {
-                return "RESULT WHISPER count=0 latestId=-1 player1=- player2=-";
+                return "RESULT WHISPER count=0 latestId=-1 player1=- player2=- chatPlayers="
+                        + chatPlayers;
             }
 
             Field p1Field = WhisperChat.class.getDeclaredField("player1");
@@ -81,7 +86,9 @@ public class TestWhisperChatStateCommand extends CommandBase {
                     + " player1="
                     + player1
                     + " player2="
-                    + player2;
+                    + player2
+                    + " chatPlayers="
+                    + chatPlayers;
         } catch (Exception e) {
             return "RESULT ERROR " + e.getClass().getSimpleName() + ": " + e.getMessage();
         }

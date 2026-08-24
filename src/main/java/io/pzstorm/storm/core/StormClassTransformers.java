@@ -35,9 +35,10 @@ import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
 import io.pzstorm.storm.patch.fixes.BodyDamageSyncPatch;
 import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
-import io.pzstorm.storm.patch.fixes.ChatServerProcessWhisperPatch;
+import io.pzstorm.storm.patch.fixes.ChatServerDisconnectPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.CoopHatchPositionFixPatch;
+import io.pzstorm.storm.patch.fixes.GameServerStartPMChatPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.HutchDirtRateFixPatch;
 import io.pzstorm.storm.patch.fixes.InventoryItemStoreByteDataPatch;
@@ -427,7 +428,8 @@ public class StormClassTransformers {
             registerTransformer(new KahluaTableRawgetPatch());
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
-        registerTransformer(new ChatServerProcessWhisperPatch());
+        registerTransformer(new GameServerStartPMChatPatch());
+        registerTransformer(new ChatServerDisconnectPatch());
         if (StormEnv.isStormServer()) {
             registerTransformer(new ChatServerSendMessagePatch());
         }

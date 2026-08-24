@@ -8,17 +8,17 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Server-only patch that replaces {@code ChatServer.processPlayerStartWhisperChatPacket} with a
- * case-insensitive, canonical-username implementation. See {@link
- * io.pzstorm.storm.advice.whisperchatfix.ChatServerWhisperAdvice} for the failure modes this fixes.
+ * Replaces {@code ChatServer.disconnectPlayer(short)}, whose vanilla loop closes every whisper chat
+ * server-wide on any player disconnect instead of only the leaver's. See {@link
+ * io.pzstorm.storm.advice.whisperchatfix.ChatServerDisconnectAdvice}.
  *
  * <p>{@code ChatServer} only runs in the dedicated-server JVM, so no client gate is needed.
  */
-public class ChatServerProcessWhisperPatch extends StormClassTransformer {
+public class ChatServerDisconnectPatch extends StormClassTransformer {
 
     private static final String PKG = "io.pzstorm.storm.advice.whisperchatfix.";
 
-    public ChatServerProcessWhisperPatch() {
+    public ChatServerDisconnectPatch() {
         super("zombie.network.chat.ChatServer");
     }
 
@@ -26,7 +26,7 @@ public class ChatServerProcessWhisperPatch extends StormClassTransformer {
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         return builder.visit(
-                Advice.to(typePool.describe(PKG + "ChatServerWhisperAdvice").resolve(), locator)
-                        .on(ElementMatchers.named("processPlayerStartWhisperChatPacket")));
+                Advice.to(typePool.describe(PKG + "ChatServerDisconnectAdvice").resolve(), locator)
+                        .on(ElementMatchers.named("disconnectPlayer")));
     }
 }

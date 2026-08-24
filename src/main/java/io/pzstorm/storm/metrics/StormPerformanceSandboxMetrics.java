@@ -245,18 +245,6 @@ public final class StormPerformanceSandboxMetrics {
                                     + " climate/sandbox re-reads and fluid-list scans.")
                     .register(StormPrometheus.registry());
 
-    private static final Gauge ZOMBIE_AUTH_FAST_PATH =
-            Gauge.builder()
-                    .name("storm_zombie_auth_fast_path")
-                    .help(
-                            "Whether the snapshot-backed fast path for"
-                                    + " NetworkZombieManager.updateAuth(IsoZombie) is active."
-                                    + " Sourced from the Storm.ZombieAuthFastPath sandbox option."
-                                    + " 1 = per-pass connection/player snapshot (default); 0 ="
-                                    + " vanilla per-zombie connection walk and repeated ECS owner"
-                                    + " probes.")
-                    .register(StormPrometheus.registry());
-
     private static final Gauge ECS_CLASS_CACHE =
             Gauge.builder()
                     .name("storm_ecs_class_cache")
@@ -505,10 +493,6 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setFluidContainerUpdateFastPath(boolean enabled) {
         FLUID_CONTAINER_UPDATE_FAST_PATH.set(enabled ? 1 : 0);
-    }
-
-    public static void setZombieAuthFastPath(boolean enabled) {
-        ZOMBIE_AUTH_FAST_PATH.set(enabled ? 1 : 0);
     }
 
     public static void setEcsClassCache(boolean enabled) {

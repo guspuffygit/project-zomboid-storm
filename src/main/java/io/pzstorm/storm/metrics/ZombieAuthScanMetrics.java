@@ -31,8 +31,8 @@ public final class ZombieAuthScanMetrics {
                             "NetworkZombiePacker.updateAuth() passes by executed path: optimized ="
                                     + " the StormZombieAuthScan snapshot was built and per-zombie"
                                     + " calls took the fast path; vanilla = per-zombie calls fell"
-                                    + " through to the vanilla body (kill switch off, failure"
-                                    + " latch, or rotate-ownership server option).")
+                                    + " through to the vanilla body (failure latch or"
+                                    + " rotate-ownership server option).")
                     .labelNames("path")
                     .callback(
                             callback -> {
