@@ -90,6 +90,11 @@ public final class StormQueryResponder {
             writer.putInt(GameServer.Players.size());
             putStrings(writer, workshopItems);
             putStrings(writer, mods);
+            // protocol v2: the three totals the server will compare at join time, so the
+            // launcher can hand them to the client for its connect-time fast path
+            writer.putUTF(luaChecksum());
+            writer.putUTF(scriptChecksum());
+            writer.putUTF(animChecksum());
 
             int size = writer.position();
             if (size > StormQueryProtocol.MAX_REPLY_BYTES) {
@@ -158,6 +163,44 @@ public final class StormQueryResponder {
             LOGGER.warn("Could not read GameServer.ServerMods: {}", t.toString());
         }
         return mods;
+    }
+
+    /**
+     * The server's Lua checksum total, computed once at server boot ({@code GameServer.main} runs
+     * the same {@code LuaManager} checksum pass the client runs at connect). Empty when unset — the
+     * launcher treats an empty total as "no fast path".
+     */
+    private static String luaChecksum() {
+        try {
+            return sanitizeChecksum(zombie.network.GameServer.checksum);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static String scriptChecksum() {
+        try {
+            return sanitizeChecksum(zombie.scripting.ScriptManager.instance.getChecksum());
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static String animChecksum() {
+        try {
+            return sanitizeChecksum(
+                    zombie.core.skinnedmodel.advancedanimation.AdvancedAnimator.getChecksum());
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** The totals ride into {@code key=value} lines and system properties downstream. */
+    private static String sanitizeChecksum(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("[^A-Za-z0-9]", "");
     }
 
     private static String gameVersion() {

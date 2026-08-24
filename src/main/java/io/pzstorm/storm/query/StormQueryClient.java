@@ -136,6 +136,13 @@ public final class StormQueryClient {
         for (int i = 0; i < reply.mods.size(); i++) {
             out.append("mod=").append(sanitize(reply.mods.get(i))).append('\n');
         }
+        if (!reply.checksumLua.isEmpty()
+                || !reply.checksumScript.isEmpty()
+                || !reply.checksumAnim.isEmpty()) {
+            out.append("checksumLua=").append(sanitize(reply.checksumLua)).append('\n');
+            out.append("checksumScript=").append(sanitize(reply.checksumScript)).append('\n');
+            out.append("checksumAnim=").append(sanitize(reply.checksumAnim)).append('\n');
+        }
         System.out.print(out);
         System.out.flush();
     }
@@ -156,6 +163,9 @@ public final class StormQueryClient {
         int players;
         final List<String> workshopItems = new ArrayList<>();
         final List<String> mods = new ArrayList<>();
+        String checksumLua = "";
+        String checksumScript = "";
+        String checksumAnim = "";
     }
 
     /**
@@ -256,7 +266,7 @@ public final class StormQueryClient {
                 if (bb.getInt() != StormQueryProtocol.MAGIC) {
                     return null;
                 }
-                bb.getInt(); // protocol version, reserved for future incompatible changes
+                int protocolVersion = bb.getInt();
                 Reply reply = new Reply();
                 reply.stormVersion = bb.getUTF();
                 reply.gameVersion = bb.getUTF();
@@ -265,6 +275,12 @@ public final class StormQueryClient {
                 reply.players = bb.getInt();
                 readStrings(bb, reply.workshopItems);
                 readStrings(bb, reply.mods);
+                if (protocolVersion >= 2 && bb.bb.remaining() > 0) {
+                    // v2 appends the server's join-checksum totals (Lua, scripts, animations)
+                    reply.checksumLua = bb.getUTF();
+                    reply.checksumScript = bb.getUTF();
+                    reply.checksumAnim = bb.getUTF();
+                }
                 return reply;
             } catch (Throwable t) {
                 System.err.println("malformed Storm query reply: " + t);

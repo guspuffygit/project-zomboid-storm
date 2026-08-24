@@ -1,6 +1,8 @@
 package io.pzstorm.launcher;
 
 import java.io.IOException;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -8,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Builds and spawns the actual game-client JVM. The launcher process loads zero Project Zomboid
@@ -43,6 +46,39 @@ public final class GameLaunch {
      * the name in sync with {@code io.pzstorm.storm.core.StormWorkshopModGate}.
      */
     public static final String WORKSHOP_MODS_PROPERTY = "storm.workshop.mods";
+
+    /**
+     * Opts the game JVM into boot-mods substitution: Storm loads the {@link
+     * #WORKSHOP_MODS_PROPERTY} list at boot instead of the local "default" profile, so the
+     * connect-time reload finds everything already loaded. Keep in sync with {@code
+     * io.pzstorm.storm.client.StormJoinPrewarm}.
+     */
+    public static final String JOIN_BOOT_MODS_PROPERTY = "storm.join.bootmods";
+
+    /**
+     * Points the game JVM at the join handoff file carrying {@link #WORKSHOP_MODS_PROPERTY}, {@link
+     * #JOIN_BOOT_MODS_PROPERTY}, {@link #JOIN_CHECKSUMS_PROPERTY} and {@link
+     * #JOIN_FINGERPRINT_PROPERTY}. Those values scale with the server's mod list and
+     * ProjectZomboid64.exe silently dies when any single command-line argument exceeds ~1 KB (a
+     * fixed buffer in its argument parser — measured, not documented), so only this short path is
+     * passed as an argument and Storm promotes the file's entries into system properties at
+     * startup. Keep in sync with {@code io.pzstorm.storm.core.StormJoinHandoff}.
+     */
+    public static final String JOIN_FILE_PROPERTY = "storm.join.file";
+
+    /**
+     * The target server's three join-checksum totals ({@code lua;script;anim}) from the pre-launch
+     * query, for Storm's connect-time fast path. Keep in sync with {@code
+     * io.pzstorm.storm.client.StormJoinPrewarm}.
+     */
+    public static final String JOIN_CHECKSUMS_PROPERTY = "storm.join.checksums";
+
+    /**
+     * Launcher-computed fingerprint of the local content the join checksums describe; Storm keys
+     * its script-checksum cache on it. Keep in sync with {@code
+     * io.pzstorm.storm.client.StormJoinPrewarm}.
+     */
+    public static final String JOIN_FINGERPRINT_PROPERTY = "storm.join.fingerprint";
 
     /**
      * A game JVM started with the Storm agent but without this property set to false hands itself
@@ -135,6 +171,23 @@ public final class GameLaunch {
             Path autoJoinFile,
             List<String> serverMods)
             throws IOException {
+        return plan(config, profile, autoJoinFile, serverMods, null, null);
+    }
+
+    /**
+     * A non-null {@code joinChecksums} ({@code lua;script;anim}) and {@code joinFingerprint} ride
+     * along for Storm's connect-time fast path; either being null just means the fast path stays
+     * unarmed. Boot-mods substitution is armed whenever a server mod list is present — it is safe
+     * on its own (it only moves the same loads earlier).
+     */
+    public static LaunchPlan plan(
+            LauncherConfig config,
+            ServerProfile profile,
+            Path autoJoinFile,
+            List<String> serverMods,
+            String joinChecksums,
+            String joinFingerprint)
+            throws IOException {
         Path gameDir = config.resolveGameDir();
         if (gameDir == null) {
             throw new IOException(
@@ -207,7 +260,11 @@ public final class GameLaunch {
         }
 
         if (serverMods != null && !serverMods.isEmpty()) {
-            command.add("-D" + WORKSHOP_MODS_PROPERTY + "=" + String.join(";", serverMods));
+            Path joinHandoff =
+                    writeJoinHandoff(serverMods, joinChecksums, joinFingerprint, warnings);
+            if (joinHandoff != null) {
+                command.add("-D" + JOIN_FILE_PROPERTY + "=" + pathArgFor(jvm, joinHandoff));
+            }
         }
 
         // user-supplied args go last so they win over anything above
@@ -344,6 +401,42 @@ public final class GameLaunch {
                     + "=storm-bootstrap.jar";
         }
         return "-javaagent:" + pathArgFor(jvm, bootstrapDir.resolve("storm-bootstrap.jar"));
+    }
+
+    /**
+     * Everything sized by server data goes into the join handoff file — a mod list alone can exceed
+     * the exe's ~1 KB per-argument limit (see {@link #JOIN_FILE_PROPERTY}). Keys are the exact
+     * system property names Storm's consumers read. A write failure only costs the workshop mod
+     * gate and the join prewarm, never the launch.
+     */
+    private static Path writeJoinHandoff(
+            List<String> serverMods,
+            String joinChecksums,
+            String joinFingerprint,
+            List<String> warnings) {
+        Properties handoff = new Properties();
+        handoff.setProperty(WORKSHOP_MODS_PROPERTY, String.join(";", serverMods));
+        handoff.setProperty(JOIN_BOOT_MODS_PROPERTY, "true");
+        if (joinChecksums != null && !joinChecksums.isEmpty()) {
+            handoff.setProperty(JOIN_CHECKSUMS_PROPERTY, joinChecksums);
+        }
+        if (joinFingerprint != null && !joinFingerprint.isEmpty()) {
+            handoff.setProperty(JOIN_FINGERPRINT_PROPERTY, joinFingerprint);
+        }
+        try {
+            Path file = LauncherPaths.joinHandoffFile();
+            Files.createDirectories(file.getParent());
+            try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+                handoff.store(writer, null);
+            }
+            return file;
+        } catch (IOException e) {
+            warnings.add(
+                    "Could not write the join handoff file: "
+                            + e.getMessage()
+                            + " — server mod gating and join prewarm are off for this launch.");
+            return null;
+        }
     }
 
     /**

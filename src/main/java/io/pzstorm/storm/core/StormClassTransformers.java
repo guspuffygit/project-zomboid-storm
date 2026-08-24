@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.client.CoreResetLuaPatch;
 import io.pzstorm.storm.patch.client.PlayerDataRequestBackoffPatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
@@ -390,6 +391,7 @@ public class StormClassTransformers {
         }
 
         if (!StormEnv.isStormServer()) {
+            registerTransformer(new CoreResetLuaPatch());
             registerTransformer(new VehicleModDataRequestPatch());
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());

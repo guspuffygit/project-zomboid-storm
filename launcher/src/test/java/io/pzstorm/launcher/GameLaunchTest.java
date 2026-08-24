@@ -2,6 +2,7 @@ package io.pzstorm.launcher;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -186,21 +187,63 @@ class GameLaunchTest {
     }
 
     @Test
-    void serverModListRidesAlongAsWorkshopModsProperty() throws IOException {
-        GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null, List.of("modA", "modB"));
+    void serverModListRidesInTheJoinHandoffFileNotTheCommandLine() throws IOException {
+        // ProjectZomboid64.exe dies silently on any argument over ~1 KB, so a mod list long
+        // enough to cross it (ATF's real list is ~1.9 KB) must never appear as an argument
+        List<String> mods = new java.util.ArrayList<>();
+        for (int i = 0; i < 200; i++) {
+            mods.add("some-workshop-mod-" + i);
+        }
+        GameLaunch.LaunchPlan plan =
+                GameLaunch.plan(config(), null, null, mods, "AA;BB;CC", "fp123");
+
+        Path handoff = LauncherPaths.joinHandoffFile();
+        assertTrue(Files.isRegularFile(handoff), "handoff file must be written");
         assertTrue(
-                plan.command.contains("-D" + GameLaunch.WORKSHOP_MODS_PROPERTY + "=modA;modB"),
+                plan.command.contains(
+                        "-D" + GameLaunch.JOIN_FILE_PROPERTY + "=" + handoff.toAbsolutePath()),
                 plan.command.toString());
+        for (String arg : plan.command) {
+            assertTrue(arg.length() < 900, "argument over the exe's ~1 KB limit: " + arg);
+            assertFalse(
+                    arg.startsWith("-D" + GameLaunch.WORKSHOP_MODS_PROPERTY),
+                    "mod list must not ride the command line");
+        }
+
+        java.util.Properties stored = new java.util.Properties();
+        try (java.io.Reader reader =
+                Files.newBufferedReader(handoff, java.nio.charset.StandardCharsets.UTF_8)) {
+            stored.load(reader);
+        }
+        assertEquals(String.join(";", mods), stored.getProperty(GameLaunch.WORKSHOP_MODS_PROPERTY));
+        assertEquals("true", stored.getProperty(GameLaunch.JOIN_BOOT_MODS_PROPERTY));
+        assertEquals("AA;BB;CC", stored.getProperty(GameLaunch.JOIN_CHECKSUMS_PROPERTY));
+        assertEquals("fp123", stored.getProperty(GameLaunch.JOIN_FINGERPRINT_PROPERTY));
     }
 
     @Test
-    void absentServerModListSendsNoWorkshopModsProperty() throws IOException {
+    void absentChecksumsLeaveThoseHandoffKeysOut() throws IOException {
+        GameLaunch.plan(config(), null, null, List.of("modA"));
+        java.util.Properties stored = new java.util.Properties();
+        try (java.io.Reader reader =
+                Files.newBufferedReader(
+                        LauncherPaths.joinHandoffFile(), java.nio.charset.StandardCharsets.UTF_8)) {
+            stored.load(reader);
+        }
+        assertEquals("modA", stored.getProperty(GameLaunch.WORKSHOP_MODS_PROPERTY));
+        assertEquals("true", stored.getProperty(GameLaunch.JOIN_BOOT_MODS_PROPERTY));
+        assertNull(stored.getProperty(GameLaunch.JOIN_CHECKSUMS_PROPERTY));
+        assertNull(stored.getProperty(GameLaunch.JOIN_FINGERPRINT_PROPERTY));
+    }
+
+    @Test
+    void absentServerModListSendsNoJoinHandoff() throws IOException {
         for (List<String> mods : Arrays.asList(null, List.<String>of())) {
             GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null, mods);
             assertTrue(
                     plan.command.stream()
-                            .noneMatch(a -> a.startsWith("-D" + GameLaunch.WORKSHOP_MODS_PROPERTY)),
-                    "no list must mean no property — Storm then loads no workshop mods");
+                            .noneMatch(a -> a.startsWith("-D" + GameLaunch.JOIN_FILE_PROPERTY)),
+                    "no list must mean no handoff — Storm then loads no workshop mods");
         }
     }
 

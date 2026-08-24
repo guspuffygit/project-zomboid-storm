@@ -31,6 +31,11 @@ public class StormLauncher {
             LOGGER.info("Storm version: {}", StormVersion.getVersion());
             LOGGER.info("Preparing to launch Project Zomboid...");
 
+            // launcher-supplied per-join data (server mod list, prewarm properties) arrives in a
+            // file — a long mod list can't ride the exe's command line — and must become system
+            // properties before anything reads storm.*
+            StormJoinHandoff.apply();
+
             verifyByteBuddy();
 
             StormClassLoader classLoader = StormBootstrap.CLASS_LOADER;
@@ -154,6 +159,17 @@ public class StormLauncher {
             }
 
             if (!StormEnv.isStormServer()) {
+                try {
+                    Class<?> checksumCache =
+                            classLoader.loadClass("io.pzstorm.storm.client.StormJoinChecksumCache");
+                    eventDispatcher
+                            .getDeclaredMethod("registerEventHandler", Class.class)
+                            .invoke(null, checksumCache);
+                } catch (Throwable t) {
+                    // cache bookkeeping for the join fast path; never take the client down
+                    LOGGER.error("Failed to register join checksum cache", t);
+                }
+
                 try {
                     classLoader
                             .loadClass("io.pzstorm.storm.client.ClientLoadingWatchdog")

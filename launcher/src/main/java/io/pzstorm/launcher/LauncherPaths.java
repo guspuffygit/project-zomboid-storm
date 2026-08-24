@@ -37,6 +37,15 @@ public final class LauncherPaths {
         return launcherDir().resolve("stage");
     }
 
+    /**
+     * Server-sized launch data (mod list, join checksums, fingerprint) for the game JVM.
+     * ProjectZomboid64.exe silently dies when any single argument exceeds ~1 KB, so this rides in a
+     * file and only its path goes on the command line (see {@link GameLaunch}).
+     */
+    public static Path joinHandoffFile() {
+        return launcherDir().resolve("join-handoff.properties");
+    }
+
     public static Path logFile() {
         return launcherDir().resolve("logs").resolve("launcher.log");
     }

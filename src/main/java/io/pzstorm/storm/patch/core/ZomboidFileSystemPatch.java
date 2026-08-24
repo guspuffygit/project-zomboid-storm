@@ -34,6 +34,14 @@ public class ZomboidFileSystemPatch extends StormClassTransformer {
                                                 .and(
                                                         ElementMatchers.takesArgument(
                                                                 0, ArrayList.class))));
+        builder =
+                builder.visit(
+                        Advice.to(LoadModsProfileAdvice.class)
+                                .on(
+                                        ElementMatchers.named("loadMods")
+                                                .and(
+                                                        ElementMatchers.takesArgument(
+                                                                0, String.class))));
         if (StormEnv.isStormServer()) {
             builder =
                     builder.visit(
@@ -73,6 +81,23 @@ public class ZomboidFileSystemPatch extends StormClassTransformer {
             List<String> modsList = Objects.requireNonNullElse(mods, Collections.emptyList());
             LOGGER.debug("OnLoadMods: {}", String.join(" ", modsList));
             StormEventDispatcher.dispatchEvent(new OnLoadModsEvent(modsList));
+        }
+    }
+
+    /**
+     * Client-side join prewarm hook on {@code loadMods(String)} (the profile-name overload). When
+     * the Storm Launcher opted this JVM in ({@code -Dstorm.join.bootmods=true}), the boot-time
+     * {@code loadMods("default")} call loads the target server's mod set instead, so connect-time
+     * {@code ResetLua} finds all flag-independent content already loaded. {@link
+     * io.pzstorm.storm.client.StormJoinPrewarm#substituteBootMods} holds every gate and never
+     * throws; a {@code false} return runs the vanilla body untouched, so a manually launched game
+     * (no property) and the dedicated server pay one boolean check.
+     */
+    public static class LoadModsProfileAdvice {
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static boolean onEnter(
+                @Advice.This Object self, @Advice.Argument(0) String activeMods) {
+            return io.pzstorm.storm.client.StormJoinPrewarm.substituteBootMods(self, activeMods);
         }
     }
 }

@@ -31,7 +31,10 @@ class ServerQueryTest {
                                 "workshop=2392709985",
                                 "workshop=3752227135",
                                 "mod=TchernarusMap",
-                                "mod=ATFEconomy"));
+                                "mod=ATFEconomy",
+                                "checksumLua=1A2B3C4D",
+                                "checksumScript=CAFEBABE",
+                                "checksumAnim=DEADBEEF"));
 
         assertEquals("42.20.0_2.4.2", result.stormVersion);
         assertEquals("42.20.0", result.gameVersion);
@@ -40,6 +43,19 @@ class ServerQueryTest {
         assertEquals(7, result.players);
         assertEquals(Arrays.asList("2392709985", "3752227135"), result.workshopItems);
         assertEquals(Arrays.asList("TchernarusMap", "ATFEconomy"), result.mods);
+        assertEquals("1A2B3C4D", result.checksumLua);
+        assertEquals("CAFEBABE", result.checksumScript);
+        assertEquals("DEADBEEF", result.checksumAnim);
+    }
+
+    /** A v1 server sends no checksum lines; the fields must read as empty, never null. */
+    @Test
+    void checksumsDefaultToEmptyAgainstAnOlderServer() {
+        ServerQuery.Result result =
+                ServerQuery.parse(Arrays.asList("STORM_QUERY_OK", "mod=SomeMod"));
+        assertEquals("", result.checksumLua);
+        assertEquals("", result.checksumScript);
+        assertEquals("", result.checksumAnim);
     }
 
     /** A crashed or silent child must never read as "this server requires no workshop items". */

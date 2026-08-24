@@ -36,8 +36,14 @@ public final class StormQueryProtocol {
     /** Leading payload magic ({@code "STMQ"}), so a stray packet at this id is not misparsed. */
     public static final int MAGIC = 0x53544D51;
 
-    /** Bumped only for incompatible payload changes; the responder answers older versions too. */
-    public static final int PROTOCOL_VERSION = 1;
+    /**
+     * Bumped only for incompatible payload changes; the responder answers older versions too.
+     *
+     * <p>Version 2 appends the server's three join-checksum totals (Lua, scripts, animations) after
+     * the mod list. A v1 reader simply never reaches the trailing fields, and a v2 reader gates on
+     * the version it finds in the reply, so both directions stay compatible.
+     */
+    public static final int PROTOCOL_VERSION = 2;
 
     /**
      * Hard ceiling on a reply payload. RakNet fragments anything past the negotiated MTU (~446 B on

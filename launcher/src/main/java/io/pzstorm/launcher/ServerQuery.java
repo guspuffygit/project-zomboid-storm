@@ -46,6 +46,12 @@ public final class ServerQuery {
         public final List<String> workshopItems;
         public final List<String> mods;
 
+        /** Join-checksum totals (query protocol v2); empty against an older server Storm. */
+        public final String checksumLua;
+
+        public final String checksumScript;
+        public final String checksumAnim;
+
         Result(
                 String stormVersion,
                 String gameVersion,
@@ -53,7 +59,10 @@ public final class ServerQuery {
                 int maxPlayers,
                 int players,
                 List<String> workshopItems,
-                List<String> mods) {
+                List<String> mods,
+                String checksumLua,
+                String checksumScript,
+                String checksumAnim) {
             this.stormVersion = stormVersion;
             this.gameVersion = gameVersion;
             this.serverName = serverName;
@@ -61,6 +70,9 @@ public final class ServerQuery {
             this.players = players;
             this.workshopItems = workshopItems;
             this.mods = mods;
+            this.checksumLua = checksumLua;
+            this.checksumScript = checksumScript;
+            this.checksumAnim = checksumAnim;
         }
     }
 
@@ -182,6 +194,9 @@ public final class ServerQuery {
         int players = 0;
         List<String> workshopItems = new ArrayList<>();
         List<String> mods = new ArrayList<>();
+        String checksumLua = "";
+        String checksumScript = "";
+        String checksumAnim = "";
 
         for (String line : lines) {
             if (line.equals(OK_MARKER)) {
@@ -221,6 +236,15 @@ public final class ServerQuery {
                 case "mod":
                     mods.add(value);
                     break;
+                case "checksumLua":
+                    checksumLua = value;
+                    break;
+                case "checksumScript":
+                    checksumScript = value;
+                    break;
+                case "checksumAnim":
+                    checksumAnim = value;
+                    break;
                 default:
                     break;
             }
@@ -229,7 +253,16 @@ public final class ServerQuery {
             return null;
         }
         return new Result(
-                stormVersion, gameVersion, serverName, maxPlayers, players, workshopItems, mods);
+                stormVersion,
+                gameVersion,
+                serverName,
+                maxPlayers,
+                players,
+                workshopItems,
+                mods,
+                checksumLua,
+                checksumScript,
+                checksumAnim);
     }
 
     static List<String> buildCommand(

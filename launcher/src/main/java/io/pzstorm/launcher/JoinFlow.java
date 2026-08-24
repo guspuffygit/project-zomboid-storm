@@ -6,9 +6,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -61,7 +63,15 @@ public final class JoinFlow {
         ServerRequirements required = serverRequirements(config, profile);
         updateWorkshopItems(config, profile, forceModUpdates, required);
         boolean handoffActive = prepareAutoJoin(config, profile);
-        return launch(config, profile, handoffActive, required.mods);
+        // after the workshop update, so the fingerprint describes what the game will load
+        String fingerprint = contentFingerprint(config, required);
+        return launch(
+                config,
+                profile,
+                handoffActive,
+                required.mods,
+                required.joinChecksums(),
+                fingerprint);
     }
 
     /**
@@ -181,10 +191,37 @@ public final class JoinFlow {
     static final class ServerRequirements {
         final List<String> workshopItems;
         final List<String> mods;
+        final String checksumLua;
+        final String checksumScript;
+        final String checksumAnim;
 
         ServerRequirements(List<String> workshopItems, List<String> mods) {
+            this(workshopItems, mods, "", "", "");
+        }
+
+        ServerRequirements(
+                List<String> workshopItems,
+                List<String> mods,
+                String checksumLua,
+                String checksumScript,
+                String checksumAnim) {
             this.workshopItems = workshopItems;
             this.mods = mods;
+            this.checksumLua = checksumLua;
+            this.checksumScript = checksumScript;
+            this.checksumAnim = checksumAnim;
+        }
+
+        /**
+         * The {@code -Dstorm.join.checksums} value ({@code lua;script;anim}), or null when the
+         * server published none (pre-v2 Storm, or the {@link ServerModList} fallback answered) —
+         * the fast path then stays unarmed.
+         */
+        String joinChecksums() {
+            if (checksumLua.isEmpty() && checksumScript.isEmpty() && checksumAnim.isEmpty()) {
+                return null;
+            }
+            return checksumLua + ";" + checksumScript + ";" + checksumAnim;
         }
     }
 
@@ -205,7 +242,12 @@ public final class JoinFlow {
         if (queried != null) {
             checkStormVersionSkew(config, queried.stormVersion);
             if (!queried.workshopItems.isEmpty() || !queried.mods.isEmpty()) {
-                return new ServerRequirements(queried.workshopItems, queried.mods);
+                return new ServerRequirements(
+                        queried.workshopItems,
+                        queried.mods,
+                        queried.checksumLua,
+                        queried.checksumScript,
+                        queried.checksumAnim);
             }
         }
         ServerModList.Result probed = ServerModList.run(config, profile);
@@ -384,12 +426,25 @@ public final class JoinFlow {
             boolean handoffActive,
             List<String> serverMods)
             throws IOException {
+        return launch(config, profile, handoffActive, serverMods, null, null);
+    }
+
+    public static Process launch(
+            LauncherConfig config,
+            ServerProfile profile,
+            boolean handoffActive,
+            List<String> serverMods,
+            String joinChecksums,
+            String joinFingerprint)
+            throws IOException {
         GameLaunch.LaunchPlan plan =
                 GameLaunch.plan(
                         config,
                         profile,
                         handoffActive ? LauncherPaths.autoJoinFile() : null,
-                        serverMods);
+                        serverMods,
+                        joinChecksums,
+                        joinFingerprint);
         for (String warning : plan.warnings) {
             Log.warn(warning);
         }
@@ -409,6 +464,72 @@ public final class JoinFlow {
             clearAutoJoinHandoff();
             throw e;
         }
+    }
+
+    /**
+     * SHA-256 over everything that determines the client's join checksums: the installed Storm/game
+     * version, the server's ordered mod list, and each required workshop item's installed {@code
+     * timeupdated} out of Steam's appworkshop acf. Storm keys its script-checksum cache on this, so
+     * a game update, mod-list change, or workshop item update invalidates the cache with no file
+     * walking inside the game JVM. Null (no mod list, acf unreadable, digest unavailable) just
+     * leaves the fast path unarmed.
+     */
+    static String contentFingerprint(LauncherConfig config, ServerRequirements required) {
+        try {
+            Path acf = WorkshopStaleScan.findAppWorkshopAcf(config);
+            Map<String, Long> stamps =
+                    acf == null || !Files.isRegularFile(acf)
+                            ? null
+                            : WorkshopStaleScan.parseInstalledTimestamps(
+                                    Files.readString(acf, StandardCharsets.UTF_8));
+            return contentFingerprint(
+                    localStormVersion(config), required.mods, required.workshopItems, stamps);
+        } catch (Exception e) {
+            Log.warn("Could not fingerprint local content: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Pure half of {@link #contentFingerprint(LauncherConfig, ServerRequirements)}. A null {@code
+     * installedStamps} means the acf was unreadable: with required workshop items that forces null
+     * (a fingerprint blind to their content would validate a stale cache); with none it just means
+     * no workshop content contributes.
+     */
+    static String contentFingerprint(
+            String version,
+            List<String> mods,
+            List<String> workshopItems,
+            Map<String, Long> installedStamps)
+            throws java.security.NoSuchAlgorithmException {
+        if (mods == null) {
+            return null;
+        }
+        if (installedStamps == null && !workshopItems.isEmpty()) {
+            return null;
+        }
+        StringBuilder content = new StringBuilder();
+        content.append("version=").append(version == null ? "" : version).append('\n');
+        for (String mod : mods) {
+            content.append("mod=").append(mod).append('\n');
+        }
+        if (installedStamps != null) {
+            for (String item : workshopItems) {
+                content.append("item=")
+                        .append(item)
+                        .append(':')
+                        .append(installedStamps.getOrDefault(item, 0L))
+                        .append('\n');
+            }
+        }
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(content.toString().getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(hash.length * 2);
+        for (byte b : hash) {
+            hex.append(Character.forDigit((b >> 4) & 0xF, 16))
+                    .append(Character.forDigit(b & 0xF, 16));
+        }
+        return hex.toString();
     }
 
     private static void checkStormVersionSkew(LauncherConfig config, String serverVersion) {

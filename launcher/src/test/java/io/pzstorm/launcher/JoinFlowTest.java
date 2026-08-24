@@ -10,6 +10,8 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -165,5 +167,61 @@ class JoinFlowTest {
         // hand-built dev Storms postdate the integration; give them the benefit of the doubt
         assertTrue(JoinFlow.supportsLauncherIntegration("42.20.2_custom"));
         assertTrue(JoinFlow.supportsLauncherIntegration("dev-build"));
+    }
+
+    @Test
+    void fingerprintChangesWithVersionModsAndItemStamps() throws Exception {
+        Map<String, Long> stamps = Map.of("111", 10L, "222", 20L);
+        String base =
+                JoinFlow.contentFingerprint(
+                        "42.20.3_2.6.14", List.of("modA", "modB"), List.of("111", "222"), stamps);
+        assertEquals(
+                base,
+                JoinFlow.contentFingerprint(
+                        "42.20.3_2.6.14", List.of("modA", "modB"), List.of("111", "222"), stamps),
+                "same inputs must fingerprint identically");
+
+        assertFalse(
+                base.equals(
+                        JoinFlow.contentFingerprint(
+                                "42.20.4_2.6.14",
+                                List.of("modA", "modB"),
+                                List.of("111", "222"),
+                                stamps)));
+        assertFalse(
+                base.equals(
+                        JoinFlow.contentFingerprint(
+                                "42.20.3_2.6.14",
+                                List.of("modB", "modA"),
+                                List.of("111", "222"),
+                                stamps)),
+                "mod order feeds load order, so it must change the fingerprint");
+        assertFalse(
+                base.equals(
+                        JoinFlow.contentFingerprint(
+                                "42.20.3_2.6.14",
+                                List.of("modA", "modB"),
+                                List.of("111", "222"),
+                                Map.of("111", 10L, "222", 99L))),
+                "a workshop item update must change the fingerprint");
+    }
+
+    /** No mod list, or required items with an unreadable acf, must leave the fast path unarmed. */
+    @Test
+    void fingerprintRefusesUnknowableContent() throws Exception {
+        assertNull(JoinFlow.contentFingerprint("v", null, List.of(), Map.of()));
+        assertNull(JoinFlow.contentFingerprint("v", List.of("modA"), List.of("111"), null));
+        assertTrue(JoinFlow.contentFingerprint("v", List.of("modA"), List.of(), null) != null);
+    }
+
+    @Test
+    void joinChecksumsJoinOrStayUnarmed() {
+        JoinFlow.ServerRequirements armed =
+                new JoinFlow.ServerRequirements(List.of(), List.of("modA"), "AA", "BB", "CC");
+        assertEquals("AA;BB;CC", armed.joinChecksums());
+
+        JoinFlow.ServerRequirements unarmed =
+                new JoinFlow.ServerRequirements(List.of(), List.of("modA"));
+        assertNull(unarmed.joinChecksums(), "a pre-v2 server publishes no checksums");
     }
 }
