@@ -160,6 +160,19 @@ public class StormLauncher {
 
             if (!StormEnv.isStormServer()) {
                 try {
+                    // pins server-required mod ids to the server's own workshop items, so a
+                    // local duplicate of a mod id can never shadow the copy the server checksums
+                    Class<?> serverModDirs =
+                            classLoader.loadClass("io.pzstorm.storm.client.StormServerModDirs");
+                    eventDispatcher
+                            .getDeclaredMethod("registerEventHandler", Class.class)
+                            .invoke(null, serverModDirs);
+                } catch (Throwable t) {
+                    // resolution pinning is an assist; never take the client down
+                    LOGGER.error("Failed to register server mod-dir pinning", t);
+                }
+
+                try {
                     Class<?> checksumCache =
                             classLoader.loadClass("io.pzstorm.storm.client.StormJoinChecksumCache");
                     eventDispatcher

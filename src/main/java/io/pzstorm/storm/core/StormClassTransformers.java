@@ -45,6 +45,7 @@ import io.pzstorm.storm.patch.fixes.RefreshAnimSetsLockPatch;
 import io.pzstorm.storm.patch.fixes.RequestSaveCellSuppressPatch;
 import io.pzstorm.storm.patch.fixes.SaveChunkThreadCrcRacePatch;
 import io.pzstorm.storm.patch.fixes.SaveLoadedTaskCrcRacePatch;
+import io.pzstorm.storm.patch.fixes.SitOnFurnitureBoxedInChairPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
@@ -301,6 +302,7 @@ public class StormClassTransformers {
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
         registerTransformer(new IsoGridSquareGetRoomNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
+        registerTransformer(new SitOnFurnitureBoxedInChairPatch());
         if (Boolean.getBoolean("storm.experimental.clientperf")) {
             registerTransformer(new EcsComponentGetClassMemoPatch());
             registerTransformer(new IsoLightSwitchElectricityMemoPatch());

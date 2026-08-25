@@ -141,6 +141,14 @@ public final class StormFastResetLua {
                             + " the vanilla reload");
             return false;
         }
+        if (StormServerModDirs.bootResolutionCorrected()) {
+            // a duplicate mod id made the boot walk pick a non-server copy; the boot-loaded
+            // content is from the wrong folder even though the mod-id lists match
+            LOGGER.info(
+                    "Fast ResetLua: a server mod resolved to a different folder at boot — using"
+                            + " the vanilla reload with the corrected mod dirs");
+            return false;
+        }
         String serverScriptChecksum = StormJoinPrewarm.serverScriptChecksum();
         String fingerprint = StormJoinPrewarm.fingerprint();
         if (serverScriptChecksum == null || fingerprint == null) {

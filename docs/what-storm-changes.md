@@ -99,6 +99,24 @@ vanilla mod-distribution flow and talk back to the server over
 additionally run Storm itself (the launcher passes the agent flags), which
 enables Storm-core client Java features:
 
+- **Server-item mod-dir pinning** — `io.pzstorm.storm.client.StormServerModDirs`
+  (always registered on Storm clients). Vanilla resolves each mod id to a folder
+  with a global first-wins walk over *every* installed workshop item, so a local
+  item the server doesn't use — a mega-pack, an old re-upload, a deleted/private
+  item Steam can no longer update — can shadow the server's copy of a mod and
+  produce an unfixable join-time checksum kick naming a file inside the wrong
+  item. On every Steam-mode connect (`OnServerWorkshopItems` "Success", fired
+  after the server's items are installed/updated and before `CheckMods`
+  resolves mod dirs) Storm reads the server's item list from the login payload,
+  scans those items' `mods/` folders, and force-pins `modIdToDir` so the
+  server's own copies are what the client checksums and loads; the pins are
+  re-applied at every `loadMods` entry because connect-time `Reset()` clears
+  the map. Server mods living outside workshop items (manual installs, staged
+  dev folders) still resolve vanilla. If a pin had to *override* a boot-time
+  resolution, the connect-time fast ResetLua declines and the vanilla reload
+  rebuilds from the corrected dirs. Fails soft: any error leaves vanilla
+  resolution untouched.
+
 - **Launcher auto-join** — `io.pzstorm.storm.client.LauncherAutoJoin`
   (registered only when the launcher passes `-Dstorm.autojoin.file=<path>`)
   reads and immediately deletes the launcher's one-shot credential handoff at
