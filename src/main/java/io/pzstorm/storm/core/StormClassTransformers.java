@@ -52,6 +52,7 @@ import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
 import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.RefreshAnimSetsLockPatch;
+import io.pzstorm.storm.patch.fixes.RequestDataManagerFixPatch;
 import io.pzstorm.storm.patch.fixes.RequestSaveCellSuppressPatch;
 import io.pzstorm.storm.patch.fixes.SaveChunkThreadCrcRacePatch;
 import io.pzstorm.storm.patch.fixes.SaveLoadedTaskCrcRacePatch;
@@ -464,6 +465,7 @@ public class StormClassTransformers {
             registerTransformer(new GameEntityBroadcastGatePatch());
             registerTransformer(new GameServerWorkshopItemsPatch());
             registerTransformer(new GameServerStalledConnectionReapPatch());
+            registerTransformer(new RequestDataManagerFixPatch());
             registerTransformer(new PlayerDownloadServerChunkActivityPatch());
             registerTransformer(new GameServerConnectionCapPatch());
             registerTransformer(new ServerOptionsMaxPlayersPatch());

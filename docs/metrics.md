@@ -1160,6 +1160,19 @@ sum by (event) (rate(storm_connection_events_total{source="RakNet"}[15m]))
 histogram_quantile(0.5, rate(storm_connection_login_duration_seconds[15m]))
 ```
 
+#### Join-time world download (RequestDataMetrics)
+
+The `RequestDataManager` transfer path — the "Downloading large file" phase of a join. Both counters
+come from `RequestDataManagerFixPatch` (see [What Storm Changes](what-storm-changes.md)) and make
+visible two failure modes vanilla had no signal for: it *threw* on an unmatched ACK (swallowed
+per-packet by `GameServer`, wedging the joiner), and it silently reaped other players' in-flight
+downloads from `disconnect()`.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `storm_requestdata_orphan_ack_total` | Counter | — | ACKs that matched no in-flight transfer, dropped gracefully. A trickle is normal (a transfer completing on an exact 200 KiB boundary emits one final ACK after the server has already retired the entry); a burst correlated with a join means a transfer lost its server-side state mid-flight. |
+| `storm_requestdata_stale_purged_total` | Counter | — | In-flight transfer entries reaped by the 10-minute stale sweep in `disconnect()`. Should be `0`: every entry's owning connection cleans up its own entries on disconnect, so each increment is a leaked transfer worth investigating (also logged at WARN with the request id and connection). |
+
 #### Networked entity ID pools (IsoObjectIdPoolMetrics)
 
 PZ addresses networked zombies and animals by a 16-bit `IsoObjectID`, which leaves 65535 usable slots per pool once the `-1` sentinel is reserved. Vanilla's allocator wraps silently on exhaustion and hands out an ID that is already in use, so two entities share an identity and the server starts moving the wrong one; `IsoObjectIDAllocateFixPatch` makes exhaustion fail loudly instead. These series are how you see it coming — a pool climbing toward 65535 on a long-uptime server is a leak worth chasing well before it wraps.
