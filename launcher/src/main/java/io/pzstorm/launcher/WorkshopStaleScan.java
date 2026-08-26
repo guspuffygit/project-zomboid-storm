@@ -158,6 +158,19 @@ public final class WorkshopStaleScan {
      * published and never find anything stale.
      */
     static Map<String, Long> parseInstalledTimestamps(String acfText) {
+        return parseInstalledLeaves(acfText, "timeupdated");
+    }
+
+    /**
+     * Item id -> recorded install byte total from the acf's {@code WorkshopItemsInstalled} block.
+     * Unlike {@code timeupdated}, Steam only writes this after actually committing the item's
+     * files, which is what lets {@link ContentSizeCheck} catch a bumped stamp with stale bytes.
+     */
+    static Map<String, Long> parseInstalledSizes(String acfText) {
+        return parseInstalledLeaves(acfText, "size");
+    }
+
+    private static Map<String, Long> parseInstalledLeaves(String acfText, String leafKey) {
         Map<String, Long> installed = new LinkedHashMap<>();
         Deque<String> blocks = new ArrayDeque<>();
         String pendingKey = null;
@@ -182,7 +195,7 @@ public final class WorkshopStaleScan {
                 if (pendingKey == null) {
                     pendingKey = token;
                 } else {
-                    recordLeaf(installed, blocks, pendingKey, token);
+                    recordLeaf(installed, blocks, pendingKey, token, leafKey);
                     pendingKey = null;
                 }
             } else if (c == '{') {
@@ -207,8 +220,12 @@ public final class WorkshopStaleScan {
     }
 
     private static void recordLeaf(
-            Map<String, Long> installed, Deque<String> blocks, String key, String value) {
-        if (!"timeupdated".equals(key) || blocks.size() < 2) {
+            Map<String, Long> installed,
+            Deque<String> blocks,
+            String key,
+            String value,
+            String leafKey) {
+        if (!leafKey.equals(key) || blocks.size() < 2) {
             return;
         }
         Iterator<String> innermostFirst = blocks.iterator();

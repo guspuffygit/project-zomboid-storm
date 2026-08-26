@@ -184,6 +184,20 @@ public class StormLauncher {
                 }
 
                 try {
+                    // records a server checksum kick for the launcher's auto-repair and tells
+                    // the player, below the vanilla error, what happens next
+                    Class<?> kickNotice =
+                            classLoader.loadClass(
+                                    "io.pzstorm.storm.client.StormChecksumKickNotice");
+                    eventDispatcher
+                            .getDeclaredMethod("registerEventHandler", Class.class)
+                            .invoke(null, kickNotice);
+                } catch (Throwable t) {
+                    // kick diagnostics only; never take the client down
+                    LOGGER.error("Failed to register checksum kick notice", t);
+                }
+
+                try {
                     classLoader
                             .loadClass("io.pzstorm.storm.client.ClientLoadingWatchdog")
                             .getDeclaredMethod("start")

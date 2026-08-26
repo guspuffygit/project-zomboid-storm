@@ -57,6 +57,12 @@ class WorkshopStaleScanTest {
     }
 
     @Test
+    void readsSizesOnlyFromInstalledBlock() {
+        Map<String, Long> sizes = WorkshopStaleScan.parseInstalledSizes(ACF);
+        assertEquals(Map.of("2335368829", 877568832L, "3739256725", 512L), sizes);
+    }
+
+    @Test
     void toleratesMissingInstalledBlock() {
         assertTrue(WorkshopStaleScan.parseInstalledTimestamps("\"AppWorkshop\"\n{\n}\n").isEmpty());
         assertTrue(WorkshopStaleScan.parseInstalledTimestamps("").isEmpty());

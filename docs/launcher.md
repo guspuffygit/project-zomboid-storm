@@ -86,6 +86,31 @@ workshop updates.
    the one remaining first-join case the in-game subscribe flow still covers.
    (An explicitly configured bootstrap dir outside any workshop item turns the
    Storm self-update off — a pinned custom install is not fought.)
+   Two guards run beyond the timestamp comparison, because Steam has been
+   observed committing a new install timestamp **without writing the
+   release's bytes** — a state every timestamp gate (the stale scan, the
+   per-item Steam confirm, the game's WorkshopConfirm) calls current while
+   the server's join-time file checksum kicks the client.
+   **Byte-total check** (`ContentSizeCheck`): after the update pass, each
+   required item's on-disk byte total is compared against the `size` Steam
+   recorded in the acf at install time; a mismatch that survives spaced
+   re-reads (so an acf commit still in flight never triggers it) forces the
+   full repair — delete the content dir, cycle the subscription, real
+   re-download — and a mismatch that survives even that cancels the join
+   instead of launching into a guaranteed kick. Verified items are cached per
+   `(timeupdated, size)` in `size-check.properties`, so the tree walk reruns
+   only after Steam commits new install metadata.
+   **Checksum-kick handoff** (`JoinFailureHandoff`): when a join still dies
+   at the server's file checksum, Storm-core client Java
+   (`StormChecksumKickNotice`) records the rejected file in
+   `<home>/Zomboid/storm/launcher/last-join-failure.properties` and tells the
+   player, directly below the vanilla kick message, that the launcher will
+   repair it. The next launcher join maps that path to the owning workshop
+   item and — when this server requires the item — forces the same full
+   repair before launching. A record naming an item the server does *not*
+   require points at a local mod shadowing a server file; that is logged and
+   the record kept for a join to the server it belongs to (expiring after 14
+   days).
 4. **Full auto-join (optional)** — with a username (and optionally a saved
    account password) on the profile and *Auto-connect* ticked, the launcher
    writes a one-shot credential handoff

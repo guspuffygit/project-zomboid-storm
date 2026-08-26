@@ -120,6 +120,7 @@ public final class JoinFlow {
                 }
             }
         }
+        repairLastJoinChecksumKick(config, items);
         if (items.isEmpty()) {
             Log.info("Server did not publish workshop items to pre-update.");
             return;
@@ -155,6 +156,147 @@ public final class JoinFlow {
         }
         if (scan != null && result.childRan) {
             repairInstallStampDesync(config, scan, items);
+        }
+        repairContentSizeDesync(config, items);
+    }
+
+    /**
+     * Acts on the checksum-kick record the Storm client left behind (see {@link
+     * JoinFailureHandoff}): when the rejected file belongs to a workshop item this join needs,
+     * Steam's install metadata is proven wrong no matter what it says — the bytes on disk already
+     * failed the server's comparison — so the item goes straight to the full repair (delete +
+     * subscription cycle + real re-download). A record naming an item this server doesn't require
+     * is left for a join to the server it belongs to; only expiry removes it unconsumed.
+     */
+    static void repairLastJoinChecksumKick(LauncherConfig config, List<String> items)
+            throws IOException, InterruptedException {
+        JoinFailureHandoff handoff = JoinFailureHandoff.read();
+        if (handoff == null) {
+            return;
+        }
+        if (handoff.expired(System.currentTimeMillis())) {
+            JoinFailureHandoff.delete();
+            return;
+        }
+        String item = handoff.workshopItemId();
+        if (item == null) {
+            Log.warn(
+                    "Last join was kicked by the server's file checksum on "
+                            + handoff.relPath
+                            + ", which is not inside Steam workshop content — Steam cannot repair"
+                            + " it ("
+                            + handoff.absPath
+                            + ").");
+            JoinFailureHandoff.delete();
+            return;
+        }
+        if (!items.contains(item)) {
+            Log.warn(
+                    "Last join was kicked by the server's file checksum on "
+                            + handoff.relPath
+                            + " from workshop item "
+                            + item
+                            + ", which this server does not require — a local mod is likely"
+                            + " shadowing a server file; if joins keep failing, unsubscribe item "
+                            + item
+                            + ".");
+            return;
+        }
+        Log.info(
+                "Last join was kicked by the server's file checksum ("
+                        + handoff.reason
+                        + ": "
+                        + handoff.relPath
+                        + ", workshop item "
+                        + item
+                        + ") — forcing a clean re-download of that item before this join.");
+        JoinFailureHandoff.delete();
+        deleteItemContent(config, item);
+        WorkshopUpdate.Result repair;
+        try {
+            repair = WorkshopUpdate.runRepair(config, List.of(item));
+        } catch (IOException e) {
+            throw new IOException(
+                    kickRepairFailedMessage(item) + " (repair error: " + e.getMessage() + ")");
+        }
+        if (repair.childRan && repair.allOk) {
+            Log.info("Workshop item " + item + " re-downloaded after last join's checksum kick.");
+            return;
+        }
+        throw new IOException(kickRepairFailedMessage(item));
+    }
+
+    static String kickRepairFailedMessage(String itemId) {
+        return "The last join was kicked because workshop item "
+                + itemId
+                + " has files that don't match the server, and Steam could not re-download it."
+                + " Joining now would end in the same kick, so the join was cancelled. Fix: in"
+                + " Steam, unsubscribe from the item, wait a minute, subscribe again, then press"
+                + " Join.";
+    }
+
+    /**
+     * Timestamp gates can all pass while the content is stale: Steam has been observed committing a
+     * new install {@code timeupdated} without writing the release's bytes, which sails through
+     * {@link WorkshopStaleScan}, the per-item Steam confirm and the game's own WorkshopConfirm,
+     * then dies at the server's file checksum. Byte totals catch it before launch (see {@link
+     * ContentSizeCheck}); a mismatch must survive spaced re-reads so an acf commit still in flight
+     * from the update child never triggers a needless delete. Persistent mismatch after repair
+     * cancels the join — launching would only reach the same kick.
+     */
+    static void repairContentSizeDesync(LauncherConfig config, List<String> items)
+            throws IOException, InterruptedException {
+        List<String> mismatched = sizeMismatchedWithSettle(config, items);
+        if (mismatched.isEmpty()) {
+            return;
+        }
+        Log.warn(
+                mismatched.size()
+                        + " workshop item(s) have content on disk that does not add up to Steam's"
+                        + " install record — the server's file checksum would reject them; forcing"
+                        + " a clean re-download: "
+                        + String.join(", ", mismatched));
+        for (String item : mismatched) {
+            deleteItemContent(config, item);
+        }
+        WorkshopUpdate.Result repair;
+        try {
+            repair = WorkshopUpdate.runRepair(config, mismatched);
+        } catch (IOException e) {
+            throw new IOException(
+                    sizeRepairFailedMessage(mismatched)
+                            + " (repair error: "
+                            + e.getMessage()
+                            + ")");
+        }
+        List<String> still =
+                repair.childRan ? sizeMismatchedWithSettle(config, mismatched) : mismatched;
+        if (!still.isEmpty()) {
+            throw new IOException(sizeRepairFailedMessage(still));
+        }
+        Log.info("Workshop content repaired — on-disk bytes match Steam's install record again.");
+    }
+
+    /**
+     * Same settle rationale as {@link #rescanWithSettle}: Steam commits install metadata
+     * asynchronously, so only a byte mismatch that persists across every spaced re-read counts. A
+     * check failure proves nothing and aborts quietly — the reactive checksum-kick handoff still
+     * backstops whatever this misses.
+     */
+    private static List<String> sizeMismatchedWithSettle(
+            LauncherConfig config, Collection<String> itemIds) throws InterruptedException {
+        List<String> mismatched = List.of();
+        for (int attempt = 0; ; attempt++) {
+            try {
+                mismatched = ContentSizeCheck.mismatched(config, itemIds);
+            } catch (IOException | RuntimeException e) {
+                Log.warn("Could not verify workshop content sizes: " + e.getMessage());
+                return List.of();
+            }
+            if (mismatched.isEmpty() || attempt == STAMP_SETTLE_ATTEMPTS - 1) {
+                return mismatched;
+            }
+            Thread.sleep(STAMP_SETTLE_MILLIS);
         }
     }
 
@@ -281,6 +423,15 @@ public final class JoinFlow {
                 + " hang forever at the in-game workshop-download screen, so the join was"
                 + " cancelled. Fix: in Steam, unsubscribe from the item(s), wait a minute,"
                 + " subscribe again, then press Join. Restarting Steam does NOT clear this.";
+    }
+
+    static String sizeRepairFailedMessage(Collection<String> itemIds) {
+        return "Workshop item(s) "
+                + String.join(", ", itemIds)
+                + " have content on disk that doesn't match what Steam recorded installing, and"
+                + " the automatic re-download could not fix it. The server's file checksum would"
+                + " kick this client, so the join was cancelled. Fix: in Steam, unsubscribe from"
+                + " the item(s), wait a minute, subscribe again, then press Join.";
     }
 
     /**
