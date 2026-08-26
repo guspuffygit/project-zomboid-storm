@@ -92,9 +92,15 @@ public final class StormPlayersHandler {
 
     static @Nullable String versionOf(IsoPlayer player) {
         UdpConnection connection = GameServer.getConnectionFromPlayer(player);
-        if (connection == null) {
-            return null;
-        }
+        return connection == null ? null : versionOf(connection);
+    }
+
+    /**
+     * Storm version running on the client behind {@code connection}, or {@code null} for a vanilla
+     * client. The announced version wins; the game-port TCP handshake is the fallback for clients
+     * whose {@code StormPlayers.hello} has not landed yet.
+     */
+    public static @Nullable String versionOf(UdpConnection connection) {
         String announced = StormClientVersionRegistry.versionOf(connection.getConnectedGUID());
         if (announced != null) {
             return announced;

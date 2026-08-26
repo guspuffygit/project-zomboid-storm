@@ -10,6 +10,7 @@ import io.prometheus.metrics.core.metrics.Histogram;
 import io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper;
 import io.pzstorm.storm.connection.ConnectionStage;
 import io.pzstorm.storm.connection.RakNetConnectionCapConfig;
+import io.pzstorm.storm.connection.StormPlayersHandler;
 import java.util.Arrays;
 import java.util.List;
 import zombie.core.raknet.RakNetPeerInterface;
@@ -44,6 +45,8 @@ import zombie.network.GameServer;
  *   <li>{@code storm_connection_raknet_peers} — RakNet's own peer count, which counts handshakes
  *       {@code UdpEngine} has not wrapped in a {@code UdpConnection} yet. Above {@code
  *       storm_connection_slots_used} means slots are occupied by peers the Java side cannot see.
+ *   <li>{@code storm_connected_clients{client}} — the fully-connected population split into Storm
+ *       and vanilla clients.
  *   <li>{@code storm_connection_login_duration_seconds} — accept → spawned, for connections Storm
  *       watched through the whole funnel.
  *   <li>{@code storm_connection_reap_age_seconds_max} / {@code
@@ -194,6 +197,24 @@ public final class StormConnectionStageMetrics {
                                     + " spawned players only.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge CLIENTS_BY_KIND =
+            Gauge.builder()
+                    .name("storm_connected_clients")
+                    .help(
+                            "Fully-connected clients broken down by whether they are running Storm."
+                                    + " client=\"storm\" is a client that announced its version with"
+                                    + " StormPlayers.hello or completed the game-port TCP handshake;"
+                                    + " client=\"vanilla\" is everything else. The two sum to"
+                                    + " storm_connections{stage=\"fully_connected\"}. Detection only"
+                                    + " becomes possible once a client is in-game, so a Storm player"
+                                    + " counts as vanilla for the second or two between spawning and"
+                                    + " announcing — read the ratio over a window, not per-sample.")
+                    .labelNames("client")
+                    .register(StormPrometheus.registry());
+
+    private static final GaugeDataPoint STORM_CLIENTS = CLIENTS_BY_KIND.labelValues("storm");
+    private static final GaugeDataPoint VANILLA_CLIENTS = CLIENTS_BY_KIND.labelValues("vanilla");
+
     private static final Histogram LOGIN_DURATION_SECONDS =
             Histogram.builder()
                     .name("storm_connection_login_duration_seconds")
@@ -254,6 +275,8 @@ public final class StormConnectionStageMetrics {
         Arrays.fill(stageCounts, 0);
         Arrays.fill(stageAgeMaxMs, 0L);
         long reapAgeMaxMs = 0L;
+        int stormClients = 0;
+        int vanillaClients = 0;
 
         List<UdpConnection> connections = engine.connections;
         for (int i = 0; i < connections.size(); i++) {
@@ -277,6 +300,10 @@ public final class StormConnectionStageMetrics {
                 if (reapAgeMs > reapAgeMaxMs) {
                     reapAgeMaxMs = reapAgeMs;
                 }
+            } else if (StormPlayersHandler.versionOf(connection) != null) {
+                stormClients++;
+            } else {
+                vanillaClients++;
             }
         }
 
@@ -284,6 +311,8 @@ public final class StormConnectionStageMetrics {
             COUNT_BY_STAGE[stage].set(stageCounts[stage]);
             AGE_BY_STAGE[stage].set(stageAgeMaxMs[stage] / 1000.0);
         }
+        STORM_CLIENTS.set(stormClients);
+        VANILLA_CLIENTS.set(vanillaClients);
         SLOTS_USED.set(connections.size());
         SLOTS_MAX.set(engine.getMaxConnections());
         RAKNET_PEERS.set(readRakNetPeerCount(engine));

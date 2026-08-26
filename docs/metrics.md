@@ -1029,6 +1029,7 @@ Everything is sampled on the main thread and pushed into plain `Gauge`s rather t
 | `storm_connection_reap_timeout_seconds` | Gauge | — | Wall-clock budget to finish logging in and spawn. Default `600` (10 min), `-Dstorm.reapStalledConnectionMs`. Time spent actively downloading chunks re-stamps the clock and does not count. |
 | `storm_connection_reap_sweep_interval_seconds` | Gauge | — | Sweep period — also the granularity of `reap_age` and the worst-case overshoot past the timeout. Default `30`, `-Dstorm.reapSweepIntervalMs`. |
 | `storm_connection_reaped_total` | Counter | `stage` | Slots freed by the reaper, attributed to the stage the connection was stuck in. Every reap is also logged at WARN with the connection id. |
+| `storm_connected_clients` | Gauge | `client` | Fully-connected clients split by whether they run Storm. `client="storm"` announced a version via `StormPlayers.hello` or completed the game-port TCP handshake; `client="vanilla"` did neither. The two sum to `storm_connections{stage="fully_connected"}`. Detection is only possible once a client is in-game, so a Storm player reads as vanilla for the second or two between spawning and announcing. |
 | `storm_connection_login_duration_seconds` | Histogram (native) | — | First sample → character spawned. Observed once per connection, and only for connections Storm saw in a pre-spawn stage first (already-spawned-at-first-sample is skipped rather than reported as instant). |
 | `storm_steam_advertised_players` | Gauge | — | Steam user-list size maintained by `SteamPlayerListReconciler` — the player count the server browser / A2S / BattleMetrics see. Spawned players first, then pre-spawn pipeline connections, then login-queue waiters (post-login connections with no player id yet, advertised under synthetic ids), clamped at `MaxPlayers`; equals `min(storm_connections{stage="fully_connected"} + pre-spawn stages with a player id + post-login connections awaiting one, MaxPlayers)` while active. `0` when the reconciler is disabled (`-Dstorm.steam.advertisePipelinePlayers=false`), broken, or the server is not in Steam mode — vanilla then advertises spawned players only. |
 
@@ -1062,6 +1063,9 @@ sum(storm_connections) - storm_connections{stage="fully_connected"}
 
 # closest connection to being reaped, as a fraction of its budget
 storm_connection_reap_age_seconds_max / storm_connection_reap_timeout_seconds
+
+# share of connected players running Storm (0..1); absent while nobody is online
+sum(storm_connected_clients{client="storm"}) / clamp_min(sum(storm_connected_clients), 1)
 
 # where connections are dying
 sum by (stage) (rate(storm_connection_reaped_total[1h]))
