@@ -42,6 +42,9 @@ public final class ServerTickMetrics {
                             "Wall-clock duration of a single server tick (cycle time between"
                                     + " GameServer frame steps). Equals 1/TPS; ~0.1s at the healthy"
                                     + " 10 TPS target, climbs when the server falls behind.")
+                    // Native-only on purpose: the scrape is protobuf. Query with
+                    // histogram_quantile/histogram_count over the bare name -- there is no
+                    // _bucket/_count/_sum series, and asking for one comes back empty.
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
