@@ -140,6 +140,7 @@ import io.pzstorm.storm.patch.performance.IngameStateUpdatePatch;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepStridePatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
+import io.pzstorm.storm.patch.performance.IsoCellGetAnimalsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellObjectDeletionAdditionPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessIsoObjectPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessItemsPatch;
@@ -519,6 +520,7 @@ public class StormClassTransformers {
             registerTransformer(new IsoCellProcessSpottedRoomsPatch());
             registerTransformer(new IsoCellProcessItemsPatch());
             registerTransformer(new IsoCellObjectDeletionAdditionPatch());
+            registerTransformer(new IsoCellGetAnimalsPatch());
             registerTransformer(new IsoDeadBodyUpdateBodiesPatch());
             registerTransformer(new FishSchoolManagerUpdatePatch());
             registerTransformer(new WorldSimulationUpdatePatch());
