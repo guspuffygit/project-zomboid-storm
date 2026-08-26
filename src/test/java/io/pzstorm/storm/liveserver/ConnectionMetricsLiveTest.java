@@ -32,6 +32,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *   <li><b>Stages sum to slots used.</b> {@code ConnectionStage.classify} is a precedence chain — a
  *       stage that falls through, or a constant missing from {@code ALL}, loses connections
  *       silently. The sum is the invariant that catches it.
+ *   <li><b>{@code storm_connected_clients} partitions the fully-connected population.</b> Storm
+ *       detection is a two-source fallback (announced version, then the game-port TCP session), so
+ *       a connection can fall out of both buckets or land in neither if either source starts
+ *       answering for the wrong connection. The dashboard stacks the two series against {@code
+ *       stage="fully_connected"}, where that shows up as an unexplained gap rather than an error.
  *   <li><b>{@code storm_connection_raknet_peers} is non-zero.</b> {@code
  *       RakNetPeerInterface.GetConnectionsNumber()} is declared {@code native} but called nowhere
  *       in vanilla Java, so the symbol may not be bound. Storm disables the gauge on the first
@@ -108,6 +113,26 @@ class ConnectionMetricsLiveTest implements IntegrationTest {
                 labelled(body, "storm_connections", "stage", ConnectionStage.FULLY_CONNECTED)
                         >= 1.0,
                 "the spawned test client must be counted in stage=\"fully_connected\"");
+
+        double stormClients = labelled(body, "storm_connected_clients", "client", "storm");
+        double vanillaClients = labelled(body, "storm_connected_clients", "client", "vanilla");
+        Assertions.assertEquals(
+                labelled(body, "storm_connections", "stage", ConnectionStage.FULLY_CONNECTED),
+                stormClients + vanillaClients,
+                0.0,
+                "storm_connected_clients must partition the fully-connected population — the"
+                        + " dashboard stacks the two series against stage=\"fully_connected\", so a"
+                        + " connection counted in neither (or in both) reads as a phantom gap"
+                        + " there. storm="
+                        + stormClients
+                        + " vanilla="
+                        + vanillaClients);
+        Assertions.assertTrue(
+                vanillaClients >= 1.0,
+                "the test client speaks raw RakNet — it never sends StormPlayers.hello and never"
+                        + " opens the game-port TCP channel, so it must classify as vanilla."
+                        + " Counting it as storm means StormPlayersHandler.versionOf is answering"
+                        + " for a connection that announced nothing.");
 
         Assertions.assertTrue(
                 slotsMax >= RakNetConnectionCapConfig.VANILLA_CAP,
