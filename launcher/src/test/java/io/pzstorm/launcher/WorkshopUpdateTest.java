@@ -55,6 +55,16 @@ class WorkshopUpdateTest {
     }
 
     @Test
+    void repairFailureMessageNamesItemsAndTheWorkingFix() {
+        String message = JoinFlow.repairFailedMessage(java.util.List.of("2928660831"));
+        assertTrue(message.contains("2928660831"));
+        assertTrue(message.contains("unsubscribe"), "the fix that works must be spelled out");
+        assertTrue(
+                message.contains("Restarting Steam does NOT clear this"),
+                "must counter the restart-Steam advice the other failure paths give");
+    }
+
+    @Test
     void nonZeroExitWithNoParsedFailuresStillBlocks() {
         SteamRestartRequiredException blocker =
                 JoinFlow.joinBlocker(new WorkshopUpdate.Result(false, 0, 67, true));

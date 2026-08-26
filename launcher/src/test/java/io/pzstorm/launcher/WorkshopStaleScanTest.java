@@ -108,4 +108,26 @@ class WorkshopStaleScanTest {
         List<String> stale = WorkshopStaleScan.staleItems(installed, published);
         assertEquals(List.of("200", "300"), stale);
     }
+
+    @Test
+    void staleAmongJudgesAFreshAcfReadAgainstTheScansPublishedTimes() {
+        // original scan: both items were stale before the update pass
+        WorkshopStaleScan.Scan scan =
+                new WorkshopStaleScan.Scan(
+                        Map.of("100", 10L, "200", 10L), Map.of("100", 50L, "200", 50L));
+        // fresh acf read: Steam rewrote 100's install stamp, 200's stayed behind
+        Map<String, Long> fresh = Map.of("100", 50L, "200", 10L, "300", 1L);
+        assertEquals(List.of("200"), scan.staleAmong(List.of("100", "200"), fresh));
+    }
+
+    @Test
+    void staleAmongIgnoresStaleItemsOutsideTheAttemptedSet() {
+        WorkshopStaleScan.Scan scan =
+                new WorkshopStaleScan.Scan(Map.of("200", 10L), Map.of("200", 50L, "300", 50L));
+        Map<String, Long> fresh = Map.of("200", 10L, "300", 10L);
+        assertEquals(
+                List.of("200"),
+                scan.staleAmong(List.of("200"), fresh),
+                "300 was never part of the update attempt, so it must not trigger a repair");
+    }
 }

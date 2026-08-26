@@ -58,6 +58,7 @@ public final class SteamUgc implements AutoCloseable {
     private final MethodHandle shutdown;
     private final MethodHandle runCallbacks;
     private final MethodHandle subscribeItem;
+    private final MethodHandle unsubscribeItem;
     private final MethodHandle downloadItem;
     private final MethodHandle getItemState;
     private final MethodHandle getItemDownloadInfo;
@@ -102,6 +103,14 @@ public final class SteamUgc implements AutoCloseable {
                         linker,
                         lib,
                         "SteamAPI_ISteamUGC_SubscribeItem",
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG),
+                        false);
+        unsubscribeItem =
+                downcall(
+                        linker,
+                        lib,
+                        "SteamAPI_ISteamUGC_UnsubscribeItem",
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG),
                         false);
@@ -305,18 +314,8 @@ public final class SteamUgc implements AutoCloseable {
                 throw new SteamException("SubscribeItem(" + itemId + ") failed: " + t);
             }
             progress.accept("item " + itemId + " subscribing …");
-            long deadline = System.currentTimeMillis() + SUBSCRIBE_TIMEOUT_MILLIS;
-            while ((itemState(itemId) & STATE_SUBSCRIBED) == 0) {
-                if (System.currentTimeMillis() > deadline) {
-                    progress.accept(
-                            "item "
-                                    + itemId
-                                    + " FAILED (subscribe timed out — invalid"
-                                    + " id or Steam offline?)");
-                    return false;
-                }
-                pumpCallbacks();
-                Thread.sleep(POLL_MILLIS);
+            if (!awaitSubscribedIs(itemId, true, "subscribe", progress)) {
+                return false;
             }
         }
         downloadResults.remove(itemId);
@@ -407,6 +406,52 @@ public final class SteamUgc implements AutoCloseable {
         }
         progress.accept("item " + itemId + " not join-ready (state=" + state + ") — updating …");
         return updateItem(itemId, progress);
+    }
+
+    /**
+     * Recovery for an install record Steam refuses to refresh: when the item's local content
+     * already matches the published manifest, {@link #updateItem}'s forced DownloadItem verifies
+     * and completes without moving a byte — and without rewriting the install metadata the game's
+     * join gate compares ({@code GetItemInstallTimeStamp} vs published {@code time_updated}), so
+     * the game re-requests the download forever. Cycling the subscription discards the desynced
+     * item record; the caller has already deleted the item's content directory, so the follow-up
+     * {@link #updateItem} performs a real download and Steam commits fresh install metadata,
+     * timestamp included.
+     */
+    public boolean repairItem(long itemId, Consumer<String> progress) throws InterruptedException {
+        if ((itemState(itemId) & STATE_SUBSCRIBED) != 0) {
+            try {
+                unsubscribeItem.invoke(ugc, itemId);
+            } catch (Throwable t) {
+                throw new SteamException("UnsubscribeItem(" + itemId + ") failed: " + t);
+            }
+            progress.accept("item " + itemId + " unsubscribing to reset its install record …");
+            if (!awaitSubscribedIs(itemId, false, "unsubscribe", progress)) {
+                return false;
+            }
+        }
+        return updateItem(itemId, progress);
+    }
+
+    private boolean awaitSubscribedIs(
+            long itemId, boolean subscribed, String action, Consumer<String> progress)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + SUBSCRIBE_TIMEOUT_MILLIS;
+        while (((itemState(itemId) & STATE_SUBSCRIBED) != 0) != subscribed) {
+            if (System.currentTimeMillis() > deadline) {
+                progress.accept(
+                        "item "
+                                + itemId
+                                + " FAILED ("
+                                + action
+                                + " timed out — invalid"
+                                + " id or Steam offline?)");
+                return false;
+            }
+            pumpCallbacks();
+            Thread.sleep(POLL_MILLIS);
+        }
+        return true;
     }
 
     private boolean reportFinalState(long itemId, boolean sawDownload, Consumer<String> progress) {

@@ -88,6 +88,44 @@ public final class WorkshopUpdate {
         if (workshopItemIds.isEmpty()) {
             return new Result(true, 0, 0, false);
         }
+        String startMessage =
+                "Updating "
+                        + updateItemIds.size()
+                        + " workshop item(s) via Steam"
+                        + (verifyItemIds.isEmpty()
+                                ? ""
+                                : " (+" + verifyItemIds.size() + " quick state check(s))")
+                        + " …";
+        return runChild(config, workshopItemIds, startMessage);
+    }
+
+    /**
+     * Forces a clean re-acquire of items whose install record Steam refuses to refresh (content
+     * matches the published manifest, recorded install timestamp doesn't — see {@link
+     * SteamUgc#repairItem}): the child cycles each item's subscription and re-downloads. The caller
+     * deletes the stale content directories first so the download is real and Steam commits fresh
+     * install metadata.
+     */
+    public static Result runRepair(LauncherConfig config, List<String> repairItemIds)
+            throws IOException, InterruptedException {
+        if (repairItemIds.isEmpty()) {
+            return new Result(true, 0, 0, false);
+        }
+        List<String> childIds = new ArrayList<>();
+        for (String id : repairItemIds) {
+            childIds.add(SteamUpdateChild.REPAIR_PREFIX + id);
+        }
+        return runChild(
+                config,
+                childIds,
+                "Repairing "
+                        + repairItemIds.size()
+                        + " workshop item(s) via Steam (subscription cycle + re-download) …");
+    }
+
+    private static Result runChild(
+            LauncherConfig config, List<String> workshopItemIds, String startMessage)
+            throws IOException, InterruptedException {
         Path gameDir = config.resolveGameDir();
         if (gameDir == null) {
             throw new IOException("Game directory not found — cannot update workshop items");
@@ -116,14 +154,7 @@ public final class WorkshopUpdate {
         pb.environment().put("SteamGameId", "108600");
         pb.redirectErrorStream(true);
 
-        Log.info(
-                "Updating "
-                        + updateItemIds.size()
-                        + " workshop item(s) via Steam"
-                        + (verifyItemIds.isEmpty()
-                                ? ""
-                                : " (+" + verifyItemIds.size() + " quick state check(s))")
-                        + " …");
+        Log.info(startMessage);
         Process child = pb.start();
         int failures = 0;
         Set<String> failedItemIds = new LinkedHashSet<>();

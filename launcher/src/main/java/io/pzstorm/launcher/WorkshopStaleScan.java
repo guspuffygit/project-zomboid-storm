@@ -82,6 +82,32 @@ public final class WorkshopStaleScan {
             }
             return local.equals(published.get(itemId));
         }
+
+        /**
+         * Post-update re-check: which of {@code itemIds} STILL diverge from the published
+         * timestamps this scan fetched, judged against a fresh acf read. A successful Steam update
+         * normally rewrites the install timestamp; an item that stays stale here has the
+         * manifest-matches/timestamp-desynced install record that traps the game's join gate in its
+         * uncapped re-download loop (see {@code SteamUgc#repairItem}). No acf on disk proves
+         * nothing, so it reports nothing.
+         */
+        public List<String> reScanStale(LauncherConfig config, Collection<String> itemIds)
+                throws IOException {
+            Path acf = findAppWorkshopAcf(config);
+            if (acf == null) {
+                return Collections.emptyList();
+            }
+            return staleAmong(
+                    itemIds,
+                    parseInstalledTimestamps(Files.readString(acf, StandardCharsets.UTF_8)));
+        }
+
+        /** Pure half of {@link #reScanStale}: compares a fresh installed map, limited to ids. */
+        List<String> staleAmong(Collection<String> itemIds, Map<String, Long> freshInstalled) {
+            List<String> stale = staleItems(freshInstalled, published);
+            stale.retainAll(new LinkedHashSet<>(itemIds));
+            return stale;
+        }
     }
 
     /**
@@ -102,6 +128,17 @@ public final class WorkshopStaleScan {
         Collection<String> query = new LinkedHashSet<>(installed.keySet());
         query.addAll(candidateIds);
         return new Scan(installed, fetchPublishedTimestamps(query));
+    }
+
+    /**
+     * Steam's content directory for one workshop item, next to the acf actually in use ({@code
+     * steamapps/workshop/content/108600/<id>}); null when no acf was found.
+     */
+    static Path findItemContentDir(LauncherConfig config, String itemId) {
+        Path acf = findAppWorkshopAcf(config);
+        return acf == null
+                ? null
+                : acf.getParent().resolve("content").resolve("108600").resolve(itemId);
     }
 
     static Path findAppWorkshopAcf(LauncherConfig config) {

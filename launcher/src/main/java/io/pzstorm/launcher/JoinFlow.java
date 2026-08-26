@@ -8,7 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -151,6 +153,134 @@ public final class JoinFlow {
         if (blocker != null) {
             throw blocker;
         }
+        if (scan != null && result.childRan) {
+            repairInstallStampDesync(config, scan, items);
+        }
+    }
+
+    /** Acf re-reads before concluding Steam really left an item's install stamp behind. */
+    private static final int STAMP_SETTLE_ATTEMPTS = 3;
+
+    private static final long STAMP_SETTLE_MILLIS = 2_000;
+
+    /**
+     * The update pass can end with Steam satisfied and the game's join gate still unsatisfiable:
+     * when an item's installed content already matches the published manifest but its recorded
+     * install timestamp does not, DownloadItem verifies the content, moves no bytes, and never
+     * rewrites the install metadata. The game compares only the timestamps and re-requests the
+     * download with no retry cap — launching would strand the player in an endless in-game
+     * workshop-download loop that no Steam restart clears. Repair = discard the desynced install
+     * record (delete the item's content directory, cycle its subscription) so Steam performs a real
+     * download and commits fresh metadata; if even that leaves the stamp behind, cancel the join
+     * with the manual fix instead of launching into a guaranteed hang.
+     */
+    static void repairInstallStampDesync(
+            LauncherConfig config, WorkshopStaleScan.Scan scan, List<String> attemptedItems)
+            throws IOException, InterruptedException {
+        List<String> stale = rescanWithSettle(config, scan, attemptedItems);
+        if (stale.isEmpty()) {
+            return;
+        }
+        Log.warn(
+                stale.size()
+                        + " workshop item(s) came back from Steam \"up to date\" with the install"
+                        + " stamp still behind the published version — forcing a clean re-download:"
+                        + " "
+                        + String.join(", ", stale));
+        for (String item : stale) {
+            deleteItemContent(config, item);
+        }
+        WorkshopUpdate.Result repair;
+        try {
+            repair = WorkshopUpdate.runRepair(config, stale);
+        } catch (IOException e) {
+            throw new IOException(
+                    repairFailedMessage(stale) + " (repair error: " + e.getMessage() + ")");
+        }
+        List<String> still = repair.childRan ? rescanWithSettle(config, scan, stale) : stale;
+        if (!still.isEmpty()) {
+            throw new IOException(repairFailedMessage(still));
+        }
+        Log.info("Workshop install stamp(s) repaired — the join gate comparison now matches.");
+    }
+
+    /**
+     * Steam commits install metadata asynchronously, so one early read could call a just-updated
+     * item stale; only an item that stays stale across every spaced re-read gets repaired. A
+     * re-read failure aborts quietly: the pre-update itself succeeded, and the worst case is the
+     * old behaviour (the in-game flow surfaces the problem).
+     */
+    private static List<String> rescanWithSettle(
+            LauncherConfig config, WorkshopStaleScan.Scan scan, Collection<String> itemIds)
+            throws InterruptedException {
+        List<String> stale = List.of();
+        for (int attempt = 0; ; attempt++) {
+            try {
+                stale = scan.reScanStale(config, itemIds);
+            } catch (IOException | RuntimeException e) {
+                Log.warn("Could not re-check workshop install stamps: " + e.getMessage());
+                return List.of();
+            }
+            if (stale.isEmpty() || attempt == STAMP_SETTLE_ATTEMPTS - 1) {
+                return stale;
+            }
+            Thread.sleep(STAMP_SETTLE_MILLIS);
+        }
+    }
+
+    /**
+     * The one deliberate write into steamapps: Steam will not re-download content whose manifest
+     * already matches the published one, so the desynced install record can only be broken by
+     * making the content itself diverge. Steam re-creates the directory during the forced
+     * re-download that follows.
+     */
+    private static void deleteItemContent(LauncherConfig config, String itemId) {
+        Path dir = WorkshopStaleScan.findItemContentDir(config, itemId);
+        if (dir == null || !Files.isDirectory(dir)) {
+            return;
+        }
+        Path ownJar = WorkshopUpdate.ownJar();
+        if (ownJar != null
+                && ownJar.toAbsolutePath()
+                        .normalize()
+                        .startsWith(dir.toAbsolutePath().normalize())) {
+            // deleting the running launcher out from under itself would leave the item
+            // half-gone with the jar locked against Steam's re-download
+            Log.warn(
+                    "Not deleting "
+                            + dir
+                            + " — the launcher itself runs from it; trying the subscription cycle"
+                            + " alone.");
+            return;
+        }
+        try (java.util.stream.Stream<Path> tree = Files.walk(dir)) {
+            for (Path p : tree.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+            Log.info("Deleted " + dir + " so Steam performs a real re-download.");
+        } catch (IOException e) {
+            Log.warn(
+                    "Could not delete "
+                            + dir
+                            + ": "
+                            + e.getMessage()
+                            + " — Steam may skip the re-download.");
+        }
+    }
+
+    /**
+     * Deliberately NOT a {@link SteamRestartRequiredException}: that popup tells the player to
+     * restart Steam, which does not clear a desynced install record. The generic error box shows
+     * this message with the fix that does work.
+     */
+    static String repairFailedMessage(Collection<String> itemIds) {
+        return "Steam's install record for workshop item(s) "
+                + String.join(", ", itemIds)
+                + " is stuck behind the published version (the files match, the recorded version"
+                + " stamp doesn't), and the automatic repair could not fix it. Joining now would"
+                + " hang forever at the in-game workshop-download screen, so the join was"
+                + " cancelled. Fix: in Steam, unsubscribe from the item(s), wait a minute,"
+                + " subscribe again, then press Join. Restarting Steam does NOT clear this.";
     }
 
     /**

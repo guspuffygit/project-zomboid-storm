@@ -19,6 +19,13 @@ final class SteamUpdateChild {
      */
     static final String VERIFY_PREFIX = "verify:";
 
+    /**
+     * Marks an id whose install record Steam refuses to refresh (content current, install timestamp
+     * desynced — see {@link SteamUgc#repairItem}): the child cycles the item's subscription before
+     * the forced download so Steam commits fresh install metadata.
+     */
+    static final String REPAIR_PREFIX = "repair:";
+
     private SteamUpdateChild() {}
 
     static int run(String[] itemIds) {
@@ -27,7 +34,11 @@ final class SteamUpdateChild {
             int failures = 0;
             for (String id : itemIds) {
                 boolean verifyOnly = id.startsWith(VERIFY_PREFIX);
-                String rawId = verifyOnly ? id.substring(VERIFY_PREFIX.length()) : id;
+                boolean repair = id.startsWith(REPAIR_PREFIX);
+                String rawId =
+                        verifyOnly
+                                ? id.substring(VERIFY_PREFIX.length())
+                                : repair ? id.substring(REPAIR_PREFIX.length()) : id;
                 long itemId;
                 try {
                     itemId = Long.parseLong(rawId.trim());
@@ -38,9 +49,11 @@ final class SteamUpdateChild {
                 }
                 try {
                     boolean ok =
-                            verifyOnly
-                                    ? steam.verifyItem(itemId, System.out::println)
-                                    : steam.updateItem(itemId, System.out::println);
+                            repair
+                                    ? steam.repairItem(itemId, System.out::println)
+                                    : verifyOnly
+                                            ? steam.verifyItem(itemId, System.out::println)
+                                            : steam.updateItem(itemId, System.out::println);
                     if (!ok) {
                         failures++;
                     }
