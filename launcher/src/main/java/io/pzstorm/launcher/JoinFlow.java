@@ -219,6 +219,9 @@ public final class JoinFlow {
             throw new IOException(
                     kickRepairFailedMessage(item) + " (repair error: " + e.getMessage() + ")");
         }
+        if (repair.steamUnavailable) {
+            throw offlineRepairBlocker(config, List.of(item));
+        }
         if (repair.childRan && repair.allOk) {
             Log.info("Workshop item " + item + " re-downloaded after last join's checksum kick.");
             return;
@@ -268,6 +271,9 @@ public final class JoinFlow {
                             + " (repair error: "
                             + e.getMessage()
                             + ")");
+        }
+        if (repair.steamUnavailable) {
+            throw offlineRepairBlocker(config, mismatched);
         }
         List<String> still =
                 repair.childRan ? sizeMismatchedWithSettle(config, mismatched) : mismatched;
@@ -338,6 +344,9 @@ public final class JoinFlow {
         } catch (IOException e) {
             throw new IOException(
                     repairFailedMessage(stale) + " (repair error: " + e.getMessage() + ")");
+        }
+        if (repair.steamUnavailable) {
+            throw offlineRepairBlocker(config, stale);
         }
         List<String> still = repair.childRan ? rescanWithSettle(config, scan, stale) : stale;
         if (!still.isEmpty()) {
@@ -411,6 +420,54 @@ public final class JoinFlow {
     }
 
     /**
+     * Offline completion of a repair the Steamworks child could not run because no Steam client is
+     * running ({@link WorkshopUpdate.Result#steamUnavailable} — the only evidence strong enough to
+     * edit Steam's own state file). The content directories are already deleted; leaving the acf
+     * install records pointing at them would make the next Steam start reconcile by verifying the
+     * ENTIRE workshop depot. Stripping the records instead makes that start a plain download of
+     * just these items. Records are only stripped for items whose content is actually gone — a
+     * directory {@link #deleteItemContent} skipped keeps its record. Always returns the exception
+     * that cancels the join: without Steam the re-download cannot happen in this launch.
+     */
+    private static SteamRestartRequiredException offlineRepairBlocker(
+            LauncherConfig config, Collection<String> itemIds) {
+        List<String> contentGone = new ArrayList<>();
+        for (String item : itemIds) {
+            Path dir = WorkshopStaleScan.findItemContentDir(config, item);
+            if (dir == null || !Files.isDirectory(dir)) {
+                contentGone.add(item);
+            }
+        }
+        List<String> stripped = List.of();
+        try {
+            stripped =
+                    WorkshopAcfRepair.stripInstallRecords(
+                            WorkshopStaleScan.findAppWorkshopAcf(config), contentGone);
+        } catch (IOException e) {
+            Log.warn("Could not remove Steam's install record(s): " + e.getMessage());
+        }
+        String summary =
+                "Steam is not running, so workshop item(s) "
+                        + String.join(", ", itemIds)
+                        + " could not be re-downloaded now and the join was cancelled.";
+        if (stripped.isEmpty()) {
+            return new SteamRestartRequiredException(
+                    summary,
+                    "Start Steam, let it finish any workshop verification it begins, then press"
+                            + " Join again.");
+        }
+        Log.info(
+                "Steam is closed — removed its install record for item(s) "
+                        + String.join(", ", stripped)
+                        + " along with the damaged content, so the next Steam start downloads just"
+                        + " these items instead of verifying all workshop content.");
+        return new SteamRestartRequiredException(
+                summary,
+                "The damaged copy and Steam's record of it were removed. Start Steam — it will"
+                        + " download just this content fresh — then press Join again.");
+    }
+
+    /**
      * Deliberately NOT a {@link SteamRestartRequiredException}: that popup tells the player to
      * restart Steam, which does not clear a desynced install record. The generic error box shows
      * this message with the fix that does work.
@@ -438,10 +495,19 @@ public final class JoinFlow {
      * Non-null when the update outcome must cancel the join: Steam answered yet left at least one
      * item not join-ready. A client missing any required item is mismatched with the server, and
      * the in-game workshop flow talks to the same stuck Steam client — launching anyway can only
-     * strand the player at the workshop screen. A child that never ran (Steam unreachable) stays
-     * best-effort: vanilla's own connect flow is the only path that can still work there.
+     * strand the player at the workshop screen. Positive evidence that no Steam client is running
+     * also cancels: the game executable is a Steam build, so launching it can only die at its own
+     * "Steam failed to load" screen. Only a child that never ran for OTHER reasons (launcher jar
+     * not on disk) stays best-effort — Steam's state is unknown there and the game may still boot.
      */
     static SteamRestartRequiredException joinBlocker(WorkshopUpdate.Result result) {
+        if (result.steamUnavailable) {
+            return new SteamRestartRequiredException(
+                    "Steam is not running, so the workshop items cannot update and the game"
+                            + " itself cannot start.",
+                    "Start Steam, let it finish any workshop verification it begins, then press"
+                            + " Join again.");
+        }
         if (!result.childRan || result.allOk) {
             return null;
         }

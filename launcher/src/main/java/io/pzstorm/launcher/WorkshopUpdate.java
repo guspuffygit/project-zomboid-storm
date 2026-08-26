@@ -40,6 +40,14 @@ public final class WorkshopUpdate {
         public final boolean childRan;
 
         /**
+         * True only when the child ran and SteamAPI_Init failed — positive evidence that no Steam
+         * client is running (as opposed to {@link #childRan} false for jar-on-disk missing, where
+         * Steam's state is unknown). This is the gate for the offline acf repair, which must never
+         * edit the file under a live Steam client.
+         */
+        public final boolean steamUnavailable;
+
+        /**
          * Workshop item ids the child reported as not join-ready (FAILED/STALLED/rejected). Empty
          * when the child never ran (Steam unreachable, jar-on-disk missing) — callers that need
          * per-item detail should check {@link #childRan} first.
@@ -51,12 +59,23 @@ public final class WorkshopUpdate {
                 int failures,
                 int attempted,
                 boolean childRan,
+                boolean steamUnavailable,
                 Set<String> failedItemIds) {
             this.allOk = allOk;
             this.failures = failures;
             this.attempted = attempted;
             this.childRan = childRan;
+            this.steamUnavailable = steamUnavailable;
             this.failedItemIds = Collections.unmodifiableSet(new LinkedHashSet<>(failedItemIds));
+        }
+
+        Result(
+                boolean allOk,
+                int failures,
+                int attempted,
+                boolean childRan,
+                Set<String> failedItemIds) {
+            this(allOk, failures, attempted, childRan, false, failedItemIds);
         }
 
         Result(boolean allOk, int failures, int attempted, boolean childRan) {
@@ -185,7 +204,13 @@ public final class WorkshopUpdate {
             Log.warn(
                     "Steam is not available — workshop items were NOT updated. The game's"
                             + " own join flow will handle them (may prompt in-game).");
-            return new Result(false, workshopItemIds.size(), workshopItemIds.size(), false);
+            return new Result(
+                    false,
+                    workshopItemIds.size(),
+                    workshopItemIds.size(),
+                    false,
+                    true,
+                    Collections.emptySet());
         }
         boolean allOk = exit == 0 && failures == 0;
         if (allOk) {

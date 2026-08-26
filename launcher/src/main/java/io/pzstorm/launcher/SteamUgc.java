@@ -467,8 +467,8 @@ public final class SteamUgc implements AutoCloseable {
                             + itemId
                             + " FAILED (state="
                             + state
-                            + " — Steam refused the download; restarting Steam usually clears"
-                            + " this)");
+                            + " — Steam refused the download; restart Steam, let it finish any"
+                            + " workshop verification it begins, then press Join again)");
         } else {
             progress.accept("item " + itemId + " FAILED (state=" + state + ")");
         }

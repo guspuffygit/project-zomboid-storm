@@ -21,11 +21,22 @@ class WorkshopUpdateTest {
     }
 
     @Test
-    void steamUnavailableOrNoChildFallsBackToTheInGameFlow() {
+    void noChildForUnknownReasonsFallsBackToTheInGameFlow() {
         assertFalse(
                 joinBlocked(new WorkshopUpdate.Result(false, 67, 67, false)),
-                "the in-game flow may still succeed when the child never ran");
+                "jar-on-disk missing leaves Steam's state unknown — the game may still boot");
         assertFalse(joinBlocked(new WorkshopUpdate.Result(true, 0, 0, false)));
+    }
+
+    @Test
+    void steamProvablyNotRunningBlocksTheJoin() {
+        SteamRestartRequiredException blocker =
+                JoinFlow.joinBlocker(
+                        new WorkshopUpdate.Result(false, 67, 67, false, true, Set.of()));
+        assertTrue(
+                blocker.summary().contains("Steam is not running"),
+                "a Steam-build game exe can only die at its own Steam error screen");
+        assertTrue(blocker.getMessage().contains("Start Steam"));
     }
 
     @Test

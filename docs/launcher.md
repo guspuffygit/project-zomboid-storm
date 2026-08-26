@@ -111,6 +111,19 @@ workshop updates.
    require points at a local mod shadowing a server file; that is logged and
    the record kept for a join to the server it belongs to (expiring after 14
    days).
+   **Offline acf repair** (`WorkshopAcfRepair`): when either repair finds
+   Steam not running (the Steamworks child's `EXIT_STEAM_UNAVAILABLE` —
+   SteamAPI_Init fails exactly when no client is up), the content directories
+   are already deleted, and a surviving install record pointing at them would
+   make the next Steam start verify the *entire* workshop depot (hashing every
+   installed item — ages on a big mod set). So the launcher strips those
+   items' blocks from `appworkshop_108600.acf` (both `WorkshopItemsInstalled`
+   and `WorkshopItemDetails`, backup kept as `.storm-backup`), cancels the
+   join, and tells the player to start Steam — which then downloads just
+   those items fresh — and press Join again. The edit is gated on that exit
+   code because Steam rewrites the acf from memory on exit: editing under a
+   live client never sticks. Records are only stripped for items whose
+   content is actually gone.
 4. **Full auto-join (optional)** — with a username (and optionally a saved
    account password) on the profile and *Auto-connect* ticked, the launcher
    writes a one-shot credential handoff
