@@ -337,7 +337,12 @@ public final class StormServerModDirs {
     /** Same normalization {@code ZomboidFileSystem.normalizeToPath} applies to allowed prefixes. */
     private static Path normalize(String path) {
         return Path.of(
-                Path.of(path).normalize().toAbsolutePath().toString().toLowerCase(Locale.ROOT));
+                Path.of(path)
+                        .normalize()
+                        .toAbsolutePath()
+                        .normalize()
+                        .toString()
+                        .toLowerCase(Locale.ROOT));
     }
 
     private static boolean isUnder(Path candidate, List<Path> roots) {
