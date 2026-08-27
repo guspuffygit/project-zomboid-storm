@@ -5,6 +5,7 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -92,6 +93,23 @@ final class JoinFailureHandoff {
     String workshopItemId() {
         Matcher matcher = WORKSHOP_ITEM.matcher(absPath);
         return matcher.find() ? matcher.group(1) : null;
+    }
+
+    /**
+     * True when the rejected file is one of the game's own, which only a Steam update of the game
+     * (on either side) can bring back into agreement — no workshop repair applies.
+     */
+    boolean insideGameInstall(Path gameDir) {
+        if (gameDir == null || absPath == null || absPath.isEmpty()) {
+            return false;
+        }
+        String path = normalize(absPath);
+        String root = normalize(gameDir.toAbsolutePath().normalize().toString());
+        return path.startsWith(root.endsWith("/") ? root : root + "/");
+    }
+
+    private static String normalize(String path) {
+        return path.replace('\\', '/').toLowerCase(Locale.ENGLISH);
     }
 
     boolean expired(long nowMs) {

@@ -76,6 +76,22 @@ class JoinFailureHandoffTest {
     }
 
     @Test
+    void gameOwnedFilesAreToldApartFromModFiles() throws IOException {
+        Path gameDir = tmp.resolve("SteamLibrary").resolve("ProjectZomboid");
+        write(
+                1L,
+                "media/lua/shared/timedactions/isreadabook.lua",
+                gameDir.resolve("media/lua/shared/TimedActions/ISReadABook.lua").toString());
+
+        JoinFailureHandoff handoff = JoinFailureHandoff.read();
+
+        assertNull(handoff.workshopItemId());
+        assertTrue(handoff.insideGameInstall(gameDir));
+        assertFalse(handoff.insideGameInstall(tmp.resolve("SteamLibrary").resolve("Other")));
+        assertFalse(handoff.insideGameInstall(null));
+    }
+
+    @Test
     void absentFileReadsNullAndDeleteIsIdempotent() {
         assertNull(JoinFailureHandoff.read());
         JoinFailureHandoff.delete();

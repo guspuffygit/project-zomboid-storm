@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 import java.util.Properties;
 import org.jetbrains.annotations.Nullable;
 import zombie.GameWindow;
@@ -25,6 +26,12 @@ import zombie.network.NetChecksum;
  * the Storm Launcher's next join consumes to force a clean re-download of the owning workshop item
  * (see the launcher's {@code JoinFailureHandoff} — file name and keys are mirrored there), and (b)
  * appends a notice below the vanilla error telling the player exactly what happens next.
+ *
+ * <p>The advice splits on who owns the rejected file. Under the game's own {@code media} folder no
+ * mod is involved and no workshop re-download can help: the two installs of Project Zomboid are on
+ * different builds, which is what every game patch does to players whose Steam has not applied the
+ * update yet (the launcher starts the exe directly, so Steam's update-on-launch never fires) and to
+ * every player of a server that has not been updated yet.
  *
  * <p>No new bytecode patch: it rides the render-tick bridge event. Both screens that show the kick
  * ({@code GameLoadingState.render} and {@code ServerDisconnectState.render}) re-read {@code
@@ -49,6 +56,10 @@ public final class StormChecksumKickNotice {
     private static final String NOTICE_HEAD =
             "One of your installed mods is out of date or damaged on this computer.";
 
+    /** Same role as {@link #NOTICE_HEAD} for a file the base game owns. */
+    private static final String NOTICE_GAME_HEAD =
+            "This file belongs to Project Zomboid itself - no mod owns it.";
+
     private static final String NOTICE_RECORDED =
             "\n\n"
                     + NOTICE_HEAD
@@ -62,8 +73,18 @@ public final class StormChecksumKickNotice {
                     + "\nQuit to desktop, then press Join in the Storm Launcher. If it happens"
                     + " again,\nunsubscribe and resubscribe the mod in the Steam Workshop.";
 
+    private static final String NOTICE_GAME =
+            "\n\n"
+                    + NOTICE_GAME_HEAD
+                    + "\nYour game build and the server's do not match. Quit to desktop, open"
+                    + " Steam and\nlet it finish updating Project Zomboid - the launcher starts"
+                    + " the game directly,\nso Steam never updates it on launch. If Steam says the"
+                    + " game is up to date,\nthe server is running an older build: tell the"
+                    + " server admin.";
+
     private static boolean handled;
     private static boolean recorded;
+    private static boolean gameFile;
     private static boolean warnedFailure;
 
     private StormChecksumKickNotice() {}
@@ -81,15 +102,17 @@ public final class StormChecksumKickNotice {
             }
             if (!handled) {
                 handled = true;
+                gameFile = insideGameMedia(parsed.absPath, mediaRoot());
                 recorded = writeHandoff(parsed);
                 LOGGER.error(
-                        "Kicked by the server's file checksum: {} ({})",
+                        "Kicked by the server's file checksum: {} ({}, {})",
                         parsed.relPath,
-                        parsed.reason);
+                        parsed.reason,
+                        gameFile ? "base game file - game build mismatch" : "mod file");
             }
             String reason = GameWindow.kickReason;
             if (reason != null && reason.startsWith(parsed.reason)) {
-                GameWindow.kickReason = withNotice(reason, recorded);
+                GameWindow.kickReason = withNotice(reason, recorded, gameFile);
             }
         } catch (Throwable t) {
             if (!warnedFailure) {
@@ -100,11 +123,41 @@ public final class StormChecksumKickNotice {
     }
 
     /** {@code reason} with the notice appended, unchanged when it already carries it. */
-    static String withNotice(String reason, boolean recorded) {
-        if (reason.contains(NOTICE_HEAD)) {
+    static String withNotice(String reason, boolean recorded, boolean gameFile) {
+        if (reason.contains(NOTICE_HEAD) || reason.contains(NOTICE_GAME_HEAD)) {
             return reason;
         }
+        if (gameFile) {
+            return reason + NOTICE_GAME;
+        }
         return reason + (recorded ? NOTICE_RECORDED : NOTICE_UNRECORDED);
+    }
+
+    /**
+     * True when the rejected file sits under the game's own {@code media} folder, which no mod can
+     * write to: the mismatch is then between the two installs of Project Zomboid, not between mod
+     * copies, and no re-download of workshop content can fix it. A blank {@code mediaRoot} (the
+     * file system is not initialised) reads as "not the game's", keeping the mod advice.
+     */
+    static boolean insideGameMedia(String absPath, @Nullable String mediaRoot) {
+        if (absPath == null || absPath.isEmpty() || mediaRoot == null || mediaRoot.isEmpty()) {
+            return false;
+        }
+        String path = normalize(absPath);
+        String root = normalize(mediaRoot);
+        return path.startsWith(root.endsWith("/") ? root : root + "/");
+    }
+
+    private static String normalize(String path) {
+        return path.replace('\\', '/').toLowerCase(Locale.ENGLISH);
+    }
+
+    private static @Nullable String mediaRoot() {
+        try {
+            return ZomboidFileSystem.instance.getMediaRootPath();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /**

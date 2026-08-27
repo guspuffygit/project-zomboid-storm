@@ -62,6 +62,7 @@ public final class JoinFlow {
             LauncherConfig config, ServerProfile profile, boolean forceModUpdates)
             throws IOException, InterruptedException {
         GameProcessTracker.reapLeftover();
+        GameInstallState.warnIfUpdatePending(config);
         ServerRequirements required = serverRequirements(config, profile);
         updateWorkshopItems(config, profile, forceModUpdates, required);
         boolean handoffActive = prepareAutoJoin(config, profile);
@@ -180,13 +181,23 @@ public final class JoinFlow {
         }
         String item = handoff.workshopItemId();
         if (item == null) {
-            Log.warn(
-                    "Last join was kicked by the server's file checksum on "
-                            + handoff.relPath
-                            + ", which is not inside Steam workshop content — Steam cannot repair"
-                            + " it ("
-                            + handoff.absPath
-                            + ").");
+            if (handoff.insideGameInstall(config.resolveGameDir())) {
+                Log.warn(
+                        "Last join was kicked by the server's file checksum on "
+                                + handoff.relPath
+                                + ", a file of the game itself — this client and the server are on"
+                                + " different Project Zomboid builds. Let Steam finish updating"
+                                + " Project Zomboid; if Steam says it is up to date, the server"
+                                + " has not been updated yet.");
+            } else {
+                Log.warn(
+                        "Last join was kicked by the server's file checksum on "
+                                + handoff.relPath
+                                + ", which is not inside Steam workshop content — Steam cannot"
+                                + " repair it ("
+                                + handoff.absPath
+                                + ").");
+            }
             JoinFailureHandoff.delete();
             return;
         }
@@ -829,8 +840,13 @@ public final class JoinFlow {
                             ? null
                             : WorkshopStaleScan.parseInstalledTimestamps(
                                     Files.readString(acf, StandardCharsets.UTF_8));
+            GameInstallState game = GameInstallState.read(config);
             return contentFingerprint(
-                    localStormVersion(config), required.mods, required.workshopItems, stamps);
+                    localStormVersion(config),
+                    game == null ? "" : game.buildId,
+                    required.mods,
+                    required.workshopItems,
+                    stamps);
         } catch (Exception e) {
             Log.warn("Could not fingerprint local content: " + e.getMessage());
             return null;
@@ -841,10 +857,13 @@ public final class JoinFlow {
      * Pure half of {@link #contentFingerprint(LauncherConfig, ServerRequirements)}. A null {@code
      * installedStamps} means the acf was unreadable: with required workshop items that forces null
      * (a fingerprint blind to their content would validate a stale cache); with none it just means
-     * no workshop content contributes.
+     * no workshop content contributes. {@code gameBuildId} covers the game's own files, which a
+     * Steam patch rewrites without touching anything else here — Storm's version string only names
+     * the build Storm was compiled for, which lags the patch until Storm is republished.
      */
     static String contentFingerprint(
             String version,
+            String gameBuildId,
             List<String> mods,
             List<String> workshopItems,
             Map<String, Long> installedStamps)
@@ -857,6 +876,7 @@ public final class JoinFlow {
         }
         StringBuilder content = new StringBuilder();
         content.append("version=").append(version == null ? "" : version).append('\n');
+        content.append("build=").append(gameBuildId == null ? "" : gameBuildId).append('\n');
         for (String mod : mods) {
             content.append("mod=").append(mod).append('\n');
         }
