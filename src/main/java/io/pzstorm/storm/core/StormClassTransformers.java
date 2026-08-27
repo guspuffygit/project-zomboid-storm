@@ -115,7 +115,9 @@ import io.pzstorm.storm.patch.performance.CoopSlaveUpdatePatch;
 import io.pzstorm.storm.patch.performance.CorpseCountZombieIndexPatch;
 import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
 import io.pzstorm.storm.patch.performance.CutawayVisitFastPathPatch;
+import io.pzstorm.storm.patch.performance.DesignationZoneAnimalFoodFastContainsPatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
+import io.pzstorm.storm.patch.performance.EcsEntityTryGetMemoPatch;
 import io.pzstorm.storm.patch.performance.EcsGetClassCachePatch;
 import io.pzstorm.storm.patch.performance.EngineEntityManagerIndexPatch;
 import io.pzstorm.storm.patch.performance.EngineUpdatePatch;
@@ -144,6 +146,7 @@ import io.pzstorm.storm.patch.performance.IsoCellGetAnimalsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellObjectDeletionAdditionPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessIsoObjectPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessItemsPatch;
+import io.pzstorm.storm.patch.performance.IsoCellProcessListsFastContainsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessObjectsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessSpottedRoomsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessStaticUpdatersPatch;
@@ -161,6 +164,7 @@ import io.pzstorm.storm.patch.performance.IsoChunkSaveLoadedChunkPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSavePatch;
 import io.pzstorm.storm.patch.performance.IsoDeadBodyUpdateBodiesPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterCheckIsNearVehiclePatch;
+import io.pzstorm.storm.patch.performance.IsoGameCharacterEcsMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterIsRagdollPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterRagdollMirrorsPatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
@@ -235,6 +239,7 @@ import io.pzstorm.storm.patch.performance.ServerMapPostUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapPostUpdateWarmPatch;
 import io.pzstorm.storm.patch.performance.ServerMapPreUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerMapQueuedSaveAllPatch;
+import io.pzstorm.storm.patch.performance.ServerMapReleventNowFastContainsPatch;
 import io.pzstorm.storm.patch.performance.ServerMapSaveAllPatch;
 import io.pzstorm.storm.patch.performance.ServerPlayerDBSavePatch;
 import io.pzstorm.storm.patch.performance.ServerTickPatch;
@@ -412,6 +417,8 @@ public class StormClassTransformers {
             registerTransformer(new UsingPlayerUpdatePatch());
             registerTransformer(new FluidContainerUpdateSimulationFastPathPatch());
             registerTransformer(new EcsGetClassCachePatch());
+            registerTransformer(new EcsEntityTryGetMemoPatch());
+            registerTransformer(new IsoGameCharacterEcsMemoPatch());
             registerTransformer(new EngineEntityManagerIndexPatch());
             registerTransformer(new EntityBucketIndexPatch());
             registerTransformer(new EntityArrayRemoveFastPathPatch());
@@ -420,6 +427,11 @@ public class StormClassTransformers {
             registerTransformer(new ZombieAuthScanFastPathPatch());
             registerTransformer(new NetworkZombiePackerAuthPassPatch());
             registerTransformer(new AnimalSyncManagerUpdatePatch());
+            // Also registered in the experimental clientperf block above — guard against
+            // weaving the same advice twice on a server started with that flag.
+            if (!Boolean.getBoolean("storm.experimental.clientperf")) {
+                registerTransformer(new KahluaTableRawgetPatch());
+            }
             registerTransformer(new LuaMainloopPatch());
             registerTransformer(new IsoWorldUpdatePatch());
             registerTransformer(new AnimalControllerUpdatePatch());
@@ -519,6 +531,9 @@ public class StormClassTransformers {
             registerTransformer(new IsoCellProcessStaticUpdatersPatch());
             registerTransformer(new IsoCellProcessSpottedRoomsPatch());
             registerTransformer(new IsoCellProcessItemsPatch());
+            registerTransformer(new IsoCellProcessListsFastContainsPatch());
+            registerTransformer(new ServerMapReleventNowFastContainsPatch());
+            registerTransformer(new DesignationZoneAnimalFoodFastContainsPatch());
             registerTransformer(new IsoCellObjectDeletionAdditionPatch());
             registerTransformer(new IsoCellGetAnimalsPatch());
             registerTransformer(new IsoDeadBodyUpdateBodiesPatch());

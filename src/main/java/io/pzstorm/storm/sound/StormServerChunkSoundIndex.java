@@ -27,32 +27,36 @@ import zombie.network.ServerMap;
  * IsoCell.getChunk}) iterates per-player chunk maps and always returns {@code null} on a dedicated
  * server.
  *
- * <p>The footprint radius of each sound is remembered at add time so removal clears the identical
- * chunk rectangle even if sandbox options are pushed mid-life. Removal happens at the top of {@code
- * WorldSoundManager.update()} — for exactly the sounds vanilla is about to remove and release to
- * its object pool that tick ({@code life <= 0} at entry) — and in {@code KillCell()}. The server
- * never runs vanilla's chunk-side aging ({@code IsoChunk.updateSounds()} sits inside the
- * client-only branch of {@code update()}), so these two hooks are the only removal paths needed.
+ * <p>Each indexed sound remembers the chunk rectangle it was indexed into (a {@link Footprint}), so
+ * every later touch is compared rectangle-to-rectangle (ATF profile 2026-08-26, 135 players: the
+ * old radius-keyed bookkeeping cost ~0.7% of main in {@code ArrayList.remove} churn):
  *
- * <p>Un-indexing is batched (ATF profile 2026-08-24: the per-sound {@code ArrayList.remove} against
- * chunk lists averaging 104 entries cost ~3.5 ms of a ~62 ms tick at ~460 expiries across ~138
- * chunks each): the sweep first collects every expiring sound into an identity set and the union of
- * their footprint chunks, then clears each touched chunk with a single in-place compaction pass —
- * O(touched chunk lists) per tick instead of O(expiring sounds × footprint chunks × list length).
+ * <ul>
+ *   <li>Vanilla re-calls {@code addSound} on a <em>live</em> repeating-sound instance every refresh
+ *       interval. With an unchanged rectangle this is now an incremental pass over chunks loaded
+ *       since the last index pass instead of a full remove-and-re-add of every chunk list.
+ *   <li>{@link StormRepeatingSoundCoalescer} regrowing a slot's radius ({@link #refreshFootprint})
+ *       only touches chunk lists when the radius change actually moves an 8-tile chunk boundary.
+ *   <li>A genuinely changed rectangle is applied as a diff: removals only from chunks leaving the
+ *       footprint, plain adds only to chunks entering it, and a {@code loadedFrame}-guarded add for
+ *       the intersection (a chunk loaded since the previous pass may be missing the sound).
+ * </ul>
  *
- * <p>The expiry sweep also drives {@link StormRepeatingSoundCoalescer}'s slot bookkeeping, and
- * {@link #onSoundAdded} registers new repeating sounds as coalescer slots — both under the same
- * {@code manager.soundList} lock as the index itself. {@link #refreshFootprint} lets the coalescer
- * regrow a live slot's radius, touching chunk lists only when the chunk rectangle actually changes
- * (plus, every 16th refresh, an incremental pass that only visits chunks loaded since the slot's
- * last index pass — compared via {@code IsoChunk.loadedFrame} — so newly loaded chunks pick up a
- * long-lived slot with the same ≤16-tick staleness bound a vanilla copy stream has, without a full
- * remove-and-re-add sweep).
+ * <p>Un-indexing happens at the top of {@code WorldSoundManager.update()} — for exactly the sounds
+ * vanilla is about to remove and release to its object pool that tick ({@code life <= 0} at entry)
+ * — and in {@code KillCell()}. The server never runs vanilla's chunk-side aging ({@code
+ * IsoChunk.updateSounds()} sits inside the client-only branch of {@code update()}), so these two
+ * hooks are the only removal paths needed. The sweep collects the union of expiring footprints'
+ * chunks, then clears each touched chunk list with one in-place compaction pass keyed directly on
+ * {@code sound.life <= 0} — under the held {@code soundList} lock that predicate is exactly
+ * "collected this pass", with no per-element scratch-map probe (the old identity-map probe was
+ * ~0.7% of main in the 2026-08-26 profile). {@code KillCell} clears every touched chunk list
+ * outright.
  *
  * <p>Known divergence from vanilla server behavior, matching vanilla <em>client</em> behavior by
- * construction: a chunk loaded mid-life of a sound misses that sound for the remainder of its
- * ≤16-tick life, and listeners outside a sound's hearing footprint no longer see it at all (the
- * global scan had no distance cut for {@code getSoundZomb}'s source-identity match).
+ * construction: a chunk loaded mid-life of a short-lived sound misses that sound for the remainder
+ * of its ≤16-tick life, and listeners outside a sound's hearing footprint no longer see it at all
+ * (the global scan had no distance cut for {@code getSoundZomb}'s source-identity match).
  *
  * <p>Always on; if indexing ever throws, {@link #readServerFlag()} flips permanently to {@code
  * true} so the three patched read methods fall back to the vanilla global-list scan. Stale entries
@@ -66,10 +70,7 @@ public final class StormServerChunkSoundIndex {
     private static final IdentityHashMap<WorldSoundManager.WorldSound, Footprint> FOOTPRINTS =
             new IdentityHashMap<>();
 
-    /** Sweep scratch (identity semantics); cleared after every use so pooled sounds aren't held. */
-    private static final IdentityHashMap<WorldSoundManager.WorldSound, Boolean> DEAD =
-            new IdentityHashMap<>();
-
+    /** Sweep scratch (identity semantics); cleared after every use so chunks aren't held. */
     private static final IdentityHashMap<IsoChunk, Boolean> TOUCHED = new IdentityHashMap<>();
 
     private StormServerChunkSoundIndex() {}
@@ -93,13 +94,7 @@ public final class StormServerChunkSoundIndex {
             WorldSoundManager.WorldSound sound = (WorldSoundManager.WorldSound) soundObj;
             WorldSoundManager manager = WorldSoundManager.instance;
             synchronized (manager.soundList) {
-                Footprint stale = FOOTPRINTS.remove(sound);
-                if (stale != null) {
-                    forEachChunk(sound, stale.radiusMax, false);
-                }
-                int radiusMax = footprintRadius(manager, sound);
-                forEachChunk(sound, radiusMax, true);
-                FOOTPRINTS.put(sound, new Footprint(radiusMax, currentFrame()));
+                reindex(sound, footprintRadius(manager, sound));
                 StormRepeatingSoundCoalescer.onSoundCreated(sound);
             }
         } catch (Throwable t) {
@@ -125,13 +120,12 @@ public final class StormServerChunkSoundIndex {
                     Map.Entry<WorldSoundManager.WorldSound, Footprint> entry = it.next();
                     WorldSoundManager.WorldSound sound = entry.getKey();
                     if (sound.life <= 0) {
-                        DEAD.put(sound, Boolean.TRUE);
-                        collectChunks(sound, entry.getValue().radiusMax);
+                        collectChunks(entry.getValue());
                         StormRepeatingSoundCoalescer.onSoundReleased(sound);
                         it.remove();
                     }
                 }
-                removeDeadFromTouchedChunks();
+                compactTouchedChunks();
             }
         } catch (Throwable t) {
             fail(t);
@@ -146,14 +140,15 @@ public final class StormServerChunkSoundIndex {
         try {
             WorldSoundManager manager = (WorldSoundManager) managerObj;
             synchronized (manager.soundList) {
-                for (Map.Entry<WorldSoundManager.WorldSound, Footprint> entry :
-                        FOOTPRINTS.entrySet()) {
-                    DEAD.put(entry.getKey(), Boolean.TRUE);
-                    collectChunks(entry.getKey(), entry.getValue().radiusMax);
+                for (Footprint footprint : FOOTPRINTS.values()) {
+                    collectChunks(footprint);
                 }
                 FOOTPRINTS.clear();
                 StormRepeatingSoundCoalescer.clear();
-                removeDeadFromTouchedChunks();
+                for (IsoChunk chunk : TOUCHED.keySet()) {
+                    chunk.soundList.clear();
+                }
+                TOUCHED.clear();
             }
         } catch (Throwable t) {
             fail(t);
@@ -162,11 +157,9 @@ public final class StormServerChunkSoundIndex {
 
     /**
      * Regrows a live coalesced sound's base radius in place for {@link
-     * StormRepeatingSoundCoalescer}, fully re-indexing only when the chunk rectangle changes;
-     * {@code forceReindex} with an unchanged rectangle runs the incremental {@link
-     * #addToChunksLoadedSince} pass instead. The coalescer only ever refreshes at the sound's
-     * existing position, so the rectangle depends solely on the footprint radius. Caller holds the
-     * sound-list lock.
+     * StormRepeatingSoundCoalescer}, touching chunk lists only when the footprint rectangle
+     * actually changes; {@code forceReindex} with an unchanged rectangle runs the incremental
+     * {@link #addToChunksLoadedSince} pass instead. Caller holds the sound-list lock.
      */
     static void refreshFootprint(
             WorldSoundManager manager,
@@ -181,26 +174,73 @@ public final class StormServerChunkSoundIndex {
         // half-updated chunk index is only harmless once readServerFlag() reroutes every reader
         // back to the global scan.
         try {
-            Footprint stored = FOOTPRINTS.get(sound);
             int radiusMax =
                     footprintRadius(manager, sound.stresshumans, sound.stressAnimals, radius);
-            if (stored != null && stored.radiusMax == radiusMax) {
-                sound.radius = radius;
-                if (forceReindex) {
-                    addToChunksLoadedSince(sound, stored);
-                }
+            sound.radius = radius;
+            Footprint stored = FOOTPRINTS.get(sound);
+            if (stored != null
+                    && stored.sameRect(new Footprint(sound.x, sound.y, radiusMax, 0L))
+                    && !forceReindex) {
                 return;
             }
-            if (stored != null) {
-                forEachChunk(sound, stored.radiusMax, false);
-            }
-            sound.radius = radius;
-            forEachChunk(sound, radiusMax, true);
-            FOOTPRINTS.put(sound, new Footprint(radiusMax, currentFrame()));
+            reindex(sound, radiusMax);
         } catch (Throwable t) {
             fail(t);
             sound.radius = radius;
         }
+    }
+
+    /**
+     * Rectangle-compared index pass for a sound at its current position: no stored footprint →
+     * plain adds over the whole rectangle; unchanged rectangle → incremental adds for chunks loaded
+     * since the last pass only; changed rectangle → diff (remove old∖new, add new∖old, guarded add
+     * for the intersection).
+     */
+    private static void reindex(WorldSoundManager.WorldSound sound, int radiusMax) {
+        Footprint fresh = new Footprint(sound.x, sound.y, radiusMax, currentFrame());
+        Footprint stored = FOOTPRINTS.get(sound);
+        if (stored != null && stored.sameRect(fresh)) {
+            addToChunksLoadedSince(sound, stored);
+            return;
+        }
+        ServerMap map = ServerMap.instance;
+        if (map == null) {
+            return;
+        }
+        if (stored != null) {
+            for (int xx = stored.chunkMinX; xx < stored.chunkMaxX; xx++) {
+                for (int yy = stored.chunkMinY; yy < stored.chunkMaxY; yy++) {
+                    if (fresh.containsChunk(xx, yy)) {
+                        continue;
+                    }
+                    IsoChunk chunk = map.getChunk(xx, yy);
+                    if (chunk != null) {
+                        chunk.soundList.remove(sound);
+                    }
+                }
+            }
+        }
+        for (int xx = fresh.chunkMinX; xx < fresh.chunkMaxX; xx++) {
+            for (int yy = fresh.chunkMinY; yy < fresh.chunkMaxY; yy++) {
+                IsoChunk chunk = map.getChunk(xx, yy);
+                if (chunk == null) {
+                    continue;
+                }
+                if (stored != null && stored.containsChunk(xx, yy)) {
+                    // Intersection chunk: it already has the sound unless it (re)loaded since
+                    // the pass that stamped stored.indexFrame — same-frame ambiguity and
+                    // loadedFrame == 0 (published without doLoadGridsquare) need the
+                    // membership check.
+                    if ((chunk.loadedFrame >= stored.indexFrame || chunk.loadedFrame == 0)
+                            && !containsIdentity(chunk.soundList, sound)) {
+                        chunk.soundList.add(sound);
+                    }
+                } else {
+                    chunk.soundList.add(sound);
+                }
+            }
+        }
+        FOOTPRINTS.put(sound, fresh);
     }
 
     // Exact copy of the client footprint-radius expression in WorldSoundManager.addSound.
@@ -224,42 +264,14 @@ public final class StormServerChunkSoundIndex {
         return (int) PZMath.ceil(radius * radiusMultiplier);
     }
 
-    // Exact copy of the client chunk-rectangle arithmetic in WorldSoundManager.addSound, but
-    // resolving chunks through ServerMap (IsoCell.getChunk is always null on a dedicated server).
-    private static void forEachChunk(
-            WorldSoundManager.WorldSound sound, int radiusMax, boolean add) {
-        ServerMap map = ServerMap.instance;
-        if (map == null) {
-            return;
-        }
-        int chunkMinX = (sound.x - radiusMax) / 8;
-        int chunkMinY = (sound.y - radiusMax) / 8;
-        int chunkMaxX = (int) Math.ceil(((float) sound.x + radiusMax) / 8.0F);
-        int chunkMaxY = (int) Math.ceil(((float) sound.y + radiusMax) / 8.0F);
-        for (int xx = chunkMinX; xx < chunkMaxX; xx++) {
-            for (int yy = chunkMinY; yy < chunkMaxY; yy++) {
-                IsoChunk chunk = map.getChunk(xx, yy);
-                if (chunk != null) {
-                    if (add) {
-                        chunk.soundList.add(sound);
-                    } else {
-                        chunk.soundList.remove(sound);
-                    }
-                }
-            }
-        }
-    }
-
     /**
-     * The incremental form of a forced re-index for a slot whose footprint rectangle is unchanged:
-     * every chunk that was already loaded at the slot's last index pass got the sound then, so only
-     * chunks loaded since then ({@code chunk.loadedFrame >= indexFrame}) can be missing it. Those
-     * get a membership-guarded add — a chunk loaded in the same frame as the pass that stamped
-     * {@code indexFrame} may or may not have been covered by it, so presence must be checked.
-     * {@code loadedFrame == 0} (a chunk published without {@code doLoadGridsquare}, e.g. via {@code
-     * setSoftResetChunk}) is treated as newly loaded. Replaces the old
-     * remove-everywhere-then-re-add sweep, whose per-chunk {@code ArrayList.remove} scans were
-     * ~1.3% of the server main thread on ATF prod 2026-08-25 (scan #3).
+     * The incremental form of a re-index whose footprint rectangle is unchanged: every chunk that
+     * was already loaded at the last index pass got the sound then, so only chunks loaded since
+     * ({@code chunk.loadedFrame >= indexFrame}) can be missing it. Those get a membership-guarded
+     * add — a chunk loaded in the same frame as the pass that stamped {@code indexFrame} may or may
+     * not have been covered by it, so presence must be checked. {@code loadedFrame == 0} (a chunk
+     * published without {@code doLoadGridsquare}, e.g. via {@code setSoftResetChunk}) is treated as
+     * newly loaded.
      */
     private static void addToChunksLoadedSince(
             WorldSoundManager.WorldSound sound, Footprint footprint) {
@@ -269,13 +281,8 @@ public final class StormServerChunkSoundIndex {
         }
         long since = footprint.indexFrame;
         long now = currentFrame();
-        int radiusMax = footprint.radiusMax;
-        int chunkMinX = (sound.x - radiusMax) / 8;
-        int chunkMinY = (sound.y - radiusMax) / 8;
-        int chunkMaxX = (int) Math.ceil(((float) sound.x + radiusMax) / 8.0F);
-        int chunkMaxY = (int) Math.ceil(((float) sound.y + radiusMax) / 8.0F);
-        for (int xx = chunkMinX; xx < chunkMaxX; xx++) {
-            for (int yy = chunkMinY; yy < chunkMaxY; yy++) {
+        for (int xx = footprint.chunkMinX; xx < footprint.chunkMaxX; xx++) {
+            for (int yy = footprint.chunkMinY; yy < footprint.chunkMaxY; yy++) {
                 IsoChunk chunk = map.getChunk(xx, yy);
                 if (chunk != null
                         && (chunk.loadedFrame >= since || chunk.loadedFrame == 0)
@@ -307,18 +314,14 @@ public final class StormServerChunkSoundIndex {
         return world == null ? 0L : world.getFrameNo();
     }
 
-    /** Adds every currently loaded chunk of the sound's stored footprint to {@link #TOUCHED}. */
-    private static void collectChunks(WorldSoundManager.WorldSound sound, int radiusMax) {
+    /** Adds every currently loaded chunk of the footprint's rectangle to {@link #TOUCHED}. */
+    private static void collectChunks(Footprint footprint) {
         ServerMap map = ServerMap.instance;
         if (map == null) {
             return;
         }
-        int chunkMinX = (sound.x - radiusMax) / 8;
-        int chunkMinY = (sound.y - radiusMax) / 8;
-        int chunkMaxX = (int) Math.ceil(((float) sound.x + radiusMax) / 8.0F);
-        int chunkMaxY = (int) Math.ceil(((float) sound.y + radiusMax) / 8.0F);
-        for (int xx = chunkMinX; xx < chunkMaxX; xx++) {
-            for (int yy = chunkMinY; yy < chunkMaxY; yy++) {
+        for (int xx = footprint.chunkMinX; xx < footprint.chunkMaxX; xx++) {
+            for (int yy = footprint.chunkMinY; yy < footprint.chunkMaxY; yy++) {
                 IsoChunk chunk = map.getChunk(xx, yy);
                 if (chunk != null) {
                     TOUCHED.put(chunk, Boolean.TRUE);
@@ -328,54 +331,70 @@ public final class StormServerChunkSoundIndex {
     }
 
     /**
-     * One in-place compaction pass per touched chunk clears every dead sound at once. Hand-rolled
-     * rather than {@code removeIf} because this runs for every touched chunk every tick (0.93% of
-     * main in the 2026-08-25 profile) and {@code ArrayList.removeIf} allocates a bound predicate
-     * plus a survivor bitset per call.
+     * One in-place compaction pass per touched chunk clears every dead sound at once, keyed
+     * directly on {@code life <= 0} — under the held {@code soundList} lock this is exactly the
+     * predicate the collection loop used, so no scratch-map probe per element. Hand-rolled rather
+     * than {@code removeIf} because this runs for every touched chunk every tick and {@code
+     * ArrayList.removeIf} allocates a bound predicate plus a survivor bitset per call.
      */
-    private static void removeDeadFromTouchedChunks() {
-        if (!DEAD.isEmpty()) {
-            for (IsoChunk chunk : TOUCHED.keySet()) {
-                ArrayList<WorldSoundManager.WorldSound> list = chunk.soundList;
-                int size = list.size();
-                int live = 0;
-                for (int i = 0; i < size; i++) {
-                    WorldSoundManager.WorldSound sound = list.get(i);
-                    if (!DEAD.containsKey(sound)) {
-                        if (live != i) {
-                            list.set(live, sound);
-                        }
-                        live++;
+    private static void compactTouchedChunks() {
+        for (IsoChunk chunk : TOUCHED.keySet()) {
+            ArrayList<WorldSoundManager.WorldSound> list = chunk.soundList;
+            int size = list.size();
+            int live = 0;
+            for (int i = 0; i < size; i++) {
+                WorldSoundManager.WorldSound sound = list.get(i);
+                if (sound.life > 0) {
+                    if (live != i) {
+                        list.set(live, sound);
                     }
-                }
-                if (live < size) {
-                    list.subList(live, size).clear();
+                    live++;
                 }
             }
+            if (live < size) {
+                list.subList(live, size).clear();
+            }
         }
-        DEAD.clear();
         TOUCHED.clear();
     }
 
     /**
-     * Per-sound index record: the footprint radius the chunk rectangle was computed with, and the
-     * frame of the last pass guaranteed to have covered every chunk loaded before it.
+     * Per-sound index record: the chunk rectangle the sound was indexed into ({@code min}
+     * inclusive, {@code max} exclusive; exact copy of the client chunk-rectangle arithmetic in
+     * {@code WorldSoundManager.addSound}) and the frame of the last pass guaranteed to have covered
+     * every chunk loaded before it.
      */
-    private static final class Footprint {
+    static final class Footprint {
 
-        final int radiusMax;
+        final int chunkMinX;
+        final int chunkMinY;
+        final int chunkMaxX;
+        final int chunkMaxY;
         long indexFrame;
 
-        Footprint(int radiusMax, long indexFrame) {
-            this.radiusMax = radiusMax;
+        Footprint(int x, int y, int radiusMax, long indexFrame) {
+            this.chunkMinX = (x - radiusMax) / 8;
+            this.chunkMinY = (y - radiusMax) / 8;
+            this.chunkMaxX = (int) Math.ceil(((float) x + radiusMax) / 8.0F);
+            this.chunkMaxY = (int) Math.ceil(((float) y + radiusMax) / 8.0F);
             this.indexFrame = indexFrame;
+        }
+
+        boolean sameRect(Footprint other) {
+            return chunkMinX == other.chunkMinX
+                    && chunkMinY == other.chunkMinY
+                    && chunkMaxX == other.chunkMaxX
+                    && chunkMaxY == other.chunkMaxY;
+        }
+
+        boolean containsChunk(int xx, int yy) {
+            return xx >= chunkMinX && xx < chunkMaxX && yy >= chunkMinY && yy < chunkMaxY;
         }
     }
 
     private static void fail(Throwable t) {
         failed = true;
         FOOTPRINTS.clear();
-        DEAD.clear();
         TOUCHED.clear();
         StormLogger.LOGGER.error(
                 "StormServerChunkSoundIndex failed — reverting sound lookups to the vanilla"

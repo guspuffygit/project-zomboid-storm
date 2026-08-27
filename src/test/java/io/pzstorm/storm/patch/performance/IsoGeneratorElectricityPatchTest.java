@@ -105,6 +105,111 @@ class IsoGeneratorElectricityPatchTest implements IntegrationTest {
                         + after.updateSurroundingReads);
     }
 
+    @Test
+    void patchInstallsInactiveSweptLatch() throws Exception {
+        byte[] rawClass = readClass(ISO_GENERATOR);
+        byte[] transformed = new IsoGeneratorElectricityPatch().transform(rawClass);
+        assertNotNull(transformed);
+
+        String flagInterface = "io/pzstorm/storm/entity/StormGeneratorSweptFlag";
+        boolean[] hasInterface = new boolean[1];
+        int[] fieldAccess = {-1};
+        java.util.Set<String> methods = new java.util.HashSet<>();
+        int[] updateInstanceofs = new int[1];
+        int[] updateLatchReads = new int[1];
+        int[] updateLatchWrites = new int[1];
+        new ClassReader(transformed)
+                .accept(
+                        new ClassVisitor(Opcodes.ASM9) {
+                            @Override
+                            public void visit(
+                                    int version,
+                                    int access,
+                                    String name,
+                                    String signature,
+                                    String superName,
+                                    String[] interfaces) {
+                                for (String iface : interfaces) {
+                                    if (flagInterface.equals(iface)) {
+                                        hasInterface[0] = true;
+                                    }
+                                }
+                            }
+
+                            @Override
+                            public net.bytebuddy.jar.asm.FieldVisitor visitField(
+                                    int access,
+                                    String name,
+                                    String descriptor,
+                                    String signature,
+                                    Object value) {
+                                if ("stormInactiveSwept".equals(name) && "Z".equals(descriptor)) {
+                                    fieldAccess[0] = access;
+                                }
+                                return null;
+                            }
+
+                            @Override
+                            public MethodVisitor visitMethod(
+                                    int access,
+                                    String name,
+                                    String descriptor,
+                                    String signature,
+                                    String[] exceptions) {
+                                methods.add(name + descriptor);
+                                if (!"update".equals(name) || !"()V".equals(descriptor)) {
+                                    return null;
+                                }
+                                return new MethodVisitor(Opcodes.ASM9) {
+                                    @Override
+                                    public void visitTypeInsn(int opcode, String type) {
+                                        if (opcode == Opcodes.INSTANCEOF
+                                                && flagInterface.equals(type)) {
+                                            updateInstanceofs[0]++;
+                                        }
+                                    }
+
+                                    @Override
+                                    public void visitMethodInsn(
+                                            int opcode,
+                                            String owner,
+                                            String mName,
+                                            String mDesc,
+                                            boolean isInterface) {
+                                        if ("isStormInactiveSwept".equals(mName)) {
+                                            updateLatchReads[0]++;
+                                        }
+                                        if ("setStormInactiveSwept".equals(mName)) {
+                                            updateLatchWrites[0]++;
+                                        }
+                                    }
+                                };
+                            }
+                        },
+                        ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+
+        assertTrue(hasInterface[0], "patched IsoGenerator must implement StormGeneratorSweptFlag");
+        assertTrue(
+                fieldAccess[0] != -1,
+                "patched IsoGenerator must declare boolean" + " stormInactiveSwept");
+        assertTrue((fieldAccess[0] & Opcodes.ACC_PUBLIC) != 0, "stormInactiveSwept must be public");
+        assertTrue(
+                methods.contains("isStormInactiveSwept()Z")
+                        && methods.contains("setStormInactiveSwept(Z)V"),
+                "flag accessor pair must be generated");
+        assertEquals(
+                2,
+                updateInstanceofs[0],
+                "update() should guard the early skip and the latch write with one instanceof"
+                        + " each");
+        assertTrue(
+                updateLatchReads[0] >= 1,
+                "update() should read the latch for the inactive-generator early skip");
+        assertTrue(
+                updateLatchWrites[0] >= 1,
+                "update() should re-arm/clear the latch after a completed sweep");
+    }
+
     /**
      * SHA-256 of the normalized instruction stream of the vanilla methods whose logic {@code
      * SkipServerScanAdvice.onEnter} inlines as a hand-written copy (they are private, so nothing

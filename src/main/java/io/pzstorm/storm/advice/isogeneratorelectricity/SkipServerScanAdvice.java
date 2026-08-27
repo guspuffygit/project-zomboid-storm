@@ -1,5 +1,6 @@
 package io.pzstorm.storm.advice.isogeneratorelectricity;
 
+import io.pzstorm.storm.entity.StormGeneratorSweptFlag;
 import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.patch.performance.IsoGeneratorScanRefresh;
 import net.bytebuddy.asm.Advice;
@@ -94,6 +95,19 @@ public class SkipServerScanAdvice {
             return;
         }
 
+        boolean activated = self.isActivated();
+        if (!activated
+                && self instanceof StormGeneratorSweptFlag
+                && ((StormGeneratorSweptFlag) self).isStormInactiveSwept()) {
+            // Already swept while inactive: every chunk loaded at sweep time is clean, and
+            // chunks loaded since are cleaned by IsoChunk.checkForMissingGenerators() (this
+            // generator's square is loaded — it's updating — and it isn't activated, so the
+            // load-time pass drops its entries). chunkLoaded re-flags updateSurrounding on
+            // every nearby chunk load, which re-ran this whole removal loop before the latch.
+            updateSurrounding = false;
+            return;
+        }
+
         int generatorRadius = SandboxOptions.getInstance().generatorTileRange.getValue();
         // Must match vanilla IsoGenerator.setGeneratorRange(): chunks are 8 tiles wide, so the
         // divisor is 8. A larger divisor under-covers the chunk box for many GeneratorTileRange
@@ -102,7 +116,6 @@ public class SkipServerScanAdvice {
 
         int chunkX = myChunk.wx;
         int chunkY = myChunk.wy;
-        boolean activated = self.isActivated();
         int sx = square.x;
         int sy = square.y;
         int sz = square.z;
@@ -159,6 +172,11 @@ public class SkipServerScanAdvice {
                     chunksUpdated);
         }
 
+        if (self instanceof StormGeneratorSweptFlag) {
+            // Latch after an inactive sweep so chunkLoaded re-flags stop re-running the loop;
+            // clear on an activated pass so the next deactivation sweeps exactly once.
+            ((StormGeneratorSweptFlag) self).setStormInactiveSwept(!activated);
+        }
         updateSurrounding = false;
     }
 }

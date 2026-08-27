@@ -2,8 +2,10 @@ package io.pzstorm.storm.patch.performance;
 
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
@@ -38,6 +40,14 @@ import net.bytebuddy.pool.TypePool;
  * setSurroundingElectricity()} run once when {@code totalPowerUsing <= 0}; subsequent ticks (where
  * it's at the {@code 0.02F} baseline or higher) take the fast path.
  *
+ * <p>The redefinition also adds a {@code stormInactiveSwept} boolean (surfaced through {@link
+ * io.pzstorm.storm.entity.StormGeneratorSweptFlag}): {@code IsoChunk.chunkLoaded} re-flags {@code
+ * updateSurrounding} on every touching generator whenever a nearby chunk loads, which made the fast
+ * path re-run its full removal loop for inactive generators over and over (~0.8% of server main on
+ * ATF, 2026-08-26 profile). One removal sweep per deactivation is enough — chunks loaded afterwards
+ * are cleaned by vanilla {@code IsoChunk.checkForMissingGenerators()} at load time — so the advice
+ * latches after an inactive sweep and short-circuits until the generator is activated again.
+ *
  * <p>Advice loaded via {@code typePool.describe().resolve()} (ASM-only parsing) so Byte Buddy
  * doesn't trigger class loading of the transform target.
  */
@@ -52,10 +62,17 @@ public class IsoGeneratorElectricityPatch extends StormClassTransformer {
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
-        return builder.visit(
-                Advice.to(typePool.describe(PKG + "SkipServerScanAdvice").resolve(), locator)
-                        .on(
-                                ElementMatchers.named("update")
-                                        .and(ElementMatchers.takesArguments(0))));
+        return builder.defineField("stormInactiveSwept", boolean.class, Visibility.PUBLIC)
+                .implement(
+                        typePool.describe("io.pzstorm.storm.entity.StormGeneratorSweptFlag")
+                                .resolve())
+                .intercept(FieldAccessor.ofField("stormInactiveSwept"))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "SkipServerScanAdvice").resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("update")
+                                                .and(ElementMatchers.takesArguments(0))));
     }
 }
