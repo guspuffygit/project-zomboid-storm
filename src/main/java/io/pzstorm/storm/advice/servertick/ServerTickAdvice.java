@@ -6,6 +6,7 @@ import io.pzstorm.storm.metrics.ChunkStreamMetrics;
 import io.pzstorm.storm.metrics.ServerTickMetrics;
 import io.pzstorm.storm.metrics.StormConnectionMetrics;
 import io.pzstorm.storm.metrics.StormConnectionStageMetrics;
+import io.pzstorm.storm.vehicles.StormVehicleSleep;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -24,5 +25,6 @@ public class ServerTickAdvice {
         ChunkHydrationMetrics.sampleTick();
         SteamPlayerListReconciler.sweep();
         StormZombieTotalCap.onServerTick();
+        StormVehicleSleep.onServerTick();
     }
 }

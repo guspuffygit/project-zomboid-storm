@@ -143,6 +143,8 @@ public class TestVehicleSoundRelevanceCommand extends CommandBase {
         if (v.getPassengerDoor(0) != null) {
             v.getPassengerDoor(0).getDoor().setLocked(false);
         }
+        // the freshly added vehicle sits in cell.addVehicles until ObjectDeletionAddition
+        // flushes it into getVehicles() next tick, so count the staged set too
         return "RESULT SPAWN id="
                 + v.getId()
                 + " vehicleId="
@@ -152,7 +154,8 @@ public class TestVehicleSoundRelevanceCommand extends CommandBase {
                 + " y="
                 + v.getY()
                 + " vehicles="
-                + IsoWorld.instance.currentCell.getVehicles().size();
+                + (IsoWorld.instance.currentCell.getVehicles().size()
+                        + IsoWorld.instance.currentCell.addVehicles.size());
     }
 
     /**
