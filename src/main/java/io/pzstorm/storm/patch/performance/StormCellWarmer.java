@@ -531,9 +531,24 @@ public final class StormCellWarmer {
      * cell.Unload()}, so only the state that unload's own teardown consumes is re-attached.
      *
      * <ul>
-     *   <li>Population managers and the pathfinder are re-added per chunk — unload's {@code
-     *       removeChunkFromWorld} calls must stay balanced against an add (the native pathfind side
-     *       tracks loaded chunks, and the pop managers virtualize a chunk's population on remove).
+     *   <li>The animal population manager and the pathfinder are re-added per chunk — unload's
+     *       {@code removeChunkFromWorld} calls must stay balanced against an add (the native
+     *       pathfind side tracks loaded chunks, and the animal manager virtualizes a chunk's
+     *       population on remove).
+     *   <li>{@code ZombiePopulationManager.addChunkToWorld} is skipped. The native side of an
+     *       unbalanced zombie remove is a harmless bitmask clear ({@code Cell::setChunkLoaded}
+     *       returns before any cell touch), and the Java side only virtualizes real zombies on the
+     *       chunk's squares — a warmed cell has none, {@code warm()} virtualized them. The re-add,
+     *       by contrast, is actively destructive: {@code n_loadChunk(add)} reloads the cold popman
+     *       cell into the native worker for ~2s (cell touch + zpop load) with no Java chunks or
+     *       pathfind data behind it. In that window the native respawn check ({@code
+     *       tryRepopChunk}) runs every worker tick on exactly the cells whose respawn clocks have
+     *       aged into eligibility — eviction victims are the least-recently-visited cells — and
+     *       each doomed attempt burns a chunk's 16-game-hour repop cooldown before the spawn task
+     *       is discarded; once every eligible chunk is burned, the empty-eligible path restamps the
+     *       cell's 16-hour clock with zero zombies spawned. At production eviction rates this
+     *       starved respawn across the whole map. It also round-trips the chunk's virtual zombies
+     *       through the main thread (realize into a dying cell, bounce, re-virtualize) for nothing.
      *   <li>{@code MapCollisionData.addChunkToWorld} is skipped: its {@code removeChunkFromWorld}
      *       is an empty no-op (vanilla), so the chunk never left collision during {@code warm()}
      *       and the re-add would be pure wasted native work on a chunk that is leaving.
@@ -557,7 +572,6 @@ public final class StormCellWarmer {
             IsoChunk chunk = cell.chunks[warm.reconnectCursor / 8][warm.reconnectCursor % 8];
             if (chunk != null && chunk.jobType != IsoChunk.JobType.SoftReset) {
                 AnimalPopulationManager.getInstance().addChunkToWorld(chunk);
-                ZombiePopulationManager.instance.addChunkToWorld(chunk);
                 if (PathfindNative.useNativeCode) {
                     PathfindNative.instance.addChunkToWorld(chunk);
                 } else {
