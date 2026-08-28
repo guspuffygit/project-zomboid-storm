@@ -97,6 +97,7 @@ import io.pzstorm.storm.patch.performance.AnimalZonesUpdateVirtualAnimalsPatch;
 import io.pzstorm.storm.patch.performance.AnimationPlayerRecorderIsActivePatch;
 import io.pzstorm.storm.patch.performance.AnimationVariableReferenceGetVariablePatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleAlphaCheckSkipPatch;
+import io.pzstorm.storm.patch.performance.BaseVehicleBreakingObjectsSkipPatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleCropCheckSkipPatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleUpdatePatch;
 import io.pzstorm.storm.patch.performance.BitHeaderByteReleasePatch;
@@ -400,6 +401,7 @@ public class StormClassTransformers {
             registerTransformer(new VehicleManagerSendVehiclesPatch());
             registerTransformer(new BaseVehicleUpdatePatch());
             registerTransformer(new BaseVehicleAlphaCheckSkipPatch());
+            registerTransformer(new BaseVehicleBreakingObjectsSkipPatch());
             registerTransformer(new BaseVehicleCropCheckSkipPatch());
             registerTransformer(new WorldSoundServerChunkIndexPatch());
             registerTransformer(new IsoGameCharacterCheckIsNearVehiclePatch());
