@@ -5,9 +5,12 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.client.CoreResetLuaPatch;
+import io.pzstorm.storm.patch.client.IsoWorldInventoryObjectRenderSpriteGuardPatch;
 import io.pzstorm.storm.patch.client.PlayerDataRequestBackoffPatch;
+import io.pzstorm.storm.patch.client.VehicleChunkRehomePatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
+import io.pzstorm.storm.patch.client.VehicleSoundsClientCreatePatch;
 import io.pzstorm.storm.patch.client.VehicleTowConstraintSnapPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
 import io.pzstorm.storm.patch.client.experimental.VehicleModDataRequestPatch;
@@ -404,8 +407,11 @@ public class StormClassTransformers {
             registerTransformer(new VehicleRequestMergeFlagsPatch());
             registerTransformer(new VehicleModelAttachRetryPatch());
             registerTransformer(new VehicleTowConstraintSnapPatch());
+            registerTransformer(new VehicleChunkRehomePatch());
+            registerTransformer(new VehicleSoundsClientCreatePatch());
             registerTransformer(new PacketLimitMetricsPatch());
             registerTransformer(new PlayerDataRequestBackoffPatch());
+            registerTransformer(new IsoWorldInventoryObjectRenderSpriteGuardPatch());
         }
 
         if (StormEnv.isStormServer()) {
