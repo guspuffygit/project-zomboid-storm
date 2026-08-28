@@ -8,12 +8,12 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * EXPERIMENTAL, opt-in via {@code -Dstorm.experimental.clientperf=true}. Deliberate, user-approved
- * exception to the no-client-patches rule — do not use it as precedent, and do not register it
- * outside the experimental gate.
- *
- * <p>Halves {@code HashMap} work per {@code KahluaTableImpl.rawget}. See {@link
+ * Halves map work per {@code KahluaTableImpl.rawget}. See {@link
  * io.pzstorm.storm.advice.kahluatablerawget.KahluaTableRawgetAdvice} for the mechanism.
+ *
+ * <p>Registered unconditionally on the server (the double probe profiled at ~1.7% of the main
+ * thread at 144 players), and on the client only behind {@code
+ * -Dstorm.experimental.clientperf=true}.
  */
 public class KahluaTableRawgetPatch extends StormClassTransformer {
 

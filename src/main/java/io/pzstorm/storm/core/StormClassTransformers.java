@@ -31,6 +31,7 @@ import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
 import io.pzstorm.storm.patch.fixes.ChatServerProcessWhisperPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
+import io.pzstorm.storm.patch.fixes.InventoryItemStoreByteDataPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalCanClimbStairsNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalRegistryFixPatch;
@@ -304,6 +305,7 @@ public class StormClassTransformers {
         registerTransformer(new IsoGridSquareGetRoomNullDefGuardPatch());
         registerTransformer(new BaseVehicleSavePatch());
         registerTransformer(new SitOnFurnitureBoxedInChairPatch());
+        registerTransformer(new InventoryItemStoreByteDataPatch());
         if (Boolean.getBoolean("storm.experimental.clientperf")) {
             registerTransformer(new EcsComponentGetClassMemoPatch());
             registerTransformer(new IsoLightSwitchElectricityMemoPatch());
@@ -377,6 +379,9 @@ public class StormClassTransformers {
             registerTransformer(new IsoWorldUpdatePatch());
             registerTransformer(new AnimalControllerUpdatePatch());
             registerTransformer(new ZomboidRadioUpdatePatch());
+            // Server profiles show the containsKey+get double probe at ~1.7% of main
+            // (~1.2 ms/tick at 144 players); also registered under the clientperf gate.
+            registerTransformer(new KahluaTableRawgetPatch());
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new ChatServerProcessWhisperPatch());
