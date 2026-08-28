@@ -5,6 +5,8 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import zombie.MovingObjectUpdateScheduler;
 import zombie.characters.IsoZombie;
+import zombie.characters.component.NetworkZombieComponent;
+import zombie.characters.ecs.ECSComponent;
 import zombie.network.GameServer;
 
 /**
@@ -41,6 +43,16 @@ public final class ZombieAuthTickInterval {
     public static final int MAX_TICK_INTERVAL = 16;
 
     private static volatile int currentTickInterval = DEFAULT_TICK_INTERVAL;
+
+    /**
+     * The canonical component-map key for {@code NetworkZombieComponent} — the same superclass walk
+     * {@code ECSEntity.tryGetECSComponent} runs on every call ({@code ECSComponent.getECSClass}),
+     * done once. Lets {@link #shouldSkipThisTick} replicate {@code IsoZombie.getOwner() == null} as
+     * a single map probe plus a field read (ATF profile 2026-08-27: the full {@code getOwner()}
+     * chain on the skip path was 0.89% of main).
+     */
+    private static final Class<? extends ECSComponent> NETWORK_COMPONENT_KEY =
+            ECSComponent.getECSClass(NetworkZombieComponent.class);
 
     private ZombieAuthTickInterval() {}
 
@@ -94,7 +106,14 @@ public final class ZombieAuthTickInterval {
         // Probe ownership only on skip-candidate ticks: 42.20.0 turned getOwner() into an
         // ECS HashMap lookup (getOnlineID() is still a field read). Owned zombies never
         // skip — vanilla's 2s lastChangeOwner gate already bounds their scan rate.
-        return zombie.getOwner() == null;
+        // Exact replica of getOwner() == null without its per-call overhead: vanilla is
+        // tryGetECSComponent(NetworkZombieComponent.class) — a getECSClass superclass walk,
+        // the map get, an instanceof-based tryCastTo, and a PZOptional hop to getAuthOwner.
+        // The walk result is cached above; tryCastTo returns null for a non-instance, which
+        // the instanceof mirrors.
+        ECSComponent component = zombie.getECSComponentMap().get(NETWORK_COMPONENT_KEY);
+        return !(component instanceof NetworkZombieComponent networkZombieComponent)
+                || networkZombieComponent.getAuthOwner() == null;
     }
 
     private static int clamp(int requested) {

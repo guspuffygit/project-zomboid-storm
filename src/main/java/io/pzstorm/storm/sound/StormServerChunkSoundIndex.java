@@ -70,8 +70,24 @@ public final class StormServerChunkSoundIndex {
     private static final IdentityHashMap<WorldSoundManager.WorldSound, Footprint> FOOTPRINTS =
             new IdentityHashMap<>();
 
-    /** Sweep scratch (identity semantics); cleared after every use so chunks aren't held. */
-    private static final IdentityHashMap<IsoChunk, Boolean> TOUCHED = new IdentityHashMap<>();
+    /**
+     * Sweep scratch (identity semantics), dedup only — iteration always goes through {@link
+     * #TOUCHED_LIST}, and {@link #resetTouched()} rebuilds the map after any oversized pass. {@code
+     * IdentityHashMap}'s table never shrinks, so iterating or clearing it costs the <em>historical
+     * maximum</em> pass size on every tick: one expiry of a siren-scale footprint (thousands of
+     * chunks) left every later sweep walking a huge empty table (ATF profile 2026-08-27: 1.13% of
+     * main in this iteration). Reset after every use so chunks aren't held.
+     */
+    private static IdentityHashMap<IsoChunk, Boolean> TOUCHED = new IdentityHashMap<>();
+
+    /** Insertion-ordered view of {@link #TOUCHED} for O(entries) iteration. */
+    private static final ArrayList<IsoChunk> TOUCHED_LIST = new ArrayList<>();
+
+    /**
+     * A pass that touched more chunks than this gets a fresh {@link #TOUCHED} map instead of {@code
+     * clear()}, bounding the table capacity every later per-tick sweep pays to iterate.
+     */
+    private static final int TOUCHED_REBUILD_THRESHOLD = 1024;
 
     private StormServerChunkSoundIndex() {}
 
@@ -145,10 +161,10 @@ public final class StormServerChunkSoundIndex {
                 }
                 FOOTPRINTS.clear();
                 StormRepeatingSoundCoalescer.clear();
-                for (IsoChunk chunk : TOUCHED.keySet()) {
-                    chunk.soundList.clear();
+                for (int c = 0, n = TOUCHED_LIST.size(); c < n; c++) {
+                    TOUCHED_LIST.get(c).soundList.clear();
                 }
-                TOUCHED.clear();
+                resetTouched();
             }
         } catch (Throwable t) {
             fail(t);
@@ -323,8 +339,8 @@ public final class StormServerChunkSoundIndex {
         for (int xx = footprint.chunkMinX; xx < footprint.chunkMaxX; xx++) {
             for (int yy = footprint.chunkMinY; yy < footprint.chunkMaxY; yy++) {
                 IsoChunk chunk = map.getChunk(xx, yy);
-                if (chunk != null) {
-                    TOUCHED.put(chunk, Boolean.TRUE);
+                if (chunk != null && TOUCHED.put(chunk, Boolean.TRUE) == null) {
+                    TOUCHED_LIST.add(chunk);
                 }
             }
         }
@@ -338,8 +354,8 @@ public final class StormServerChunkSoundIndex {
      * ArrayList.removeIf} allocates a bound predicate plus a survivor bitset per call.
      */
     private static void compactTouchedChunks() {
-        for (IsoChunk chunk : TOUCHED.keySet()) {
-            ArrayList<WorldSoundManager.WorldSound> list = chunk.soundList;
+        for (int c = 0, n = TOUCHED_LIST.size(); c < n; c++) {
+            ArrayList<WorldSoundManager.WorldSound> list = TOUCHED_LIST.get(c).soundList;
             int size = list.size();
             int live = 0;
             for (int i = 0; i < size; i++) {
@@ -355,7 +371,21 @@ public final class StormServerChunkSoundIndex {
                 list.subList(live, size).clear();
             }
         }
-        TOUCHED.clear();
+        resetTouched();
+    }
+
+    /**
+     * Empties the sweep scratch. {@code IdentityHashMap.clear()} is O(table capacity) and the table
+     * never shrinks, so a pass over the threshold swaps in a fresh map — every later pass's
+     * iteration is O(entries) via {@link #TOUCHED_LIST} and its clear is O(bounded capacity).
+     */
+    private static void resetTouched() {
+        if (TOUCHED_LIST.size() > TOUCHED_REBUILD_THRESHOLD) {
+            TOUCHED = new IdentityHashMap<>();
+        } else {
+            TOUCHED.clear();
+        }
+        TOUCHED_LIST.clear();
     }
 
     /**
@@ -395,7 +425,7 @@ public final class StormServerChunkSoundIndex {
     private static void fail(Throwable t) {
         failed = true;
         FOOTPRINTS.clear();
-        TOUCHED.clear();
+        resetTouched();
         StormLogger.LOGGER.error(
                 "StormServerChunkSoundIndex failed — reverting sound lookups to the vanilla"
                         + " global-list scan",

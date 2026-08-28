@@ -17,6 +17,7 @@ public final class FluidContainerUpdateMetrics {
     public static long optimizedPasses;
 
     public static long vanillaPasses;
+    public static long deferredPasses;
     public static long shortCircuitedEntities;
     public static long workedEntities;
 
@@ -29,12 +30,15 @@ public final class FluidContainerUpdateMetrics {
                                     + " path: optimized = the hoisted/reordered"
                                     + " StormFluidContainerUpdate pass ran and the vanilla body was"
                                     + " skipped; vanilla = fell through to the vanilla body (kill"
-                                    + " switch off or failure latch).")
+                                    + " switch off or failure latch); deferred = coalesced into a"
+                                    + " later optimized pass by the -Dstorm.fluid.simStride"
+                                    + " stride, no bucket walk this call.")
                     .labelNames("path")
                     .callback(
                             callback -> {
                                 callback.call((double) optimizedPasses, "optimized");
                                 callback.call((double) vanillaPasses, "vanilla");
+                                callback.call((double) deferredPasses, "deferred");
                             })
                     .register(StormPrometheus.registry());
 
@@ -72,5 +76,10 @@ public final class FluidContainerUpdateMetrics {
     /** One call fell through to the vanilla body. */
     public static void recordVanilla() {
         vanillaPasses++;
+    }
+
+    /** One call was deferred by the stride; its fluid time integrates into the next walk. */
+    public static void recordDeferred() {
+        deferredPasses++;
     }
 }

@@ -88,9 +88,27 @@ import zombie.iso.weather.ClimateManager;
  * entity list is empty. Vanilla's {@code !GameClient.client} gate is subsumed by the advice's
  * {@code GameServer.server} guard (this never runs on a client JVM).
  *
+ * <p>On top of the per-entity transformations, the pass itself is <b>strided</b> ({@code
+ * -Dstorm.fluid.simStride=N}, default {@value #DEFAULT_SIM_STRIDE}, {@code 1} = every pass): only
+ * every Nth {@code updateSimulation()} call walks the bucket, with every per-pass fluid delta
+ * multiplied by the number of coalesced passes. This is outcome-equivalent because both mutations
+ * are linear in the per-pass delta and clamped at the ends ({@code adjustAmount} clamps to {@code
+ * [0, capacity]}, the private {@code addFluid} clamps to free capacity), so N unit steps and one
+ * N-scaled step land on the same amount (in the already-full-in-rain case the clean/tainted mix
+ * converges along one N-sized displacement step instead of N unit steps — second-order on a delta
+ * of hundredths of a litre); the branch predicates and {@code isFilledWithCleanWater} are sampled
+ * at N&times;100ms instead of 100ms granularity, so a rain start/stop or an indoors/outdoors move
+ * can be integrated up to N&minus;1 passes early or late — bounded by N&times;100ms of a fill rate
+ * that is a few hundredths of a litre per pass (ATF profile 2026-08-27: the every-pass walk of the
+ * full bucket was 2.31% of main, almost all of it entities that end up doing no work). The 1000ms
+ * sync limiter is checked once per walking pass; {@code UpdateLimit.Check} is wall-clock-windowed,
+ * so a sync fires on the first walking pass after the window elapses — at most N&minus;1 deferred
+ * passes later than vanilla.
+ *
  * <p>Vanilla behavior is restored wholesale with the {@code Storm.FluidContainerUpdateFastPath}
  * sandbox option (set {@code false}, live-appliable), and permanently if the optimized pass ever
- * throws.
+ * throws. Either revert drops at most the currently deferred N&minus;1 passes (&le; N&times;100ms
+ * of fluid time) before vanilla cadence resumes.
  *
  * <p>Single-threaded by design: {@code updateSimulation()} only runs on the server main thread
  * (engine update inside {@code GameEntityManager.Update}), so the metric tallies and the failure
@@ -100,6 +118,20 @@ public final class StormFluidContainerUpdate {
 
     /** Default for {@code Storm.FluidContainerUpdateFastPath}: fast path on. */
     public static final boolean DEFAULT_ENABLED = true;
+
+    /** Default for {@code -Dstorm.fluid.simStride}: walk the bucket every 5th 100ms pass. */
+    public static final int DEFAULT_SIM_STRIDE = 5;
+
+    /** Passes per bucket walk; {@code 1} restores a walk on every {@code updateSimulation()}. */
+    public static final int SIM_STRIDE =
+            Math.max(1, Integer.getInteger("storm.fluid.simStride", DEFAULT_SIM_STRIDE));
+
+    /**
+     * Calls deferred since the last walking pass. Main-thread only, like the failure latch;
+     * deliberately not reset when the kill switch or failure latch reverts to vanilla — the
+     * deferred passes are dropped (≤ (N−1)×100ms of fluid time) rather than replayed.
+     */
+    private static int passesSinceWalk;
 
     /**
      * Kill switch, driven by the {@code Storm.FluidContainerUpdateFastPath} sandbox option through
@@ -151,12 +183,18 @@ public final class StormFluidContainerUpdate {
             return false;
         }
         try {
+            if (++passesSinceWalk < SIM_STRIDE) {
+                FluidContainerUpdateMetrics.recordDeferred();
+                return true;
+            }
+            int coalescedPasses = passesSinceWalk;
+            passesSinceWalk = 0;
             ensureInit();
             FluidContainerUpdateSystem system = (FluidContainerUpdateSystem) systemObj;
             UpdateLimit objectSyncLimiter = (UpdateLimit) fObjectSyncLimiter.get(system);
             EntityBucket fluidContainerEntities =
                     (EntityBucket) fFluidContainerEntities.get(system);
-            run(objectSyncLimiter, fluidContainerEntities);
+            run(objectSyncLimiter, fluidContainerEntities, coalescedPasses);
             return true;
         } catch (Throwable t) {
             failed = true;
@@ -170,11 +208,16 @@ public final class StormFluidContainerUpdate {
     }
 
     /**
-     * The hoisted/reordered equivalent of vanilla {@code updateSimulation()} + {@code
-     * updateEntity(...)}. Every kept expression mirrors its vanilla counterpart in order; comments
-     * name what vanilla does at each seam.
+     * The hoisted/reordered equivalent of {@code coalescedPasses} consecutive vanilla {@code
+     * updateSimulation()} + {@code updateEntity(...)} calls, applied as one walk with every fluid
+     * delta scaled by {@code coalescedPasses} (see the stride paragraph in the class doc). Every
+     * kept expression mirrors its vanilla counterpart in order; comments name what vanilla does at
+     * each seam.
      */
-    private static void run(UpdateLimit objectSyncLimiter, EntityBucket fluidContainerEntities) {
+    private static void run(
+            UpdateLimit objectSyncLimiter,
+            EntityBucket fluidContainerEntities,
+            int coalescedPasses) {
         // Stateful: advances the 1000ms sync window. Exactly one call per pass, like vanilla
         // (vanilla calls it before the entity-count check).
         boolean doSync = objectSyncLimiter.Check();
@@ -237,7 +280,9 @@ public final class StormFluidContainerUpdate {
                     // Identity compare, exactly equivalent to vanilla's
                     // getFluidTypeString().equals("Petrol") — see class doc.
                     if (primaryFluid.getFluidType() == FluidType.Petrol) {
-                        float amount = 1.0E-4F * rainCatcher / dayLengthDivisor;
+                        // Vanilla per-pass delta × coalesced passes; clamped below like vanilla,
+                        // so N unit steps and one N-scaled step drain to the same amount.
+                        float amount = 1.0E-4F * rainCatcher / dayLengthDivisor * coalescedPasses;
                         if (fluidContainer.getAmount() < amount) {
                             amount = fluidContainer.getAmount();
                         }
@@ -260,7 +305,10 @@ public final class StormFluidContainerUpdate {
                                     ? FluidType.Water
                                     : FluidType.TaintedWater;
                     if (fluidContainer.canAddFluid(Fluid.Get(waterType))) {
-                        float rainAmount = rainAmountBase * rainCatcher * gameSecondsPerTick;
+                        // Vanilla per-pass delta × coalesced passes; addFluid clamps to free
+                        // capacity, so the N-scaled fill tops out where N unit fills would.
+                        float rainAmount =
+                                rainAmountBase * rainCatcher * gameSecondsPerTick * coalescedPasses;
                         if (fluidContainer.getFreeCapacity() < rainAmount) {
                             fluidContainer.adjustAmount(fluidContainer.getCapacity() - rainAmount);
                         }

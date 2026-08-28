@@ -377,7 +377,7 @@ is exposed as `storm_fluid_container_update_fast_path` alongside the other sandb
 
 | Name | Type | Labels | What |
 |------|------|--------|------|
-| `pz_fluid_container_update_passes_total` | CounterWithCallback | `path={optimized,vanilla}` | `updateSimulation()` invocations by executed path (`vanilla` = kill switch off or failure latch). |
+| `pz_fluid_container_update_passes_total` | CounterWithCallback | `path={optimized,vanilla,deferred}` | `updateSimulation()` invocations by executed path (`vanilla` = kill switch off or failure latch; `deferred` = coalesced into a later optimized walk by `-Dstorm.fluid.simStride`, no bucket walk that call). |
 | `pz_fluid_container_update_entities_total` | CounterWithCallback | `outcome={short_circuited,worked}` | Entities examined by the optimized pass: exited on the cheap shared-prefix guards before the validity machinery and fluid-list work vs ran the petrol comparison and/or rain-fill branch. |
 
 ### Zombie ownership scan (StormZombieAuthScan)
