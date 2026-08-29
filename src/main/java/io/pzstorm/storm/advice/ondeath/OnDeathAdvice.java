@@ -13,6 +13,10 @@ import zombie.characters.animals.IsoAnimal;
  * OnAnimalDeath} for animals, {@code OnZombieDeath} for zombies and {@code OnPlayerDeath} for
  * players. The animal test runs first because {@code IsoAnimal} extends {@code IsoPlayer}.
  *
+ * <p>Animals route through {@link AnimalDeathEvents#triggerOnce(Object)}, which deduplicates
+ * against the bypass seams ({@code IsoHutch.killAnimal}, {@code doDeathSplatterAndSounds}) so each
+ * animal death fires exactly once no matter which seam sees it first.
+ *
  * <p>Players (and any future {@code IsoGameCharacter} subtype, preserving vanilla's catch-all)
  * additionally fire the deprecated {@code OnCharacterDeath} for backwards compatibility.
  */
@@ -20,10 +24,12 @@ public class OnDeathAdvice {
 
     @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
     public static boolean onEnter(@Advice.This Object self) {
-        LuaEventManager.triggerEvent("OnDeath", self);
         if (self instanceof IsoAnimal) {
-            LuaEventManager.triggerEvent("OnAnimalDeath", self);
-        } else if (self instanceof IsoZombie) {
+            AnimalDeathEvents.triggerOnce(self);
+            return true;
+        }
+        LuaEventManager.triggerEvent("OnDeath", self);
+        if (self instanceof IsoZombie) {
             LuaEventManager.triggerEvent("OnZombieDeath", self);
         } else {
             if (self instanceof IsoPlayer) {

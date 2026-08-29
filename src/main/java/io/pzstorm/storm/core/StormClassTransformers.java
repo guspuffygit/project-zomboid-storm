@@ -19,6 +19,7 @@ import io.pzstorm.storm.patch.core.ZomboidFileSystemPatch;
 import io.pzstorm.storm.patch.core.ZomboidGlobalsPatch;
 import io.pzstorm.storm.patch.debugging.DebugLogPatch;
 import io.pzstorm.storm.patch.debugging.ThreadPatch;
+import io.pzstorm.storm.patch.events.AnimalDeathBypassPatch;
 import io.pzstorm.storm.patch.events.ChatManagerPatch;
 import io.pzstorm.storm.patch.events.ChatServerSendMessagePatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
@@ -339,6 +340,9 @@ public class StormClassTransformers {
             registerTransformer(new IsoObjectRemoveFromWorldPatch());
             registerTransformer(new OnDeathTriggerPatch("zombie.characters.IsoGameCharacter"));
             registerTransformer(new OnDeathTriggerPatch("zombie.characters.animals.IsoAnimal"));
+            registerTransformer(new AnimalDeathBypassPatch("zombie.iso.objects.IsoHutch"));
+            registerTransformer(new AnimalDeathBypassPatch("zombie.characters.IsoGameCharacter"));
+            registerTransformer(new AnimalDeathBypassPatch("zombie.characters.animals.IsoAnimal"));
             // SPVThread vs main-thread animset-load race; a THashMap.rehash AIOOBE during
             // vehicle load permanently deletes the vehicle from vehicles.db.
             registerTransformer(new AnimationSetLockPatch());
