@@ -134,6 +134,15 @@ public class StormLauncher {
                         .getDeclaredMethod("registerEventHandler", Class.class)
                         .invoke(null, rolePositionPin);
 
+                // Frees the login-queue slot at the joiner's WorldMap download request (the
+                // last server round-trip) instead of at LoginQueueDone; the default
+                // -Dstorm.loginQueueMaxConcurrentLoaders=1 preserves vanilla admission.
+                Class<?> loginQueueEarlyRelease =
+                        classLoader.loadClass("io.pzstorm.storm.connection.LoginQueueEarlyRelease");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, loginQueueEarlyRelease);
+
                 // Reclaims AnimationPlayers stranded by characters that left the world; runs
                 // on the main-thread EveryOneMinuteEvent.
                 Class<?> animPlayerSweep =
