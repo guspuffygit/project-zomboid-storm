@@ -259,6 +259,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.dynamic.ClassFileLocator;
@@ -271,6 +273,9 @@ import org.jetbrains.annotations.Contract;
 public class StormClassTransformers {
 
     private static final Map<String, List<StormClassTransformer>> TRANSFORMERS = new HashMap<>();
+
+    /** Class names for which {@link #applyAll} has actually applied at least one transformer. */
+    private static final Set<String> TRANSFORMED_CLASSES = ConcurrentHashMap.newKeySet();
 
     static {
         registerTransformer(new MainScreenStatePatch());
@@ -563,6 +568,7 @@ public class StormClassTransformers {
         for (String packetClass : PacketEventDispatcher.SUPPORTED_PACKETS) {
             registerTransformer(new PacketReceivedPatch(packetClass));
         }
+        errorIfTargetsAlreadyLoaded();
     }
 
     private static void registerTransformer(StormClassTransformer transformer) {
@@ -579,6 +585,55 @@ public class StormClassTransformers {
                     registerTransformer(transformer);
                 }
             }
+        }
+        errorIfTargetsAlreadyLoaded();
+    }
+
+    /**
+     * Returns registered target classes that {@link StormClassLoader} has already defined without
+     * any transformer applied. A non-empty result means those patches are silently dead: a class
+     * gets exactly one shot at transformation, at define time, so any target loaded before its
+     * transformers registered (e.g. dragged in by the bytecode verifier while linking a patch class
+     * inside the registration block) stays untransformed for the lifetime of the JVM.
+     *
+     * <p>Blacklisted and JDK-runtime targets are excluded — those are retransformed by {@link
+     * #applyAgentTransformers} instead of load-time weaving. Returns an empty list when this class
+     * was not defined by {@code StormClassLoader} (unit tests, the app-loader copy used by {@code
+     * StormLauncher}).
+     */
+    public static List<String> getLoadedUntransformedTargets() {
+        ClassLoader loader = StormClassTransformers.class.getClassLoader();
+        if (!(loader instanceof StormClassLoader stormLoader)) {
+            return Collections.emptyList();
+        }
+        List<String> loaded = new ArrayList<>();
+        for (String target : TRANSFORMERS.keySet()) {
+            if (TRANSFORMED_CLASSES.contains(target) || !stormLoader.isClassLoaded(target)) {
+                continue;
+            }
+            if (StormClassLoader.isBlacklistedClass(target)
+                    || StormClassLoader.isJdkRuntimeClass(target)) {
+                continue;
+            }
+            loaded.add(target);
+        }
+        return loaded;
+    }
+
+    /** Class names for which {@link #applyAll} has applied at least one transformer. */
+    public static Set<String> getTransformedClasses() {
+        return Collections.unmodifiableSet(TRANSFORMED_CLASSES);
+    }
+
+    private static void errorIfTargetsAlreadyLoaded() {
+        for (String target : getLoadedUntransformedTargets()) {
+            LOGGER.error(
+                    "Transformer target {} was already loaded before its transformers were"
+                            + " registered; its patches will NEVER apply. A patch class linked"
+                            + " during registration must not reference the target class"
+                            + " (move game-type logic to a separate class, see"
+                            + " NetTimedActionPacketFix).",
+                    target);
         }
     }
 
@@ -609,6 +664,9 @@ public class StormClassTransformers {
                         e);
                 throw e;
             }
+        }
+        if (!transformers.isEmpty()) {
+            TRANSFORMED_CLASSES.add(className);
         }
         return rawClass;
     }

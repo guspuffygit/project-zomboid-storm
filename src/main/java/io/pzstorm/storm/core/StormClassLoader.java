@@ -73,7 +73,7 @@ public class StormClassLoader extends ClassLoader {
      * ClassLoader}.
      */
     @Contract(pure = true)
-    static boolean isBlacklistedClass(String name) {
+    public static boolean isBlacklistedClass(String name) {
         return CLASS_BLACKLIST.stream().anyMatch(name::startsWith);
     }
 
@@ -85,7 +85,7 @@ public class StormClassLoader extends ClassLoader {
      * (e.g. {@code javax.net.ssl.TrustManagerFactory} rejecting the JDK's own {@code
      * TrustManagerFactoryImpl}, which broke all TLS including the game's Discord bot).
      */
-    static boolean isJdkRuntimeClass(String name) {
+    public static boolean isJdkRuntimeClass(String name) {
         return ClassLoader.getPlatformClassLoader().getResource(name.replace('.', '/') + ".class")
                 != null;
     }
@@ -138,7 +138,7 @@ public class StormClassLoader extends ClassLoader {
      *
      * @return {@code true} if class with given name has been loaded, {@code false} otherwise.
      */
-    boolean isClassLoaded(String name) {
+    public boolean isClassLoaded(String name) {
         return findLoadedClass(name) != null;
     }
 
