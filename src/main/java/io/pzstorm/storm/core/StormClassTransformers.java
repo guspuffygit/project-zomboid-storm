@@ -58,6 +58,7 @@ import io.pzstorm.storm.patch.fixes.RequestDataManagerFixPatch;
 import io.pzstorm.storm.patch.fixes.RequestSaveCellSuppressPatch;
 import io.pzstorm.storm.patch.fixes.SaveChunkThreadCrcRacePatch;
 import io.pzstorm.storm.patch.fixes.SaveLoadedTaskCrcRacePatch;
+import io.pzstorm.storm.patch.fixes.ServerCellRecalcCrashGuardPatch;
 import io.pzstorm.storm.patch.fixes.SitOnFurnitureBoxedInChairPatch;
 import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
@@ -522,6 +523,7 @@ public class StormClassTransformers {
             registerTransformer(new ServerMapPreUpdatePatch());
             registerTransformer(new ServerCellLoad2Patch());
             registerTransformer(new ServerCellRecalcAll2Patch());
+            registerTransformer(new ServerCellRecalcCrashGuardPatch());
             registerTransformer(new ServerCellUpdatePatch());
             registerTransformer(new NetworkZombiePackerPostUpdatePatch());
             registerTransformer(new ServerChunkLoaderUpdateSavedPatch());
