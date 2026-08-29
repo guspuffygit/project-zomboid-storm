@@ -26,6 +26,7 @@ import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
 import io.pzstorm.storm.patch.fixes.ActionGroupSyncPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
+import io.pzstorm.storm.patch.fixes.AnimalZoneContainmentPatch;
 import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
 import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
@@ -33,7 +34,9 @@ import io.pzstorm.storm.patch.fixes.BodyDamageSyncPatch;
 import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
 import io.pzstorm.storm.patch.fixes.ChatServerProcessWhisperPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
+import io.pzstorm.storm.patch.fixes.CoopHatchPositionFixPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
+import io.pzstorm.storm.patch.fixes.HutchDirtRateFixPatch;
 import io.pzstorm.storm.patch.fixes.InventoryItemStoreByteDataPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalCanClimbStairsNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
@@ -426,6 +429,9 @@ public class StormClassTransformers {
             registerTransformer(new ReceiveSandboxOptionsPatch());
             registerTransformer(new IsoZombieUpdateFixPatch());
             registerTransformer(new IsoAnimalRegistryFixPatch());
+            registerTransformer(new CoopHatchPositionFixPatch());
+            registerTransformer(new HutchDirtRateFixPatch());
+            registerTransformer(new AnimalZoneContainmentPatch());
 
             registerTransformer(new BodyDamageUpdatePacketPatch());
             registerTransformer(new BodyDamageSyncPatch());

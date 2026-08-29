@@ -17,6 +17,8 @@ import io.pzstorm.storm.los.StormPlayerLos;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.los.ZombieVehicleOcclusion;
 import io.pzstorm.storm.map.StormCellUnloadBudget;
+import io.pzstorm.storm.patch.fixes.AnimalZoneContainment;
+import io.pzstorm.storm.patch.fixes.HutchDirtRateFix;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -71,6 +73,9 @@ public final class StormPerformanceSandboxApplier {
             "Storm.FluidContainerUpdateFastPath";
     public static final String OPT_ECS_CLASS_CACHE = "Storm.EcsClassCache";
     public static final String OPT_CELL_UNLOAD_BUDGET_PER_TICK = "Storm.CellUnloadBudgetPerTick";
+    public static final String OPT_HUTCH_DIRT_RATE_PERCENT = "Storm.HutchDirtRatePercent";
+    public static final String OPT_ANIMAL_ZONE_CONTAINMENT = "Storm.AnimalZoneContainment";
+    public static final String OPT_ANIMAL_ZONE_LEASH_DISTANCE = "Storm.AnimalZoneLeashDistance";
     public static final String OPT_ENTITY_REMOVE_FAST_PATH = "Storm.EntityRemoveFastPath";
     public static final String OPT_OVERRIDE_MAX_PLAYERS = "Storm.OverrideMaxPlayers";
     public static final String OPT_MAX_PLAYERS = "Storm.MaxPlayers";
@@ -121,6 +126,9 @@ public final class StormPerformanceSandboxApplier {
         applyFluidContainerUpdateFastPath();
         applyEcsClassCache();
         applyCellUnloadBudgetPerTick();
+        applyHutchDirtRatePercent();
+        applyAnimalZoneContainment();
+        applyAnimalZoneLeashDistance();
         applyEntityRemoveFastPath();
         applyMaxPlayersOverride();
     }
@@ -195,6 +203,48 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         StormCellUnloadBudget.setBudgetPerTick(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_HUTCH_DIRT_RATE_PERCENT} through {@link
+     * HutchDirtRateFix#setRatePercent(int)} — the percentage of the intended (metagame) hutch dirt
+     * rate applied while a coop is loaded. 100 = the {@code IsoHutch.doMeta} rate; 0 = dirt never
+     * accrues while loaded.
+     */
+    private static void applyHutchDirtRatePercent() {
+        Integer value = readIntOption(OPT_HUTCH_DIRT_RATE_PERCENT);
+        if (value == null) {
+            return;
+        }
+        HutchDirtRateFix.setRatePercent(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_ANIMAL_ZONE_CONTAINMENT} through {@link
+     * AnimalZoneContainment#setEnabled(boolean)} — the kill switch for holding livestock inside the
+     * player-placed animal zone it belongs to. {@code false} restores vanilla, where a hungry
+     * animal paths through and destroys player-built pen walls.
+     */
+    private static void applyAnimalZoneContainment() {
+        Boolean value = readBooleanOption(OPT_ANIMAL_ZONE_CONTAINMENT);
+        if (value == null) {
+            return;
+        }
+        AnimalZoneContainment.setEnabled(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_ANIMAL_ZONE_LEASH_DISTANCE} through {@link
+     * AnimalZoneContainment#setLeashDistance(int)} — how far outside a zone a non-wild animal is
+     * still treated as belonging to it, and therefore walked back in. 0 contains only animals
+     * standing inside a zone.
+     */
+    private static void applyAnimalZoneLeashDistance() {
+        Integer value = readIntOption(OPT_ANIMAL_ZONE_LEASH_DISTANCE);
+        if (value == null) {
+            return;
+        }
+        AnimalZoneContainment.setLeashDistance(value);
     }
 
     /**

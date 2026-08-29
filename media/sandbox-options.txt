@@ -68,3 +68,12 @@ option Storm.OverrideMaxPlayers
 
 option Storm.MaxPlayers
 {type = integer, min = 1, max = 255, default = 100, page = Storm, translation = Storm_MaxPlayers,}
+
+option Storm.HutchDirtRatePercent
+{type = integer, min = 0, max = 1000, default = 100, page = Storm, translation = Storm_HutchDirtRatePercent,}
+
+option Storm.AnimalZoneContainment
+{type = boolean, default = true, page = Storm, translation = Storm_AnimalZoneContainment,}
+
+option Storm.AnimalZoneLeashDistance
+{type = integer, min = 0, max = 200, default = 20, page = Storm, translation = Storm_AnimalZoneLeashDistance,}

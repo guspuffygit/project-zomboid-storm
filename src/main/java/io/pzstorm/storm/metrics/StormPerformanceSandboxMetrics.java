@@ -11,6 +11,8 @@ import io.pzstorm.storm.los.StormPlayerLos;
 import io.pzstorm.storm.los.StormServerLosConfig;
 import io.pzstorm.storm.los.ZombieVehicleOcclusion;
 import io.pzstorm.storm.map.StormCellUnloadBudget;
+import io.pzstorm.storm.patch.fixes.AnimalZoneContainment;
+import io.pzstorm.storm.patch.fixes.HutchDirtRateFix;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
@@ -275,6 +277,40 @@ public final class StormPerformanceSandboxMetrics {
                                     + " on every component lookup.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge HUTCH_DIRT_RATE_PERCENT =
+            Gauge.builder()
+                    .name("storm_hutch_dirt_rate_percent")
+                    .help(
+                            "Percentage of the intended (metagame) hutch dirt rate applied while a"
+                                    + " chicken coop / rabbit hutch is loaded, replacing vanilla's"
+                                    + " tick-rate-proportional accrual. Sourced from the"
+                                    + " Storm.HutchDirtRatePercent sandbox option. 100 = the"
+                                    + " game-hour rate IsoHutch.doMeta intends (default); 0 = dirt"
+                                    + " never accrues while loaded.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ANIMAL_ZONE_CONTAINMENT =
+            Gauge.builder()
+                    .name("storm_animal_zone_containment")
+                    .help(
+                            "Whether animals are held inside the player-placed animal zone they"
+                                    + " belong to. Sourced from the Storm.AnimalZoneContainment"
+                                    + " sandbox option. 1 = contained animals never break through"
+                                    + " or path outside their zone (default); 0 = vanilla, where"
+                                    + " hungry livestock paths through and destroys player-built"
+                                    + " pen walls.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ANIMAL_ZONE_LEASH_DISTANCE =
+            Gauge.builder()
+                    .name("storm_animal_zone_leash_distance")
+                    .help(
+                            "How far outside an animal zone, in tiles, a non-wild animal is still"
+                                    + " treated as belonging to it and walked back in. Sourced from"
+                                    + " the Storm.AnimalZoneLeashDistance sandbox option. 0 = only"
+                                    + " animals standing inside a zone are contained.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge CELL_UNLOAD_BUDGET_PER_TICK =
             Gauge.builder()
                     .name("storm_cell_unload_budget_per_tick")
@@ -356,6 +392,9 @@ public final class StormPerformanceSandboxMetrics {
         USING_PLAYER_SWEEP_FAST_PATH.set(UsingPlayerRegistry.DEFAULT_ENABLED ? 1 : 0);
         FLUID_CONTAINER_UPDATE_FAST_PATH.set(StormFluidContainerUpdate.DEFAULT_ENABLED ? 1 : 0);
         ECS_CLASS_CACHE.set(EcsClassCache.DEFAULT_ENABLED ? 1 : 0);
+        HUTCH_DIRT_RATE_PERCENT.set(HutchDirtRateFix.DEFAULT_RATE_PERCENT);
+        ANIMAL_ZONE_CONTAINMENT.set(AnimalZoneContainment.DEFAULT_ENABLED ? 1 : 0);
+        ANIMAL_ZONE_LEASH_DISTANCE.set(AnimalZoneContainment.DEFAULT_LEASH_DISTANCE);
         CELL_UNLOAD_BUDGET_PER_TICK.set(StormCellUnloadBudget.DEFAULT_BUDGET);
         ENTITY_REMOVE_FAST_PATH.set(StormEntityIndex.DEFAULT_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE_ENABLED.set(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED ? 1 : 0);
@@ -448,8 +487,20 @@ public final class StormPerformanceSandboxMetrics {
         ECS_CLASS_CACHE.set(enabled ? 1 : 0);
     }
 
+    public static void setAnimalZoneContainment(boolean enabled) {
+        ANIMAL_ZONE_CONTAINMENT.set(enabled ? 1 : 0);
+    }
+
+    public static void setAnimalZoneLeashDistance(int tiles) {
+        ANIMAL_ZONE_LEASH_DISTANCE.set(tiles);
+    }
+
     public static void setCellUnloadBudgetPerTick(int budget) {
         CELL_UNLOAD_BUDGET_PER_TICK.set(budget);
+    }
+
+    public static void setHutchDirtRatePercent(int percent) {
+        HUTCH_DIRT_RATE_PERCENT.set(percent);
     }
 
     public static void setEntityRemoveFastPath(boolean enabled) {
