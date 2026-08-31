@@ -2,6 +2,7 @@ package io.pzstorm.storm.advice.ondeath;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.metrics.AnimalSpawnMetrics;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -41,6 +42,7 @@ public final class AnimalDeathEvents {
         if (!(animalObj instanceof IsoAnimal animal) || !FIRED.add(animal)) {
             return;
         }
+        AnimalSpawnMetrics.recordDeath();
         try {
             LuaEventManager.triggerEvent("OnDeath", animal);
             LuaEventManager.triggerEvent("OnAnimalDeath", animal);

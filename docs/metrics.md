@@ -801,6 +801,77 @@ Orphaned `AnimationPlayer` reclaim, swept on the main thread by `StormAnimationP
 
 `storm_animation_players_stranded` should stay at 0. A non-zero value means an `AnimationPlayer` is held by the pool while its character references a different one — a leak path the sweep cannot reclaim through `releaseAnimationPlayer()`, and worth investigating rather than ignoring.
 
+### Animal population and respawn (AnimalSpawnMetrics)
+
+Covers the whole server-side animal population pipeline, so "did animals respawn?" is answerable
+from Prometheus. Observation only — the five patches behind it (`AnimalZoneSpawnMetricsPatch`,
+`AnimalVirtualRegisterMetricsPatch`, `AnimalCellLoadMetricsPatch`, `AnimalRealizeMetricsPatch`,
+`RanchAnimalSpawnMetricsPatch`) change no behaviour.
+
+**Read this first: vanilla has no periodic wild respawn.** New animals come from exactly two
+one-shot sources.
+
+1. **Migration zones.** `AnimalCell.load()` calls `AnimalZones.spawnAnimalsInCell` *only* when the
+   cell has no `apop_<x>_<y>.bin` save file. Each `AnimalZone` then spawns once and sets a
+   persisted `spawnedAnimals` flag. A cell that has been visited before never spawns again, and a
+   hunted-out area stays empty for the life of the save.
+2. **Ranch stories.** `IsoChunk.AddRanchAnimals` → `RandomizedRanchBase.checkRanchStory` rolls
+   `AnimalRanchChance` the first time a `Ranch` zone streams in fully (`hourLastSeen == 0`).
+
+Everything after that is movement, not creation: animals round-trip between real `IsoAnimal`s and
+parked `VirtualAnimal` groups as chunks load and unload.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_animal_cell_load_total` | Counter | `result={from_file,fresh}` | `AnimalCell.load()` calls. `fresh` = no save file, so migration-zone spawning ran for that cell. |
+| `pz_animal_zone_spawn_total` | Counter | `result={spawned,no_animals,already_spawned,disabled,not_follow,unknown}` | `AnimalZones.spawnAnimalsOnZone` evaluations by outcome. |
+| `pz_animal_zone_spawn_animals_total` | Counter | — | `IsoAnimal`s contained in the groups those spawns created. |
+| `pz_animal_virtual_registered_total` | Counter | `source={zone_spawn,requeue}` | Virtual groups parked into an animal chunk — newly spawned vs. an existing group re-parked. |
+| `pz_animal_realize_total` | Counter | `result={realized,no_square}` | Virtual groups handed back to the world by `AnimalManagerMain.fromWorker`. `no_square` = vanilla dropped it because the target grid square was not loaded. |
+| `pz_animal_realize_animals_total` | Counter | — | `IsoAnimal`s put back into the world by that path. |
+| `pz_animal_ranch_check_total` | Counter | `result={processed,skipped}` | `checkRanchStory` calls. `processed` = a streamed, never-seen `Ranch` zone actually rolled the chance. |
+| `pz_animal_ranch_spawn_total` | Counter | — | Ranch zones that won the roll and were populated. |
+| `pz_animal_deaths_total` | Counter | — | Animal deaths seen by Storm's deduplicated death seam, including the hutch and inventory-kill bypasses vanilla's `OnDeath` misses. |
+| `pz_animal_virtual_groups` | GaugeWithCallback | — | Virtual groups currently parked in loaded animal chunks. |
+| `pz_animal_virtual_animals` | GaugeWithCallback | — | `IsoAnimal`s held inside those parked groups. |
+
+The live, in-world animal count is `storm_animal_id_pool_size` (see *Storm internals*); this family
+deliberately does not duplicate it.
+
+Both gauges read package-private vanilla state (`AnimalZones.chunksWithTracks`,
+`AnimalChunk.animals`, `VirtualAnimal.animals`) through cached reflection handles, under the same
+monitor vanilla uses for that set. A resolution failure logs once and pins the series at `0` rather
+than throwing into game code — so a flat-zero gauge plus an `AnimalSpawnMetrics failed to …`
+warning in the log means the field moved in a game update, not that the population is empty.
+
+#### Useful PromQL
+
+```promql
+# Is anything spawning at all? (both vanilla sources)
+increase(pz_animal_zone_spawn_animals_total[1h])
+increase(pz_animal_ranch_spawn_total[1h])
+
+# Why not: are any cells still loading fresh?
+sum by (result) (increase(pz_animal_cell_load_total[1h]))
+
+# Why not: zones re-evaluated but already fired / map-disabled
+sum by (result) (increase(pz_animal_zone_spawn_total[1h]))
+
+# Population balance — creation vs. loss
+increase(pz_animal_zone_spawn_animals_total[24h]) - increase(pz_animal_deaths_total[24h])
+
+# Stuck in the virtual half of the round trip
+pz_animal_virtual_animals / (pz_animal_virtual_animals + storm_animal_id_pool_size)
+rate(pz_animal_realize_total{result="no_square"}[15m])
+```
+
+`pz_animal_cell_load_total{result="fresh"}` flat at zero on an established map is the usual "respawn
+is broken" false alarm: every animal cell already has a save file, so vanilla will never spawn wild
+animals there again regardless of sandbox settings. Genuine breakage looks like `fresh` cell loads
+with no matching `pz_animal_zone_spawn_total{result="spawned"}`, or `spawned` with
+`pz_animal_zone_spawn_animals_total` staying flat (bad `AnimalType` / missing migration-group
+definition).
+
 ### BitHeader pool
 
 Volume counters for `zombie.util.io.BitHeader` pool operations.
