@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.patch.client.CoreResetLuaPatch;
+import io.pzstorm.storm.patch.client.IsoObjectAdminSeeAllTargetAlphaPatch;
 import io.pzstorm.storm.patch.client.IsoWorldInventoryObjectRenderSpriteGuardPatch;
 import io.pzstorm.storm.patch.client.PlayerDataRequestBackoffPatch;
 import io.pzstorm.storm.patch.client.VehicleChunkRehomePatch;
@@ -423,6 +424,7 @@ public class StormClassTransformers {
             registerTransformer(new VehicleSoundsClientCreatePatch());
             registerTransformer(new PacketLimitMetricsPatch());
             registerTransformer(new PlayerDataRequestBackoffPatch());
+            registerTransformer(new IsoObjectAdminSeeAllTargetAlphaPatch());
             registerTransformer(new IsoWorldInventoryObjectRenderSpriteGuardPatch());
         }
 

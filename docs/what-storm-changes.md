@@ -127,6 +127,19 @@ enables Storm-core client Java features:
   rebuilds from the corrected dirs. Fails soft: any error leaves vanilla
   resolution untouched.
 
+- **Admin "can see all" keeps remote players visible** —
+  `io.pzstorm.storm.patch.client.IsoObjectAdminSeeAllTargetAlphaPatch`
+  (client-only). Vanilla `IsoPlayer.render` forces a remote player's target
+  alpha to 1 every frame for an admin with "can see all", while the local
+  player's `updateLOS` forces it to 0 every tick for occluded remotes within
+  20 tiles; the alpha lerp runs in update, so whichever writer ran last before
+  the remote's own update wins. Remotes that sit after the local player in the
+  cell object list lose the race and render at alpha 0 with a floating name
+  tag. The patch advises the 2-arg `IsoObject.setTargetAlpha` to drop the zero
+  write when the target is a remote `IsoPlayer` (not an animal) and the local
+  player at that index is a non-"None" access level with `canSeeAll()` —
+  the same rule `checkCanSeeClient` applies in render. Fails soft to vanilla.
+
 - **Launcher auto-join** — `io.pzstorm.storm.client.LauncherAutoJoin`
   (registered only when the launcher passes `-Dstorm.autojoin.file=<path>`)
   reads and immediately deletes the launcher's one-shot credential handoff at

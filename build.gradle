@@ -493,7 +493,14 @@ tasks.register('deployStormJar') {
 		}
 		def invalidationPaths = cdnPzVersions.collect { "/storm/core/${it}/storm.jar".toString() }
 		logger.lifecycle("Invalidating ${invalidationPaths.join(' ')} on distribution ${distributionId}")
-		run(['aws', 'cloudfront', 'create-invalidation', '--distribution-id', distributionId, '--paths'] + invalidationPaths)
+		run([
+			'aws',
+			'cloudfront',
+			'create-invalidation',
+			'--distribution-id',
+			distributionId,
+			'--paths'
+		] + invalidationPaths)
 	}
 }
 
