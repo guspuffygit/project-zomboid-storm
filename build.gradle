@@ -231,6 +231,7 @@ tasks.register('clientPatchTest', Test) {
 	systemProperty 'storm.testing', 'true'
 	// register the -Dstorm.experimental.clientperf patches so they get weave-validated too
 	systemProperty 'storm.experimental.clientperf', 'true'
+	systemProperty 'storm.popman.java', 'true'
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
 	filter {
@@ -856,6 +857,11 @@ tasks.register('runProjectZomboidServer', Exec) {
 		def mainloopTimings = getLocalProperty('mainloopTimings').getOrNull()
 		if (mainloopTimings) {
 			cmd.add("-Dstorm.mainloop.timings=${mainloopTimings}".toString())
+		}
+		// popmanJava=true in local.properties runs the pure-Java population manager
+		def popmanJava = getLocalProperty('popmanJava').getOrNull()
+		if (popmanJava) {
+			cmd.add("-Dstorm.popman.java=${popmanJava}".toString())
 		}
 		cmd.addAll(['--', '-servername', 'storm2'])
 		commandLine cmd

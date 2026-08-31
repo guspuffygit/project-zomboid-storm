@@ -303,6 +303,11 @@ import io.pzstorm.storm.patch.performance.ZombiePopManRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.ZombieVehicleOcclusionPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
+import io.pzstorm.storm.patch.popman.DebugCommandsNativePatch;
+import io.pzstorm.storm.patch.popman.MPDebugInfoNativePatch;
+import io.pzstorm.storm.patch.popman.MapCollisionDataNativePatch;
+import io.pzstorm.storm.patch.popman.ZombiePopulationManagerNativePatch;
+import io.pzstorm.storm.patch.popman.ZombiePopulationRendererNativePatch;
 import io.pzstorm.storm.patch.rendering.EpilepsyWarningSkipPatch;
 import io.pzstorm.storm.patch.rendering.GameLoadingClickToStartSkipPatch;
 import io.pzstorm.storm.patch.rendering.MainScreenStatePatch;
@@ -496,6 +501,16 @@ public class StormClassTransformers {
             registerTransformer(new IsoWorldUpdatePatch());
             registerTransformer(new AnimalControllerUpdatePatch());
             registerTransformer(new ZomboidRadioUpdatePatch());
+        }
+        // Off by default: the Java port of PZPopMan64 (population manager + collision map)
+        // is experimental. With it on, every native of the DLL is Java and the library is
+        // never loaded.
+        if (Boolean.getBoolean("storm.popman.java")) {
+            registerTransformer(new ZombiePopulationManagerNativePatch());
+            registerTransformer(new MapCollisionDataNativePatch());
+            registerTransformer(new MPDebugInfoNativePatch());
+            registerTransformer(new DebugCommandsNativePatch());
+            registerTransformer(new ZombiePopulationRendererNativePatch());
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerStartPMChatPatch());
