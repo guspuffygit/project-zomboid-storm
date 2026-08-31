@@ -192,6 +192,18 @@ Publishing a release: bump `stormVersion` in `gradle.properties`, then
 ./gradlew deployStormJar
 ```
 
+The bootstrap derives the key from the *workshop item's* jar filename, not
+from the game that is running it. If a PZ update went out without a workshop
+publish, every client is still keyed on the previous build and will never look
+at the new key — publish to both:
+
+```
+./gradlew deployStormJar -PcdnPzVersions=42.20.3,42.20.4
+```
+
+(`-PcdnPzVersions` is a comma-separated list of keys to upload the same jar
+to; it defaults to `pzVersion`.)
+
 which runs the tests, uploads the storm jar to `s3://guspuffy.com` (us-east-1)
 with its SHA-256 and `stormVersion` attached as object metadata
 (`x-amz-meta-sha256` / `x-amz-meta-version` response headers), and invalidates

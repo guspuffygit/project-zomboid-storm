@@ -452,10 +452,14 @@ tasks.register('installStorm', Sync) {
 // SNAPSHOT installs never CDN-update. Dependency changes still need a workshop publish: the CDN
 // channel replaces storm.jar only, not the 42/lib dist around it. Needs an AWS CLI with
 // s3:PutObject on the bucket and cloudfront:CreateInvalidation on the distribution.
+//
+// The bootstrap reads the PZ version out of the *workshop item's* jar filename, not the running
+// game. After a PZ update that shipped without a workshop publish every client is still keyed on
+// the old build, so publish to that key as well: -PcdnPzVersions=42.20.3,42.20.4.
 tasks.register('deployStormJar') {
 	dependsOn tasks.named('jar'), tasks.named('test')
-	def s3Key = "s3://guspuffy.com/storm/core/${pzVersion}/storm.jar"
-	def invalidationPath = "/storm/core/${pzVersion}/storm.jar"
+	List<String> cdnPzVersions = (project.findProperty('cdnPzVersions') ?: pzVersion).toString()
+			.tokenize(',')*.trim().findAll { it }
 	def distributionId = 'E1BN2YPHZPOE9D'
 	def jarFile = tasks.named('jar').flatMap { it.archiveFile }
 
@@ -470,30 +474,26 @@ tasks.register('deployStormJar') {
 		def jarPath = jarFile.get().asFile
 		def sha256 = java.security.MessageDigest.getInstance('SHA-256')
 				.digest(jarPath.bytes).collect { String.format('%02x', it) }.join()
-		logger.lifecycle("Uploading Storm core ${stormVersion} for PZ ${pzVersion} (sha256 ${sha256}) to ${s3Key}")
-		run([
-			'aws',
-			's3',
-			'cp',
-			jarPath.absolutePath,
-			s3Key,
-			'--region',
-			'us-east-1',
-			'--content-type',
-			'application/java-archive',
-			'--metadata',
-			"sha256=${sha256},version=${stormVersion}"
-		])
-		logger.lifecycle("Invalidating ${invalidationPath} on distribution ${distributionId}")
-		run([
-			'aws',
-			'cloudfront',
-			'create-invalidation',
-			'--distribution-id',
-			distributionId,
-			'--paths',
-			invalidationPath
-		])
+		cdnPzVersions.each { String cdnPzVersion ->
+			def s3Key = "s3://guspuffy.com/storm/core/${cdnPzVersion}/storm.jar"
+			logger.lifecycle("Uploading Storm core ${stormVersion} (built for PZ ${pzVersion}, sha256 ${sha256}) to ${s3Key}")
+			run([
+				'aws',
+				's3',
+				'cp',
+				jarPath.absolutePath,
+				s3Key,
+				'--region',
+				'us-east-1',
+				'--content-type',
+				'application/java-archive',
+				'--metadata',
+				"sha256=${sha256},version=${stormVersion}"
+			])
+		}
+		def invalidationPaths = cdnPzVersions.collect { "/storm/core/${it}/storm.jar".toString() }
+		logger.lifecycle("Invalidating ${invalidationPaths.join(' ')} on distribution ${distributionId}")
+		run(['aws', 'cloudfront', 'create-invalidation', '--distribution-id', distributionId, '--paths'] + invalidationPaths)
 	}
 }
 
