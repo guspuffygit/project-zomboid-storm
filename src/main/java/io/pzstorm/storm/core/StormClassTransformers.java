@@ -119,6 +119,7 @@ import io.pzstorm.storm.patch.performance.CorpseCountZombieIndexPatch;
 import io.pzstorm.storm.patch.performance.CutawayLevelDataArrayCachePatch;
 import io.pzstorm.storm.patch.performance.CutawayVisitFastPathPatch;
 import io.pzstorm.storm.patch.performance.DesignationZoneAnimalFoodFastContainsPatch;
+import io.pzstorm.storm.patch.performance.DesignationZoneAnimalGetAllDZonesPatch;
 import io.pzstorm.storm.patch.performance.EcsComponentGetClassMemoPatch;
 import io.pzstorm.storm.patch.performance.EcsEntityTryGetMemoPatch;
 import io.pzstorm.storm.patch.performance.EcsGetClassCachePatch;
@@ -546,6 +547,7 @@ public class StormClassTransformers {
             registerTransformer(new IsoCellProcessListsFastContainsPatch());
             registerTransformer(new ServerMapReleventNowFastContainsPatch());
             registerTransformer(new DesignationZoneAnimalFoodFastContainsPatch());
+            registerTransformer(new DesignationZoneAnimalGetAllDZonesPatch());
             registerTransformer(new IsoCellObjectDeletionAdditionPatch());
             registerTransformer(new IsoCellGetAnimalsPatch());
             registerTransformer(new IsoDeadBodyUpdateBodiesPatch());
