@@ -136,7 +136,7 @@ public class StormLauncher {
 
                 // Frees the login-queue slot at the joiner's WorldMap download request (the
                 // last server round-trip) instead of at LoginQueueDone; the default
-                // -Dstorm.loginQueueMaxConcurrentLoaders=1 preserves vanilla admission.
+                // Storm.LoginQueueMaxConcurrentLoaders=1 preserves vanilla admission.
                 Class<?> loginQueueEarlyRelease =
                         classLoader.loadClass("io.pzstorm.storm.connection.LoginQueueEarlyRelease");
                 eventDispatcher

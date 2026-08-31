@@ -68,3 +68,6 @@ option Storm.AnimalZoneContainment
 
 option Storm.AnimalZoneLeashDistance
 {type = integer, min = 0, max = 200, default = 20, page = Storm, translation = Storm_AnimalZoneLeashDistance,}
+
+option Storm.LoginQueueMaxConcurrentLoaders
+{type = integer, min = 1, max = 32, default = 1, page = Storm, translation = Storm_LoginQueueMaxConcurrentLoaders,}

@@ -6,9 +6,11 @@ import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.packet.LoginQueueDonePacketEvent;
 import io.pzstorm.storm.event.packet.RequestDataPacketEvent;
 import io.pzstorm.storm.metrics.LoginQueueEarlyReleaseMetrics;
+import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongPredicate;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.GameServer;
@@ -18,11 +20,11 @@ import zombie.network.GameServer;
  * holding it through the client-local load — cutting the per-join slot hold from the full {@code
  * GameLoadingState} (~39 s observed) to the server-dependent prefix (~6–8 s).
  *
- * <p>The one knob is {@code -Dstorm.loginQueueMaxConcurrentLoaders=<n>}: the maximum number of
- * joiners allowed to be loading into the server at once (released loaders plus the slot-holder).
- * The default of {@value #DEFAULT_MAX_CONCURRENT_LOADERS} reproduces vanilla admission exactly —
- * one loading joiner, the slot held until {@code LoginQueueDone} — so nothing changes until an
- * admin raises the flag.
+ * <p>The one knob is the {@code Storm.LoginQueueMaxConcurrentLoaders} sandbox option: the maximum
+ * number of joiners allowed to be loading into the server at once (released loaders plus the
+ * slot-holder). The default of {@value #DEFAULT_MAX_CONCURRENT_LOADERS} reproduces vanilla
+ * admission exactly — one loading joiner, the slot held until {@code LoginQueueDone} — so nothing
+ * changes until an admin raises the option. Live-appliable via admin sandbox push.
  *
  * <h2>Why the WorldMap request is the release point</h2>
  *
@@ -72,11 +74,8 @@ public final class LoginQueueEarlyRelease {
      */
     static final long MAX_LOADER_AGE_MS = 600_000L;
 
-    private static final int MAX_CONCURRENT_LOADERS =
-            clampLoaders(
-                    Integer.getInteger(
-                            "storm.loginQueueMaxConcurrentLoaders",
-                            DEFAULT_MAX_CONCURRENT_LOADERS));
+    private static final AtomicInteger MAX_CONCURRENT_LOADERS =
+            new AtomicInteger(DEFAULT_MAX_CONCURRENT_LOADERS);
 
     private static final LoaderTracker TRACKER = new LoaderTracker();
 
@@ -84,6 +83,24 @@ public final class LoginQueueEarlyRelease {
 
     static int clampLoaders(int value) {
         return Math.max(MIN_MAX_CONCURRENT_LOADERS, Math.min(MAX_MAX_CONCURRENT_LOADERS, value));
+    }
+
+    /**
+     * Applies the {@code Storm.LoginQueueMaxConcurrentLoaders} sandbox option: total joiners
+     * loading at once (released loaders plus the slot-holder). Clamps into {@code
+     * [MIN_MAX_CONCURRENT_LOADERS, MAX_MAX_CONCURRENT_LOADERS]}, pushes the gauge, and returns the
+     * applied value. {@value #DEFAULT_MAX_CONCURRENT_LOADERS} = vanilla admission (the slot is
+     * never released early).
+     */
+    public static int setMaxConcurrentLoaders(int value) {
+        int clamped = clampLoaders(value);
+        MAX_CONCURRENT_LOADERS.set(clamped);
+        StormPerformanceSandboxMetrics.setLoginQueueMaxConcurrentLoaders(clamped);
+        return clamped;
+    }
+
+    public static int getMaxConcurrentLoaders() {
+        return MAX_CONCURRENT_LOADERS.get();
     }
 
     @SubscribeEvent
@@ -136,7 +153,8 @@ public final class LoginQueueEarlyRelease {
     }
 
     private static void tryRelease(UdpConnection connection) throws Exception {
-        if (MAX_CONCURRENT_LOADERS <= 1 || !LoginQueueReflection.init()) {
+        int maxConcurrentLoaders = MAX_CONCURRENT_LOADERS.get();
+        if (maxConcurrentLoaders <= 1 || !LoginQueueReflection.init()) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -147,14 +165,14 @@ public final class LoginQueueEarlyRelease {
             }
             int inFlight = inFlightLoadersAt(now);
             // after a release: inFlight + this joiner + the next admitted slot-holder are loading
-            if (inFlight + 2 > MAX_CONCURRENT_LOADERS) {
+            if (inFlight + 2 > maxConcurrentLoaders) {
                 LoginQueueEarlyReleaseMetrics.capped();
                 LoginQueueEarlyReleaseMetrics.setConcurrentLoaders(inFlight);
                 LOGGER.debug(
                         "LoginQueueEarlyRelease: {} released loaders in flight (max {} loading) —"
                                 + " holding the slot for {}",
                         inFlight,
-                        MAX_CONCURRENT_LOADERS,
+                        maxConcurrentLoaders,
                         connection.getUserName());
                 return;
             }

@@ -119,6 +119,28 @@ class LoginQueueEarlyReleaseTest implements UnitTest {
         assertEquals(1, LoginQueueEarlyRelease.DEFAULT_MAX_CONCURRENT_LOADERS);
     }
 
+    @Test
+    void setterClampsStoresAndReportsTheAppliedValue() {
+        try {
+            assertEquals(4, LoginQueueEarlyRelease.setMaxConcurrentLoaders(4));
+            assertEquals(4, LoginQueueEarlyRelease.getMaxConcurrentLoaders());
+
+            // sandbox values outside the declared range clamp instead of misconfiguring
+            assertEquals(
+                    LoginQueueEarlyRelease.MIN_MAX_CONCURRENT_LOADERS,
+                    LoginQueueEarlyRelease.setMaxConcurrentLoaders(0));
+            assertEquals(
+                    LoginQueueEarlyRelease.MAX_MAX_CONCURRENT_LOADERS,
+                    LoginQueueEarlyRelease.setMaxConcurrentLoaders(1000));
+            assertEquals(
+                    LoginQueueEarlyRelease.MAX_MAX_CONCURRENT_LOADERS,
+                    LoginQueueEarlyRelease.getMaxConcurrentLoaders());
+        } finally {
+            LoginQueueEarlyRelease.setMaxConcurrentLoaders(
+                    LoginQueueEarlyRelease.DEFAULT_MAX_CONCURRENT_LOADERS);
+        }
+    }
+
     // -------------------------------------------------- LoginQueue reflection round-trip
 
     @Test

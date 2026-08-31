@@ -11,7 +11,7 @@ import io.prometheus.metrics.core.metrics.Histogram;
  *   <li>{@code storm_login_queue_early_release_total} — login-queue slots freed at the WorldMap
  *       request instead of at {@code LoginQueueDone}.
  *   <li>{@code storm_login_queue_early_release_capped_total} — releases skipped because the {@code
- *       -Dstorm.loginQueueMaxConcurrentLoaders} ceiling was reached; the slot was held vanilla-long
+ *       Storm.LoginQueueMaxConcurrentLoaders} ceiling was reached; the slot was held vanilla-long
  *       instead.
  *   <li>{@code storm_login_queue_concurrent_loaders} — joiners currently in the
  *       released-but-still-loading phase.
@@ -36,7 +36,7 @@ public final class LoginQueueEarlyReleaseMetrics {
                     .name("storm_login_queue_early_release_capped_total")
                     .help(
                             "Early releases skipped because the"
-                                    + " -Dstorm.loginQueueMaxConcurrentLoaders ceiling was reached;"
+                                    + " Storm.LoginQueueMaxConcurrentLoaders ceiling was reached;"
                                     + " vanilla slot hold applied.")
                     .register(StormPrometheus.registry());
 

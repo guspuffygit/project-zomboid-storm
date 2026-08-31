@@ -1,6 +1,7 @@
 package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Gauge;
+import io.pzstorm.storm.connection.LoginQueueEarlyRelease;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
 import io.pzstorm.storm.connection.StormMaxPlayersConfig;
 import io.pzstorm.storm.entity.EcsClassCache;
@@ -332,6 +333,17 @@ public final class StormPerformanceSandboxMetrics {
                                     + " override.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge LOGIN_QUEUE_MAX_CONCURRENT_LOADERS =
+            Gauge.builder()
+                    .name("storm_login_queue_max_concurrent_loaders")
+                    .help(
+                            "Maximum joiners allowed to be loading into the server at once —"
+                                    + " released loaders plus the login-queue slot-holder. Sourced"
+                                    + " from the Storm.LoginQueueMaxConcurrentLoaders sandbox"
+                                    + " option. 1 = vanilla admission (default): the slot is held"
+                                    + " until LoginQueueDone and never released early.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -359,6 +371,8 @@ public final class StormPerformanceSandboxMetrics {
         ENTITY_REMOVE_FAST_PATH.set(StormEntityIndex.DEFAULT_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE_ENABLED.set(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE.set(StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
+        LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(
+                LoginQueueEarlyRelease.DEFAULT_MAX_CONCURRENT_LOADERS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -461,5 +475,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setMaxPlayersOverride(int maxPlayers) {
         MAX_PLAYERS_OVERRIDE.set(maxPlayers);
+    }
+
+    public static void setLoginQueueMaxConcurrentLoaders(int loaders) {
+        LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(loaders);
     }
 }

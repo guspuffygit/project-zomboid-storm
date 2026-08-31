@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.advice.gameserverstalledconnections.StalledConnectionReaper;
 import io.pzstorm.storm.advice.netdatadraincap.MainLoopDrainCap;
+import io.pzstorm.storm.connection.LoginQueueEarlyRelease;
 import io.pzstorm.storm.connection.PeerSendBufferKickConfig;
 import io.pzstorm.storm.connection.StormMaxPlayersConfig;
 import io.pzstorm.storm.entity.EcsClassCache;
@@ -74,6 +75,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ENTITY_REMOVE_FAST_PATH = "Storm.EntityRemoveFastPath";
     public static final String OPT_OVERRIDE_MAX_PLAYERS = "Storm.OverrideMaxPlayers";
     public static final String OPT_MAX_PLAYERS = "Storm.MaxPlayers";
+    public static final String OPT_LOGIN_QUEUE_MAX_CONCURRENT_LOADERS =
+            "Storm.LoginQueueMaxConcurrentLoaders";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -123,6 +126,21 @@ public final class StormPerformanceSandboxApplier {
         applyAnimalZoneLeashDistance();
         applyEntityRemoveFastPath();
         applyMaxPlayersOverride();
+        applyLoginQueueMaxConcurrentLoaders();
+    }
+
+    /**
+     * Pushes {@link #OPT_LOGIN_QUEUE_MAX_CONCURRENT_LOADERS} through {@link
+     * LoginQueueEarlyRelease#setMaxConcurrentLoaders(int)} — total joiners allowed to be loading
+     * into the server at once (released loaders plus the login-queue slot-holder). 1 restores
+     * vanilla admission: the slot is held until {@code LoginQueueDone}, never released early.
+     */
+    private static void applyLoginQueueMaxConcurrentLoaders() {
+        Integer value = readIntOption(OPT_LOGIN_QUEUE_MAX_CONCURRENT_LOADERS);
+        if (value == null) {
+            return;
+        }
+        LoginQueueEarlyRelease.setMaxConcurrentLoaders(value);
     }
 
     /**
