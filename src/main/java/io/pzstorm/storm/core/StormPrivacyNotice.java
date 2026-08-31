@@ -25,11 +25,21 @@ public final class StormPrivacyNotice {
             LOGGER.warn("Storm privacy policy: resource {} missing from storm.jar", RESOURCE);
             return;
         }
+        String version = parseVersion(text);
+        // Storm's logback config has no console appender, so a server operator watching the
+        // console would never see the notice unless it is also printed to stdout.
+        System.out.println(
+                "By running Storm you agree to the Storm Terms of Use & Privacy Policy (version "
+                        + version
+                        + "). Full text follows; it also ships as "
+                        + RESOURCE
+                        + " inside storm.jar.");
+        System.out.println(text);
         LOGGER.info(
                 "By running Storm you agree to the Storm Terms of Use & Privacy Policy"
                         + " (version {}). Full text follows; it also ships as {} inside"
                         + " storm.jar.\n{}",
-                parseVersion(text),
+                version,
                 RESOURCE,
                 text);
     }
