@@ -3,7 +3,6 @@ package io.pzstorm.storm.core;
 import io.pzstorm.storm.commands.CreateTestCharCommand;
 import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.commands.PrintDebugCommand;
-import io.pzstorm.storm.commands.ScreenshotCommand;
 import io.pzstorm.storm.commands.TestActionRemoveBugCommand;
 import io.pzstorm.storm.commands.TestCountActionCommand;
 import io.pzstorm.storm.commands.TestSeedActionCommand;
@@ -32,7 +31,6 @@ public class StormCommandRegistry {
 
         MOD_COMMANDS.add(PingCommand.class);
         MOD_COMMANDS.add(PrintDebugCommand.class);
-        MOD_COMMANDS.add(ScreenshotCommand.class);
 
         if (StormEnv.isStormTesting()) {
             MOD_COMMANDS.add(CreateTestCharCommand.class);

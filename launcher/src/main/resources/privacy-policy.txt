@@ -1,0 +1,266 @@
+Storm & Storm Launcher — Terms of Use & Privacy Policy
+Version: 2026-08-31
+
+This document covers two programs: Storm, a framework that runs inside the
+Project Zomboid game and dedicated server, and the Storm Launcher, a program
+for joining Project Zomboid servers that run Storm. Storm can reach your
+machine three ways: through the launcher, which shows this document and
+asks you to accept it before it first runs; by running a dedicated server,
+which prints it to its log at start-up; or automatically through the Steam
+Workshop when you join a server that lists Storm as a required mod — the
+game then downloads and runs Storm like any other required mod, and this
+document is not shown first. It is therefore also published on Storm's
+Steam Workshop page and in the repository linked below. Any change to this
+document (even a one-character edit) changes its content hash, and every
+launcher user is asked to read and accept it again the next time the
+launcher starts.
+
+
+1. WHO WE ARE
+
+Storm and the Storm Launcher are made and operated by Sentient Simulations
+LLC, referred to below as "the operator". Throughout this document "the
+operator" means only Sentient Simulations LLC. The people who run the
+individual game servers you join are a different party,
+called "server operators" (sections 3.4 and 3.5); they are never "the
+operator", and data held by a server operator is not held by the operator.
+Both programs are free and open source under the GNU General Public License
+v3: https://github.com/guspuffygit/project-zomboid-storm
+
+Privacy questions, data requests and complaints:
+sentientsimulationsprivacy@gmail.com
+
+
+2. WHAT THESE PROGRAMS ARE
+
+Storm is a community-made server framework and performance/bug-fix layer
+for Project Zomboid multiplayer. The Storm Launcher is a community-made
+program that installs Storm, keeps it and a server's required workshop items
+up to date through your running Steam client, and starts Project Zomboid
+for you. Storm is delivered as a Steam Workshop item; how it reaches your
+machine when you join a Storm server without the launcher is described in
+the introduction above and in section 3.4. Neither program is made by,
+endorsed by, or affiliated with The Indie Stone or Valve.
+
+
+3. TERMS OF USE
+
+  3.1 Provided "as is". Storm and the launcher are provided free of charge,
+      "as is" and "as available", without warranty of any kind, express or
+      implied. You use them at your own risk. To the fullest extent
+      permitted by law, the operator is not liable for any loss, damage,
+      data loss, corrupted saves, bans, or other consequence arising from
+      their use or from their unavailability. This includes the update
+      service (section 4.3) and the log-report service (section 4.4).
+
+  3.2 What the launcher does to your game. The launcher changes how Project
+      Zomboid is started on your machine: it adds JVM arguments and Storm's
+      Java agent, may request workshop item subscriptions and updates through
+      your running Steam client, and reads and writes the game's own server
+      list database (section 4.1). You remain responsible for complying with
+      the Project Zomboid EULA and the Steam Subscriber Agreement.
+
+  3.3 Acceptable use. You must not use Storm or the launcher to cheat,
+      disrupt, or gain unauthorised access to any server or to any other
+      player's data, or to interfere with the operator's services.
+
+  3.4 Game servers are run by other people. Each server you join has its own
+      operator and its own rules. That server operator — not the launcher
+      operator — decides what data their server collects about you and is
+      responsible for what happens on it (section 4.2). If you join a
+      Storm server without using the launcher, Storm still runs as one of
+      that server's required mods; sections 4.2 and 4.5 describe everything
+      it does, and the server operator is responsible for bringing their
+      rules and this document to your attention.
+
+  3.5 Server operators. If you run a dedicated server with Storm installed,
+      you are responsible for that server, for the players' data it holds,
+      and for telling your players what your server does with it. Storm
+      itself sends one start-up snapshot to the operator (section 4.5); you
+      may turn that off. Players who join without the launcher are never
+      shown an acceptance screen, so informing them falls to you: link this
+      document, or your own notice covering the same facts, in your server
+      rules, description or welcome message.
+
+  3.6 Availability. The operator may change, suspend or discontinue the
+      update service, the log-report service, or the programs themselves at
+      any time without notice.
+
+  3.7 Changes to these terms. The operator may change this document.
+      Changes take effect when you accept the updated document, which the
+      launcher shows you before it runs (section 5). For server operators,
+      continuing to run a Storm-enabled server after the updated document
+      appears in its start-up log constitutes acceptance of the updated
+      terms for that server's operation.
+
+  3.8 Severability. If any part of this document is found unenforceable,
+      the rest remains in effect.
+
+
+4. PRIVACY POLICY — WHAT DATA IS HANDLED, AND WHY
+
+Short version: the launcher and the Storm client send no analytics or
+telemetry. The only data the operator keeps is (a) a log report you
+choose to send by clicking "Send Logs", and (b) a start-up snapshot from
+dedicated servers, which contains no IP address or player data and can be
+switched off. Both are kept for 7 days, then deleted. Everything else
+stays on your machine or goes to services you already use (Steam, the
+game server you chose).
+
+  4.1 Data that stays on your machine
+
+      - Launcher settings: <home>/Zomboid/storm/launcher/launcher.json —
+        game directory, JVM options, per-server extras, and the record of
+        which version of this document you accepted and when.
+      - Saved servers and account credentials live in the game's own
+        database, <home>/Zomboid/db/ServerListSteam.db. The launcher reads
+        and writes that file so the game and the launcher share one server
+        list. Passwords are stored in the game's own hashed form and are
+        never written to launcher.json.
+      - Launcher logs and the game's console output as started by the
+        launcher: <home>/Zomboid/storm/launcher/logs/. Storm's own logs:
+        <home>/Zomboid/Logs/storm/.
+
+      None of this is sent anywhere unless you choose "Send Logs" (4.4).
+
+  4.2 Data sent to game servers
+
+      When you join a server, the launcher sends it the same login data the
+      game itself would: your chosen username, your password in the game's
+      hashed form, your Steam authentication, and Storm/game version
+      information. It asks the server for its required workshop item list
+      before the game starts. What the server does with your login data is
+      decided by that server's operator (section 3.4).
+
+  4.3 Data sent to third parties as part of normal operation
+
+      - Steam (Valve). Workshop item subscription and update requests go
+        through your running Steam client. The launcher (and Storm, when
+        repairing a broken workshop install) also asks Steam's public Web
+        API for details of workshop items by their ID; these requests carry
+        no account information. Governed by Valve's privacy policy.
+
+      - The Storm update service. On start the launcher, and Storm's
+        bootstrap inside the game, check https://guspuffy.com/storm/... for
+        the current launcher and Storm core version and download a new build
+        if there is one. The request carries no account information, only
+        what any web download carries: your IP address and a standard Java
+        user-agent string. The files are hosted on Amazon Web Services
+        (S3 and CloudFront); the operator keeps no access logs of these
+        downloads.
+
+      - Discord. Used only as the storage back-end for 4.4 and 4.5. Nothing
+        reaches Discord unless one of those two sections applies.
+
+  4.4 Data sent only when you explicitly choose "Send Logs"
+
+      What is sent, and only after you confirm the privacy prompt:
+      - Machine information: operating system, version and architecture,
+        CPU core count, RAM, Java version, vendor and path, and the game
+        and bootstrap directories.
+      - Launcher settings: memory setting, feature toggles, global JVM
+        arguments, and the number (not the names) of saved servers.
+        Global JVM arguments are sent as you typed them, except that the
+        value of any argument whose name looks credential-related
+        (password, token, secret, key) is masked — even so, do not paste
+        secrets into the JVM-arguments box.
+      - The most recent portion (up to 1 MB each) of: the launcher log, the
+        game output from the current and previous run, the game's
+        console.txt, the newest files in <home>/Zomboid/Logs and
+        <home>/Zomboid/Logs/storm, and any JVM crash dumps (hs_err_pid*.log)
+        in the game directory.
+      - The description you typed, if any.
+
+      What is not sent: passwords and per-server credentials are never
+      included. Before the report leaves your machine, your
+      operating-system account name is stripped from the common forms it
+      takes in file paths, environment lines and log text (Windows
+      C:\Users\<name>, macOS /Users/<name>, Linux /home/<name>, and the
+      bare name where it appears as a whole word). The attached logs may
+      still contain your in-game username, your Steam ID, and the address
+      of servers you joined, because the game and the launcher write those
+      into their own logs.
+
+      Where it goes and who sees it: the report is posted to a private
+      Discord channel that only the operator can read. While it is held it
+      is stored by Discord under Discord's privacy policy.
+
+      How long it is kept: 7 days from upload, then deleted. If you want it
+      deleted sooner, email the address in section 1 and quote the report
+      id the launcher shows after sending.
+
+      Legal basis: your consent, given when you confirm the prompt. You may
+      simply not click "Send Logs"; the launcher works the same either way.
+
+  4.5 Analytics
+
+      The launcher and the Storm client (the part of Storm that runs inside
+      your game) send no analytics or telemetry of any kind.
+
+      Dedicated servers running Storm post one snapshot per start-up to
+      the operator, sent when the server finishes starting:
+      - Storm version and Project Zomboid version,
+      - the server's PublicName from its configuration,
+      - operating system and architecture, CPU core count, RAM, JVM
+        version and configured maximum heap size,
+      - Storm's own tuning values (tick intervals, thresholds, ports),
+      - the Mods and WorkshopItems lines from the server configuration.
+
+      It does not include the server's IP address, any player names, Steam
+      IDs, chat, or save data. It is used to understand which Storm and game
+      versions and which mod combinations are in use so that compatibility
+      problems can be found and fixed. It is posted to a private Discord
+      channel readable only by the operator and kept for 7 days, then
+      deleted.
+
+      It is on by default. Server operators turn it off by adding the JVM
+      flag -DDISABLE_ANALYTICS=true; the server log states at every start
+      whether analytics is enabled or disabled. Legal basis: the operator's
+      legitimate interest in keeping Storm working across game updates,
+      balanced by collecting no player data — and nothing about the server
+      operator beyond what they chose to publish as the server's
+      PublicName — and offering a one-flag opt-out.
+
+  4.6 Children
+
+      Storm and the launcher are not directed at children. Project Zomboid
+      is rated for mature audiences and a Steam account requires you to be
+      at least 13. If you live in the European Economic Area or the United
+      Kingdom and are below your country's age of digital consent (this
+      varies by country, from 13 to 16), a parent or guardian must agree
+      to this document for you. The operator does not knowingly hold data from
+      anyone under 13; if you believe that has happened, email the address
+      in section 1 and it will be deleted.
+
+  4.7 Your rights
+
+      You may ask what data the operator holds about you, ask for it to be
+      corrected or deleted, or withdraw consent, by emailing
+      sentientsimulationsprivacy@gmail.com. For a log report, quote the
+      report id. For a server snapshot, quote your server's PublicName.
+      Requests are answered within one month. If you are in the EEA or the UK
+      you also have the right to complain to your local data-protection
+      authority.
+
+      Because the programs are open source, you can verify every statement
+      above in the source code: the launcher's log report is
+      launcher/src/main/java/io/pzstorm/launcher/LogReport.java and
+      LogScrubber.java; the server snapshot is
+      src/main/java/io/pzstorm/storm/diagnostics/StormStartupAnalytics.java.
+
+  4.8 Where the data lives
+
+      The log reports (4.4) and server snapshots (4.5) are stored on
+      Discord; the update service's files (4.3) are hosted on Amazon Web
+      Services. Each provider handles the data that passes through it
+      under its own privacy policy, and both may process that data in the
+      United States or other countries outside the EEA and the UK.
+
+
+5. CHANGES TO THIS DOCUMENT
+
+The launcher shows this document again whenever it changes and will not run
+until the new version is accepted. You may re-read the current version at
+any time from the "Privacy" button in the launcher window, in the
+start-up log of any Storm-enabled game or server, or in the source
+repository linked in section 1.

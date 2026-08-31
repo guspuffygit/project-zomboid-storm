@@ -55,6 +55,23 @@ class LauncherConfigTest {
     }
 
     @Test
+    void loadIgnoresCredentialsAlreadyPresentInTheFile() throws IOException {
+        Path file = tmp.resolve("legacy.json");
+        Files.write(
+                file,
+                ("{\"servers\":[{\"name\":\"ATF\",\"host\":\"play.example.org\","
+                                + "\"port\":16261,\"username\":\"Gus\","
+                                + "\"serverPassword\":\"pw\",\"accountPassword\":\"secret\"}]}")
+                        .getBytes());
+
+        ServerProfile p = LauncherConfig.load(file).servers.get(0);
+
+        assertEquals("Gus", p.username);
+        assertEquals("", p.serverPassword);
+        assertEquals("", p.accountPassword);
+    }
+
+    @Test
     void loadOfMissingOrBrokenFileYieldsDefaults() throws IOException {
         assertTrue(LauncherConfig.load(tmp.resolve("missing.json")).servers.isEmpty());
         Path broken = tmp.resolve("broken.json");

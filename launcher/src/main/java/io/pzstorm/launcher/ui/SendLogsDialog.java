@@ -25,19 +25,27 @@ public final class SendLogsDialog {
                         parent,
                         new Object[] {
                             "<html><b>Privacy Notice</b><br><br>"
-                                    + "You are about to send data to Gus Puffy (the developer).<br>"
-                                    + "Passwords are never included, and the data is deleted once"
-                                    + " it has been reviewed.<br><br>"
+                                    + "You are about to send data to a private Discord channel"
+                                    + " readable only by (the"
+                                    + " developer).<br>"
+                                    + "Passwords are never included, your operating-system account"
+                                    + " name is removed from file paths and logs before sending,"
+                                    + " and reports are deleted after 7 days.<br><br>"
                                     + "Data sent will include:<br>"
                                     + "&nbsp;&nbsp;• Information about this PC (operating system,"
                                     + " CPU, RAM, Java version)<br>"
                                     + "&nbsp;&nbsp;• Launcher settings and launcher logs<br>"
                                     + "&nbsp;&nbsp;• Logs from Project Zomboid and Storm"
-                                    + " (console.txt and the Logs folder)<br><br>"
+                                    + " (console.txt and the Logs folder)<br>"
+                                    + "&nbsp;&nbsp;• JVM crash dumps (hs_err files) from the"
+                                    + " game folder<br>"
+                                    + "&nbsp;&nbsp;• The description you type below<br><br>"
+                                    + "Full details: Privacy Policy section 4.4 (the Privacy"
+                                    + " button).<br><br>"
                                     + "Describe the problem (optional):</html>",
                             new JScrollPane(description)
                         },
-                        "Send logs to Gus Puffy",
+                        "Send logs",
                         JOptionPane.OK_CANCEL_OPTION);
         if (choice != JOptionPane.OK_OPTION) {
             return;

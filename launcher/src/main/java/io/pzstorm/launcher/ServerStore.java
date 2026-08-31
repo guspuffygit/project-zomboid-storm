@@ -162,9 +162,9 @@ public final class ServerStore {
 
     /**
      * Brings the profile's account password into the game's stored form ({@link PzPasswordHash}).
-     * Plaintext can enter through the edit dialog or a legacy launcher.json; the game only ever
-     * compares the hashed form, so it must never reach the database raw. Returns false when the
-     * value is plaintext but hashing is unavailable.
+     * Plaintext can enter through the edit dialog; the game only ever compares the hashed form, so
+     * it must never reach the database raw. Returns false when the value is plaintext but hashing
+     * is unavailable.
      */
     private static boolean hashAccountPassword(LauncherConfig config, ServerProfile profile) {
         if (profile.accountPassword.isEmpty() || PzPasswordHash.isHashed(profile.accountPassword)) {

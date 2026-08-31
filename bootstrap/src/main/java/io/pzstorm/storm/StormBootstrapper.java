@@ -5,8 +5,6 @@ import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.instrument.ClassFileTransformer;
@@ -16,9 +14,6 @@ import java.io.File;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -35,7 +30,6 @@ import java.util.stream.Stream;
 public class StormBootstrapper {
 
     private static final String LOCAL_DEV_PATH = "storm/Contents/mods/storm/42/lib";
-    private static final String STORM_BOOTSTRAP_PAGE = "https://guspuffy.s3.us-east-1.amazonaws.com/storm-bootstrap-message.html";
 
     private static final String CORE_LAUNCHER_CLASS = "io.pzstorm.storm.core.StormLauncher";
 
@@ -192,8 +186,6 @@ public class StormBootstrapper {
         try {
             System.out.println("[StormBootstrapper] Initializing... v1");
 
-            checkForStormBootstrapMessage();
-
             Path libraryDir;
             if ("local".equals(System.getProperty("stormType"))) {
                 Path workshopDir = Paths.get(System.getProperty("user.home"), "Zomboid", "Workshop");
@@ -278,52 +270,6 @@ public class StormBootstrapper {
             e.printStackTrace();
             System.err.println("[StormBootstrapper] CRITICAL FAILURE: Could not launch Storm Core.");
             System.exit(1);
-        }
-    }
-
-    private static void checkForStormBootstrapMessage() {
-        HttpClient client = HttpClient.newHttpClient();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(STORM_BOOTSTRAP_PAGE))
-                .GET()
-                .build();
-
-        String response = "";
-        try {
-            HttpResponse<String> result = client.send(request, HttpResponse.BodyHandlers.ofString());
-            response = result.body().trim();
-        } catch (Exception e) {
-            System.err.println("Unable to request storm bootstrap message");
-            e.printStackTrace();
-        }
-
-        if (!response.isEmpty()) {
-            String os = System.getProperty("os.name").toLowerCase();
-
-            try {
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    Desktop.getDesktop().browse(new URI(response));
-                    return;
-                }
-            } catch (Exception e) {
-                System.err.println("Standard Desktop API failed: " + e.getMessage());
-            }
-
-            Runtime rt = Runtime.getRuntime();
-            try {
-                if (os.contains("win")) {
-                    rt.exec(new String[] {"rundll32", "url.dll,FileProtocolHandler", STORM_BOOTSTRAP_PAGE});
-                } else if (os.contains("mac")) {
-                    rt.exec(new String[] {"open", STORM_BOOTSTRAP_PAGE});
-                } else if (os.contains("nix") || os.contains("nux")) {
-                    rt.exec(new String[] {"xdg-open", STORM_BOOTSTRAP_PAGE});
-                } else {
-                    System.out.println("Unsupported operating system.");
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 }

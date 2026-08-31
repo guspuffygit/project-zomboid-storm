@@ -94,7 +94,7 @@ class ServerStoreTest {
     }
 
     @Test
-    void loadMigratesLegacyCredentialEntriesIntoTheDatabase() throws Exception {
+    void loadWritesEntriesAddedWhileTheDatabaseWasUnreachableIntoIt() throws Exception {
         LauncherConfig config = new LauncherConfig();
         ServerProfile legacy = new ServerProfile();
         legacy.name = "hand-added";
@@ -113,12 +113,12 @@ class ServerStoreTest {
         assertEquals(1, count(db, "account"));
         assertEquals(1, config.servers.size());
         assertTrue(config.servers.get(0).inGameDb);
-        // the migrated credentials never go back into launcher.json
+        // the credentials never go back into launcher.json
         assertFalse(config.servers.get(0).toMap().containsKey("accountPassword"));
         assertFalse(config.servers.get(0).toMap().containsKey("serverPassword"));
 
-        // second load round-trips through the database instead of re-migrating; the legacy
-        // raw password was brought into the game's stored form on the way in
+        // second load round-trips through the database instead of re-writing it; the raw
+        // password was brought into the game's stored form on the way in
         ServerStore.load(config, zomboidDir);
         assertEquals(1, count(db, "server"));
         assertEquals(1, config.servers.size());

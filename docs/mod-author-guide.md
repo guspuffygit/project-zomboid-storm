@@ -101,7 +101,7 @@ mod-distribution flow. Symbols are safe to call from any Lua script after
 | `Storm.getVersion()` | Storm version string (matches `GET /storm/version`). |
 | `Storm.debug(...)` | Forwards its arguments to Storm's debug logger. |
 | `PersistedTable:save(file, tbl)` / `PersistedTable:read(file)` | Persist a flat `key=value` Lua table to a Zomboid-managed text file and read it back. Skips function / table values. Useful for per-player UI preference toggles read by Storm-shipped client Lua. |
-| `StormBase64.encode(bytes [, start, end])` / `StormBase64.decode(str)` | Pure-Lua base64 codec used by Storm's screenshot pipeline; mods can reuse it for binary `sendClientCommand` payloads since vanilla Lua can't carry raw bytes through the network table. |
+| `StormBase64.encode(bytes [, start, end])` / `StormBase64.decode(str)` | Pure-Lua base64 codec; mods can use it for binary `sendClientCommand` payloads since vanilla Lua can't carry raw bytes through the network table. |
 
 Any Lua files placed under `lua/` inside a mod jar are automatically loaded
 into the server's Lua environment on `OnZomboidGlobalsLoad` and reach
@@ -119,7 +119,6 @@ pipeline, so they work from the server console, RCON, or any admin client.
 |---------|-------|---------|
 | `ping` | `/ping` | Responds with `pong`. Health-check the command pipeline end-to-end. |
 | `printdebug` | `/printdebug events` \| `/printdebug sounds` | Dump the recorded triggered-event log or the `GameSounds` registry to `~/Zomboid/Logs/<date>_DebugLog-server.txt`. |
-| `screenshot` | `/screenshot <username>` | Ask a connected client to render a screenshot and write it to its Lua cache dir as `storm_screenshot_<user>_<id>.png`. |
 
 Mods register their own commands by adding a `CommandBase` subclass to
 `StormCommandRegistry.MOD_COMMANDS`; Storm patches `CommandBase.findCommandCls`

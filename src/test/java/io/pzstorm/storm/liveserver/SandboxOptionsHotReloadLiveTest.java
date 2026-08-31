@@ -28,7 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * must propagate to the {@code storm_*} Prometheus gauges without a restart.
  *
  * <p>The test does the network round-trip by hand: it asks the server (via {@code /eval}) to mutate
- * {@code Storm.ScreenshotPiecesPerPacket} to a known value, serialize the sandbox to a {@code
+ * {@code Storm.HutchDirtRatePercent} to a known value, serialize the sandbox to a {@code
  * ByteBuffer}, mutate the option AWAY from that value (so we can tell whether {@code
  * receiveSandboxOptions} really reloaded), and then call the patched {@code
  * GameServer.receiveSandboxOptions} via reflection. Vanilla path:
@@ -38,14 +38,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *                            -&gt; [advice] StormPerformanceSandboxApplier.applyAll()
  * </pre>
  *
- * <p>Afterwards {@code /metrics} is scraped and the {@code storm_screenshot_pieces_per_packet}
- * gauge must match the target value. If the patch is missing or the advice doesn't fire, the gauge
- * stays at whatever was set just before {@code receiveSandboxOptions} and the assertion catches it.
+ * <p>Afterwards {@code /metrics} is scraped and the {@code storm_hutch_dirt_rate_percent} gauge
+ * must match the target value. If the patch is missing or the advice doesn't fire, the gauge stays
+ * at whatever was set just before {@code receiveSandboxOptions} and the assertion catches it.
  *
  * <p>The option is only a carrier for the hot-reload round-trip — any {@code Storm.*} integer
- * option would do. Screenshot piece framing is picked because it is inert on an idle server:
- * nothing reads it until a client uploads a {@code /screenshot}, so leaving the test value behind
- * in {@code stormtest_SandboxVars.lua} cannot perturb any other live test.
+ * option would do. The hutch dirt rate is picked because it is inert on an idle server: nothing
+ * reads it until a loaded chunk contains a hutch, so leaving the test value behind in {@code
+ * stormtest_SandboxVars.lua} cannot perturb any other live test.
  */
 @ExtendWith(ServerExtension.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -57,8 +57,8 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
     private static final String METRICS_URL =
             "http://localhost:" + ServerExtension.TEST_PROMETHEUS_PORT + "/metrics";
 
-    private static final int TARGET_PIECES = 21;
-    private static final int DECOY_PIECES = 3;
+    private static final int TARGET_RATE_PERCENT = 77;
+    private static final int DECOY_RATE_PERCENT = 33;
 
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
@@ -168,10 +168,10 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
                 "EvalScript threw on server: " + evalResp.body());
 
         Assertions.assertTrue(
-                evalResp.body().contains("sandbox=" + TARGET_PIECES),
+                evalResp.body().contains("sandbox=" + TARGET_RATE_PERCENT),
                 "Sandbox option did not load back to target value. Eval said: " + evalResp.body());
         Assertions.assertTrue(
-                evalResp.body().contains("config=" + TARGET_PIECES),
+                evalResp.body().contains("config=" + TARGET_RATE_PERCENT),
                 "Storm config did not track the sandbox change — advice did not fire or applier"
                         + " misread the option. Eval said: "
                         + evalResp.body());
@@ -182,15 +182,14 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
                 metricsResp.statusCode(),
                 () -> "/metrics request failed: " + metricsResp.body());
 
-        double gauge =
-                parsePrometheusGauge(metricsResp.body(), "storm_screenshot_pieces_per_packet");
+        double gauge = parsePrometheusGauge(metricsResp.body(), "storm_hutch_dirt_rate_percent");
         Assertions.assertEquals(
-                (double) TARGET_PIECES,
+                (double) TARGET_RATE_PERCENT,
                 gauge,
                 0.0,
-                "storm_screenshot_pieces_per_packet gauge did not track the sandbox-options push."
+                "storm_hutch_dirt_rate_percent gauge did not track the sandbox-options push."
                         + " Expected "
-                        + TARGET_PIECES
+                        + TARGET_RATE_PERCENT
                         + " but got "
                         + gauge);
     }
@@ -200,7 +199,7 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
         Path classesDir = Files.createTempDirectory("storm-sandbox-eval-classes");
         Path srcFile = srcDir.resolve("EvalScript.java");
         String src =
-                "import io.pzstorm.storm.screenshot.StormScreenshotConfig;\n"
+                "import io.pzstorm.storm.patch.fixes.HutchDirtRateFix;\n"
                         + "import java.lang.reflect.Method;\n"
                         + "import java.nio.ByteBuffer;\n"
                         + "import zombie.SandboxOptions;\n"
@@ -212,23 +211,23 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
                         + "    public static Object run() throws Exception {\n"
                         + "        SandboxOptions.IntegerSandboxOption opt =\n"
                         + "            (SandboxOptions.IntegerSandboxOption)\n"
-                        + "                SandboxOptions.instance.getOptionByName(\"Storm.ScreenshotPiecesPerPacket\");\n"
+                        + "                SandboxOptions.instance.getOptionByName(\"Storm.HutchDirtRatePercent\");\n"
                         + "        if (opt == null) {\n"
-                        + "            return \"ERROR: Storm.ScreenshotPiecesPerPacket not registered\";\n"
+                        + "            return \"ERROR: Storm.HutchDirtRatePercent not registered\";\n"
                         + "        }\n"
                         + "\n"
                         + "        opt.setValue("
-                        + TARGET_PIECES
+                        + TARGET_RATE_PERCENT
                         + ");\n"
                         + "        ByteBuffer buffer = ByteBuffer.allocate(256 * 1024);\n"
                         + "        SandboxOptions.instance.save(buffer);\n"
                         + "        buffer.flip();\n"
                         + "\n"
                         + "        opt.setValue("
-                        + DECOY_PIECES
+                        + DECOY_RATE_PERCENT
                         + ");\n"
-                        + "        StormScreenshotConfig.setPiecesPerPacket("
-                        + DECOY_PIECES
+                        + "        HutchDirtRateFix.setRatePercent("
+                        + DECOY_RATE_PERCENT
                         + ");\n"
                         + "\n"
                         + "        Method m = GameServer.class.getDeclaredMethod(\n"
@@ -240,7 +239,7 @@ class SandboxOptionsHotReloadLiveTest implements IntegrationTest {
                         + "        m.invoke(null, new ByteBufferReader(buffer), null, (short) 0);\n"
                         + "\n"
                         + "        return \"sandbox=\" + opt.getValue()\n"
-                        + "            + \" config=\" + StormScreenshotConfig.getPiecesPerPacket();\n"
+                        + "            + \" config=\" + HutchDirtRateFix.getRatePercent();\n"
                         + "    }\n"
                         + "}\n";
         Files.writeString(srcFile, src);

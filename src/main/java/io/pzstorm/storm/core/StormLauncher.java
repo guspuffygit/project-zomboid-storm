@@ -29,6 +29,7 @@ public class StormLauncher {
         try {
             System.out.println("Storm version: " + StormVersion.getVersion());
             LOGGER.info("Storm version: {}", StormVersion.getVersion());
+            StormPrivacyNotice.log();
             LOGGER.info("Preparing to launch Project Zomboid...");
 
             // launcher-supplied per-join data (server mod list, prewarm properties) arrives in a
@@ -85,12 +86,6 @@ public class StormLauncher {
             eventDispatcher
                     .getDeclaredMethod("registerEventHandler", Class.class)
                     .invoke(null, ramAllocTracker);
-
-            Class<?> screenshotReceiver =
-                    classLoader.loadClass("io.pzstorm.storm.screenshot.StormScreenshotReceiver");
-            eventDispatcher
-                    .getDeclaredMethod("registerEventHandler", Class.class)
-                    .invoke(null, screenshotReceiver);
 
             Class<?> stormPlayersHandler =
                     classLoader.loadClass("io.pzstorm.storm.connection.StormPlayersHandler");

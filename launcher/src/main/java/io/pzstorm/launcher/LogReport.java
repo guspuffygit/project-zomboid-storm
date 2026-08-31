@@ -115,7 +115,10 @@ public final class LogReport {
         return id.toString();
     }
 
-    /** Machine + config facts. Never include passwords or per-server credentials. */
+    /**
+     * Machine + config facts. Never include passwords or per-server credentials; the OS account
+     * name is scrubbed from paths (see {@link LogScrubber}).
+     */
     static String metadata(LauncherConfig config, String logId, String description) {
         List<String> lines = new ArrayList<>();
         if (description != null && !description.isEmpty()) {
@@ -142,9 +145,31 @@ public final class LogReport {
         lines.add("Auto memory: " + config.autoMemory + " (manual " + config.memoryGb + " GB)");
         lines.add("Client perf fixes: " + config.clientPerfFixes);
         lines.add("Skip menus: " + config.skipMenus);
-        lines.add("Global VM args: " + config.globalVmArgs);
+        List<String> vmArgs = new ArrayList<>();
+        for (String arg : config.globalVmArgs) {
+            vmArgs.add(redactVmArg(arg));
+        }
+        lines.add("Global VM args: " + vmArgs);
         lines.add("Saved servers: " + config.servers.size());
-        return String.join("\n", lines);
+        return LogScrubber.scrub(String.join("\n", lines));
+    }
+
+    /** VM-argument names that look like credentials; their values never leave the machine. */
+    private static final java.util.regex.Pattern SECRET_VM_ARG_NAME =
+            java.util.regex.Pattern.compile("(?i)pass|token|secret|credential|key");
+
+    /**
+     * Global VM args go into the report as typed, except that the value of any {@code name=value}
+     * argument whose name looks credential-like is masked — a user who pasted a secret into the
+     * settings box should not ship it to Discord.
+     */
+    static String redactVmArg(String arg) {
+        int eq = arg.indexOf('=');
+        if (eq < 0) {
+            return arg;
+        }
+        String name = arg.substring(0, eq);
+        return SECRET_VM_ARG_NAME.matcher(name).find() ? name + "=<redacted>" : arg;
     }
 
     private static String safeResolveJvm(LauncherConfig config, Path gameDir) {
@@ -159,7 +184,8 @@ public final class LogReport {
      * metadata.txt + launcher/game logs (current and previous run) + Zomboid's console.txt + the
      * newest files under Zomboid/Logs (which is also where Storm writes main.log/debug.log) + the
      * newest JVM fatal-error dumps from the game dir — a crashed JVM's real diagnosis lives in
-     * hs_err_pid*.log, not in its truncated stdout.
+     * hs_err_pid*.log, not in its truncated stdout. Every entry passes through {@link LogScrubber}
+     * so the OS account name never leaves the machine.
      */
     static byte[] buildZip(String metadata, Path gameDir) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -243,7 +269,7 @@ public final class LogReport {
             return;
         }
         try {
-            putEntry(zip, entryName, tail(file));
+            putEntry(zip, entryName, LogScrubber.scrub(tail(file)));
         } catch (IOException e) {
             Log.warn("Could not attach " + file + ": " + e.getMessage());
         }

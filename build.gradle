@@ -91,6 +91,8 @@ Added headroom cap above hard coded 101 for incoming connections to fix "Getting
 
 [url=https://github.com/guspuffygit/project-zomboid-storm]Installation and Configuration Documentation[/url]
 
+[url=https://github.com/guspuffygit/project-zomboid-storm/blob/main/launcher/src/main/resources/privacy-policy.txt]Terms of Use & Privacy Policy[/url] — by playing on a server that runs Storm you agree to these terms. Server operators: please link this document in your server rules, description or welcome message so your players can find it.
+
 [hr][/hr]
 [url=https://ko-fi.com/guspuffy][img]https://i.imgur.com/NVyFJeG.png[/img][/url]
 
@@ -286,6 +288,8 @@ jacocoTestReport {
 
 processResources {
 	inputs.property 'stormVersion', project.version
+	// One policy text for launcher and core: StormPrivacyNotice logs it at boot.
+	from rootProject.file('launcher/src/main/resources/privacy-policy.txt')
 	doLast {
 		def f = new File(destinationDir, 'storm-version.properties')
 		f.parentFile.mkdirs()

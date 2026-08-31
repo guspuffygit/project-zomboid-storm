@@ -26,7 +26,6 @@ import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
-import io.pzstorm.storm.screenshot.StormScreenshotConfig;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
 import zombie.SandboxOptions;
 import zombie.core.znet.SteamGameServer;
@@ -59,10 +58,6 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_PEER_SEND_BUFFER_KICK_MB = "Storm.PeerSendBufferKickMb";
     public static final String OPT_PEER_SEND_BUFFER_KICK_HOLD_TICKS =
             "Storm.PeerSendBufferKickHoldTicks";
-    public static final String OPT_SCREENSHOT_PIECES_PER_PACKET = "Storm.ScreenshotPiecesPerPacket";
-    public static final String OPT_SCREENSHOT_UPLOAD_KB_PER_SEC = "Storm.ScreenshotUploadKbPerSec";
-    public static final String OPT_SCREENSHOT_ENCODE_KB_PER_TICK =
-            "Storm.ScreenshotEncodeKbPerTick";
     public static final String OPT_REAP_STALLED_CONNECTION_SECONDS =
             "Storm.ReapStalledConnectionSeconds";
     public static final String OPT_ZOMBIE_SIGHT_VEHICLE_FAST_PATH =
@@ -116,9 +111,6 @@ public final class StormPerformanceSandboxApplier {
         applyNetDataCapMs();
         applyPeerSendBufferKickMb();
         applyPeerSendBufferKickHoldTicks();
-        applyScreenshotPiecesPerPacket();
-        applyScreenshotUploadKbPerSec();
-        applyScreenshotEncodeKbPerTick();
         applyReapStalledConnectionSeconds();
         applyZombieSightVehicleFastPath();
         applyPlayerLosFastPath();
@@ -453,30 +445,6 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         PeerSendBufferKickConfig.setHoldTicks(value);
-    }
-
-    private static void applyScreenshotPiecesPerPacket() {
-        Integer value = readIntOption(OPT_SCREENSHOT_PIECES_PER_PACKET);
-        if (value == null) {
-            return;
-        }
-        StormScreenshotConfig.setPiecesPerPacket(value);
-    }
-
-    private static void applyScreenshotUploadKbPerSec() {
-        Integer value = readIntOption(OPT_SCREENSHOT_UPLOAD_KB_PER_SEC);
-        if (value == null) {
-            return;
-        }
-        StormScreenshotConfig.setUploadKbPerSec(value);
-    }
-
-    private static void applyScreenshotEncodeKbPerTick() {
-        Integer value = readIntOption(OPT_SCREENSHOT_ENCODE_KB_PER_TICK);
-        if (value == null) {
-            return;
-        }
-        StormScreenshotConfig.setEncodeKbPerTick(value);
     }
 
     private static Boolean readBooleanOption(String name) {

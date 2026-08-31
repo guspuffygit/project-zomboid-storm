@@ -46,6 +46,17 @@ public final class LauncherConfig {
     public List<ServerProfile> servers = new ArrayList<>();
 
     /**
+     * Acceptance record for the Terms of Use &amp; Privacy Policy ({@link PrivacyPolicy}): the
+     * SHA-256 of the accepted document is what gates the launcher; version and timestamp are for
+     * humans reading launcher.json. Empty = never accepted.
+     */
+    public String acceptedTermsHash = "";
+
+    public String acceptedTermsVersion = "";
+
+    public String acceptedTermsAt = "";
+
+    /**
      * Item jar a staged copy was started from (never persisted; see {@link LauncherStage}). The
      * staged jar itself lives outside every workshop item, so own-item identity — which item to
      * keep updated, which steamapps to search — resolves through this instead.
@@ -106,6 +117,11 @@ public final class LauncherConfig {
             serverList.add(server.toMap());
         }
         map.put("servers", serverList);
+        Map<String, Object> terms = new LinkedHashMap<>();
+        terms.put("version", acceptedTermsVersion);
+        terms.put("sha256", acceptedTermsHash);
+        terms.put("acceptedAt", acceptedTermsAt);
+        map.put("termsAccepted", terms);
         return map;
     }
 
@@ -134,6 +150,13 @@ public final class LauncherConfig {
                     config.servers.add(ServerProfile.fromMap((Map<String, Object>) entry));
                 }
             }
+        }
+        Object terms = map.get("termsAccepted");
+        if (terms instanceof Map) {
+            Map<String, Object> t = (Map<String, Object>) terms;
+            config.acceptedTermsVersion = ServerProfile.str(t.get("version"), "");
+            config.acceptedTermsHash = ServerProfile.str(t.get("sha256"), "");
+            config.acceptedTermsAt = ServerProfile.str(t.get("acceptedAt"), "");
         }
         return config;
     }

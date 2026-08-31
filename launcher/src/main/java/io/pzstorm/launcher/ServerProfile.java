@@ -8,10 +8,11 @@ import java.util.Map;
 /**
  * One saved server, composed from two stores (see {@link ServerStore}): connection info and
  * credentials come from the game's own saved-servers database — the single source of truth, shared
- * with the in-game server browser — and launcher-only extras from launcher.json. Passwords are
- * never written to launcher.json; {@link #toMap} persists only the extras plus the
+ * with the in-game server browser — and launcher-only extras from launcher.json. Passwords never
+ * pass through launcher.json in either direction: {@link #toMap} persists only the extras plus the
  * host/port/username join key (and the name, as a display fallback for when the database is
- * unreachable).
+ * unreachable), and {@link #fromMap} ignores any credential keys a hand-edited or pre-migration
+ * file happens to carry.
  */
 public final class ServerProfile {
 
@@ -74,11 +75,7 @@ public final class ServerProfile {
         p.name = str(map.get("name"), "");
         p.host = str(map.get("host"), "");
         p.port = (int) num(map.get("port"), 16261);
-        // password fields are read but never written back: a pre-single-source-of-truth
-        // launcher.json still carries them, and the first sync migrates them into the game database
-        p.serverPassword = str(map.get("serverPassword"), "");
         p.username = str(map.get("username"), "");
-        p.accountPassword = str(map.get("accountPassword"), "");
         p.autoConnect = bool(map.get("autoConnect"), false);
         p.updateWorkshopMods = bool(map.get("updateWorkshopMods"), true);
         p.inGameDb = bool(map.get("inGameDb"), false);

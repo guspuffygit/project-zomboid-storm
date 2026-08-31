@@ -4,7 +4,10 @@ import io.pzstorm.launcher.ui.LauncherWindow;
 import io.pzstorm.launcher.ui.StageSplash;
 import io.pzstorm.launcher.ui.SteamRestartDialog;
 import io.pzstorm.launcher.ui.StormTheme;
+import io.pzstorm.launcher.ui.TermsDialog;
+import java.awt.GraphicsEnvironment;
 import java.nio.file.Path;
+import java.util.function.BiPredicate;
 import javax.swing.SwingUtilities;
 
 /**
@@ -21,7 +24,16 @@ public final class LauncherMain {
 
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && args[0].equals("--steam-update")) {
-            // child mode: no config, no log file — stdout goes to the parent
+            // child mode: no log file — stdout goes to the parent. The parent only spawns this
+            // after the terms gate, so a run without a recorded acceptance is a direct invocation
+            // and must not touch Steam; there is no display to prompt on, so refuse.
+            if (!PrivacyPolicy.current()
+                    .isAcceptedBy(LauncherConfig.load(LauncherPaths.configFile()))) {
+                System.err.println(
+                        "Terms of Use & Privacy Policy not accepted — start the launcher"
+                                + " (or run --accept-terms) first.");
+                System.exit(EXIT_TERMS_NOT_ACCEPTED);
+            }
             String[] ids = new String[args.length - 1];
             System.arraycopy(args, 1, ids, 0, ids.length);
             System.exit(SteamUpdateChild.run(ids));
@@ -41,19 +53,31 @@ public final class LauncherMain {
         LauncherStage.handOffIfInsideWorkshopItem(stage);
         LauncherConfig config = LauncherConfig.load(LauncherPaths.configFile());
         config.setStagedOrigin(stage.stagedFrom);
-        clearStaleAutoJoin();
-        syncServersWithGameDb(config);
 
         args = effectiveArgs(stage.args);
         if (args.length > 0) {
-            if (args[0].equals("--join")) {
-                LauncherStage.runStartupUpdate(config, stage);
+            if (needsAcceptedTerms(args[0])) {
+                if (!ensureTermsAccepted(config)) {
+                    System.exit(EXIT_TERMS_NOT_ACCEPTED);
+                    return;
+                }
+                clearStaleAutoJoin();
+                syncServersWithGameDb(config);
+                if (args[0].equals("--join")) {
+                    LauncherStage.runStartupUpdate(config, stage);
+                }
             }
             runHeadless(config, args);
             return;
         }
 
         StormTheme.install();
+        if (!ensureTermsAccepted(config)) {
+            System.exit(EXIT_TERMS_NOT_ACCEPTED);
+            return;
+        }
+        clearStaleAutoJoin();
+        syncServersWithGameDb(config);
         StageSplash splash = stage.staged() ? StageSplash.open() : null;
         try {
             LauncherStage.runStartupUpdate(config, stage);
@@ -74,12 +98,93 @@ public final class LauncherMain {
         SwingUtilities.invokeLater(() -> new LauncherWindow(config).setVisible(true));
     }
 
+    /** Exit status when the player declines the terms (or a headless run never accepted them). */
+    static final int EXIT_TERMS_NOT_ACCEPTED = 3;
+
+    /**
+     * Headless modes that act on the player's behalf — read or write the game's server-list
+     * database, touch Steam, or go on the network — and so sit behind the terms gate. {@code
+     * --version} and {@code --accept-terms} stay outside it: the first is inert, the second is how
+     * a headless run accepts in the first place.
+     */
+    private static boolean needsAcceptedTerms(String mode) {
+        return mode.equals("--join") || mode.equals("--list") || mode.equals("--print-launch");
+    }
+
+    /**
+     * Nothing that launches the game, touches Steam, goes on the network, or writes the game's
+     * server-list database runs before the current Terms of Use &amp; Privacy Policy is accepted —
+     * a changed document re-prompts. A truly headless JVM cannot prompt, so scripted runs accept
+     * once with {@code --accept-terms}.
+     */
+    static boolean ensureTermsAccepted(LauncherConfig config) {
+        return ensureTermsAccepted(
+                config,
+                (policy, updated) -> {
+                    if (GraphicsEnvironment.isHeadless()) {
+                        Log.warn(
+                                "Terms of Use & Privacy Policy (version "
+                                        + policy.version()
+                                        + ") not accepted and no display to ask on — run the"
+                                        + " launcher UI once, or pass --accept-terms.");
+                        return false;
+                    }
+                    StormTheme.install();
+                    boolean[] result = new boolean[1];
+                    try {
+                        SwingUtilities.invokeAndWait(
+                                () -> result[0] = TermsDialog.prompt(null, policy, updated));
+                    } catch (Exception e) {
+                        Log.error("Terms prompt failed", e);
+                        return false;
+                    }
+                    return result[0];
+                });
+    }
+
+    static boolean ensureTermsAccepted(
+            LauncherConfig config, BiPredicate<PrivacyPolicy, Boolean> prompt) {
+        PrivacyPolicy policy = PrivacyPolicy.current();
+        if (policy.isAcceptedBy(config)) {
+            return true;
+        }
+        boolean updated = PrivacyPolicy.everAccepted(config);
+        if (!prompt.test(policy, updated)) {
+            Log.info(
+                    "Terms of Use & Privacy Policy (version "
+                            + policy.version()
+                            + ") declined — exiting.");
+            return false;
+        }
+        recordTermsAccepted(config, policy);
+        return true;
+    }
+
+    private static void recordTermsAccepted(LauncherConfig config, PrivacyPolicy policy) {
+        policy.recordAcceptance(config);
+        Log.info("Terms of Use & Privacy Policy version " + policy.version() + " accepted.");
+        try {
+            config.save(LauncherPaths.configFile());
+        } catch (java.io.IOException e) {
+            Log.warn("Could not save the terms acceptance: " + e.getMessage());
+        }
+    }
+
     private static void runHeadless(LauncherConfig config, String[] args) throws Exception {
         String mode = args[0];
         switch (mode) {
             case "--version":
                 System.out.println(LauncherInfo.version());
                 return;
+            case "--accept-terms":
+                {
+                    PrivacyPolicy policy = PrivacyPolicy.current();
+                    System.out.println(policy.text());
+                    System.out.println();
+                    recordTermsAccepted(config, policy);
+                    System.out.println("Accepted version " + policy.version() + ".");
+                    return;
+                }
             case "--list":
                 for (ServerProfile profile : config.servers) {
                     System.out.println(profile);
@@ -92,8 +197,8 @@ public final class LauncherMain {
                 System.err.println("Unknown option: " + mode);
                 System.err.println(
                         "Usage: storm-launcher"
-                                + " [--list | --version | --print-launch <server>"
-                                + " | --join <server>]");
+                                + " [--list | --version | --accept-terms"
+                                + " | --print-launch <server> | --join <server>]");
                 System.exit(2);
                 return;
         }

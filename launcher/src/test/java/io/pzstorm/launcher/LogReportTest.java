@@ -72,6 +72,22 @@ class LogReportTest {
     }
 
     @Test
+    void metadataRedactsSecretLookingVmArgValues() {
+        LauncherConfig config = new LauncherConfig();
+        config.globalVmArgs.add("-Dmy.api.token=tok3nvalue");
+        config.globalVmArgs.add("-Dstorm.cdn.secret=sssh");
+        config.globalVmArgs.add("-Xmx16g");
+
+        String metadata = LogReport.metadata(config, "aaaaaaaaaa", null);
+
+        assertTrue(metadata.contains("-Dmy.api.token=<redacted>"));
+        assertTrue(metadata.contains("-Dstorm.cdn.secret=<redacted>"));
+        assertTrue(metadata.contains("-Xmx16g"));
+        assertFalse(metadata.contains("tok3nvalue"), "secret-named arg value must be masked");
+        assertFalse(metadata.contains("sssh"), "secret-named arg value must be masked");
+    }
+
+    @Test
     void zipBundlesLauncherGameAndZomboidLogs() throws IOException {
         Files.createDirectories(LauncherPaths.logFile().getParent());
         Files.write(LauncherPaths.logFile(), "launcher says hi".getBytes(StandardCharsets.UTF_8));
@@ -122,6 +138,38 @@ class LogReportTest {
         assertEquals(
                 "jvm fatal error",
                 new String(entries.get("hs_err/hs_err_pid12008.log"), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void accountNameIsScrubbedFromEveryEntry() throws IOException {
+        Files.createDirectories(LauncherPaths.logFile().getParent());
+        Files.write(
+                LauncherPaths.logFile(),
+                "game dir C:\\Users\\Jane Doe\\Zomboid".getBytes(StandardCharsets.UTF_8));
+        Path gameDir = Files.createDirectories(tmp.resolve("game"));
+        Files.write(
+                gameDir.resolve("hs_err_pid1.log"),
+                "USERNAME=janedoe\nHOME=/home/janedoe\n".getBytes(StandardCharsets.UTF_8));
+
+        Map<String, byte[]> entries = unzip(LogReport.buildZip("meta", gameDir));
+
+        assertEquals(
+                "game dir C:\\Users\\<user>\\Zomboid",
+                new String(entries.get("launcher/launcher.log"), StandardCharsets.UTF_8));
+        assertEquals(
+                "USERNAME=<user>\nHOME=/home/<user>\n",
+                new String(entries.get("hs_err/hs_err_pid1.log"), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void metadataScrubsAccountNameFromPaths() {
+        LauncherConfig config = new LauncherConfig();
+        config.globalVmArgs.add("-Djava.io.tmpdir=/Users/janedoe/tmp");
+
+        String metadata = LogReport.metadata(config, "abc123defg", "");
+
+        assertTrue(metadata.contains("-Djava.io.tmpdir=/Users/<user>/tmp"));
+        assertFalse(metadata.contains("janedoe"));
     }
 
     @Test

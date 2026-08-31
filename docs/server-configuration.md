@@ -18,6 +18,7 @@ script). All flags are opt-in unless noted.
 |------|---------|
 | `-Dstorm.server=true` | **Required.** Tells the bootstrap agent it is running on the dedicated-server JVM so it targets `GameServer`. Storm is a server-only framework — this is always set. |
 | `-DstormType=local` | Load Storm from `~/Zomboid/Workshop/storm` instead of the Steam workshop path. Local development only. |
+| `-DDISABLE_ANALYTICS=true` | Opt out of Storm's startup analytics: a one-time snapshot posted to the Storm developers on `OnServerStarted` (Storm/PZ version, server `PublicName`, OS/CPU/RAM, Storm settings, and the `Mods` / `WorkshopItems` lines). **On by default**; the startup log states `Storm startup analytics: enabled …` or `… disabled via -DDISABLE_ANALYTICS` either way. See [Startup analytics & privacy notice](#startup-analytics--privacy-notice). |
 | `-DLOG_LEVEL=DEBUG` | Storm log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). Default `INFO`. |
 | `-Dstorm.http.port=<port>` | Start Storm's HTTP server on `<port>`. Required for inspection endpoints and developer hot-reload. Conventionally `41798` on the dedicated server. |
 | `-Dstorm.hotreload=true` | Register the `/reload` and `/eval` developer endpoints. See [Developer Hot-Reload Endpoints](http-api.md#developer-hot-reload-endpoints). **Local development only.** |
@@ -31,6 +32,31 @@ script). All flags are opt-in unless noted.
 | `-Dstorm.raknet.connectionHeadroom=<n>` | Spare RakNet incoming-connection slots above `MaxPlayers`, for the login pipeline. Default `64`. The resolved cap is `clamp(max(vanilla, MaxPlayers + n), .., min(256, GameServer.SlotToConnection.length))`, so the vanilla value is a floor (small servers are never regressed) and the ceiling tracks the game's own slot table (255 in 42.20.3 — a cap of 256 overruns `SlotToConnection` in `GameServer.disconnect`). 42.20.3 raised the vanilla literal from 101 to 255, so on current builds the cap usually resolves to vanilla and the log reads `cap left at vanilla 255`; the patch still publishes the cap metrics and guards regressions. If RakNet refuses to start with a raised cap, Storm logs an error and automatically retries with the vanilla value, so a bad cap can never keep the server down. Set `n=0` to force vanilla behavior (rollback lever). |
 | `-Dstorm.raknet.connectionCap=<n>` | Absolute RakNet incoming-connection cap, bypassing the headroom calculation. Still floored at the vanilla value and clamped to the same ceiling as above. Use only to pin an exact value; prefer `connectionHeadroom`. |
 | `-Dstorm.steam.advertisePipelinePlayers=<bool>` | Default `true` — **on by default**. Makes the Steam-advertised player count (in-game server browser, A2S, BattleMetrics) cover everyone the server is holding: spawned players, every pre-spawn login-pipeline connection (downloading the world, character creation), and players waiting in the login queue (no player id yet — advertised under synthetic ids above the real-id range), clamped at `MaxPlayers` (the vanilla browser silently delists servers advertising above their max). Without it a busy server shows e.g. `85/100` while correctly refusing joiners at `103 >= 100`, or `85/100` while 15 people sit in the login queue — queue admission is serialized, so queues form even below capacity. While active, Storm's per-tick reconciler is the Steam user list's single writer (vanilla's spawn/disconnect/role-toggle `AddPlayer`/`RemovePlayer` calls are suppressed); on any native failure it reverts to vanilla registration for the rest of the run. Steam mode only — non-Steam servers already report the pipeline-inclusive `getPlayerCount()` to the public list. Set `false` to restore vanilla spawned-only advertising (rollback lever; also flippable live via `SteamPlayerListReconciler.setEnabled(false)`). Boot verification: `Storm: Steam advertised player count now covers the login pipeline ...` in the server log. Gauge: `storm_steam_advertised_players`. |
+
+## Startup analytics & privacy notice
+
+Every Storm JVM logs the Terms of Use & Privacy Policy at boot, right after the
+`Storm version:` line, prefixed with *"By running Storm you agree to the Storm
+Terms of Use & Privacy Policy (version …)"*. The text is the same
+`privacy-policy.txt` the Storm Launcher shows players (copied into `storm.jar`
+by `processResources`; `StormPrivacyNotice` logs it) — the launcher records a
+player's acceptance in a dialog, but a dedicated-server operator never sees
+that dialog, so the log is the operator's notice.
+
+Dedicated servers additionally post a **one-time startup snapshot** to the Storm
+developers via `StormStartupAnalytics` (server-only — client JVMs never post):
+Storm/PZ version, the server's `PublicName`, OS/CPU/RAM/JVM, Storm tuning
+values, and the `Mods` / `WorkshopItems` lines from the server `.ini`. No IP
+address or player data is collected. It is on by default; `-DDISABLE_ANALYTICS=true`
+turns it off, and either way the server log says which
+(`Storm startup analytics: enabled — … Disable with -DDISABLE_ANALYTICS=true.`).
+
+Players who join your server get Storm through the workshop auto-download and —
+unless they use the Storm Launcher — never see an acceptance dialog. Telling
+them is your job as the server's operator (Terms §3.5): link the policy
+([`privacy-policy.txt`](https://github.com/guspuffygit/project-zomboid-storm/blob/main/launcher/src/main/resources/privacy-policy.txt),
+also linked from the Steam Workshop page) in your server rules, description, or
+`ServerWelcomeMessage` in your server `.ini`.
 
 ## Sandbox options (performance knobs)
 
@@ -51,9 +77,6 @@ the world setup UI. Edit them through the admin UI before world creation, or han
 | `Storm.NetDataCapMs` | `90` | `0..200` | Per-outer-loop-spin wall-clock cap on `GameServer.mainLoopDealWithNetData` (HIGH-priority + player-update + vehicle inbound drain combined). When a spin exceeds the cap, subsequent packets in that spin are dropped at the application level (already ACKed — RakNet does not retransmit them; the periodic update streams regenerate the state); the next spin starts fresh. Protects world-tick scheduling and the RakNet outbound send buffer during reconnect storms. `0` disables (vanilla behaviour, no cap). Drops counted by `pz_netdata_dropped_total`. Never dropped: `VehicleRequest`, pre-join packets (connection not yet fully connected — the unretried login funnel), and the one-shot allowlist (`CreatePlayer`, `ConnectCoop`, `TimeSync`, `RequestData`, `NetTimedAction`, `BuildAction`, `FishingAction`). |
 | `Storm.PeerSendBufferKickMb` | `20` | `0..1000` | Per-peer HIGH-priority RakNet send-buffer threshold (MB) above which Storm force-disconnects the peer after `Storm.PeerSendBufferKickHoldTicks` consecutive ticks. Protects the server from OOM when a peer on a saturated/lossy uplink accumulates the server's broadcast firehose (PZ has no backpressure in the HIGH send paths). `0` disables the watchdog (per-peer telemetry still populates). |
 | `Storm.PeerSendBufferKickHoldTicks` | `50` | `1..6000` | Consecutive server ticks a peer's HIGH send buffer must stay above the kick threshold before disconnect fires. At vanilla 10 TPS, 50 ticks = 5 s. Has no effect when `Storm.PeerSendBufferKickMb = 0`. |
-| `Storm.ScreenshotPiecesPerPacket` | `4` | `1..28` | Wire framing only: base64 pieces (24573 raw bytes each) packed into a single `sendClientCommand` packet when a client uploads a `/screenshot` back to the server. **Not** the throttle — disconnect safety is governed by `Storm.ScreenshotUploadKbPerSec`. `4` ≈ 131 KB/packet. Hard ceiling 28 (~918 KB/packet, ~82 KB headroom under vanilla `UdpConnection`'s 1 MB outbound buffer); 30+ throws `BufferOverflowException` mid-send. |
-| `Storm.ScreenshotUploadKbPerSec` | `128` | `8..4096` | Wall-clock throughput cap (KiB/s of base64 wire bytes) on a client's `/screenshot` upload. **The disconnect fix.** Keeps the upload well under the player's uplink so RakNet ACK/keepalive traffic keeps flowing; without it a large-resolution screenshot builds a reliable-ordered send backlog longer than RakNet's ~10 s connection timeout (never overridden from its native default) and the player is dropped with "Connection Lost" — the backlog scaling with resolution is why large monitors broke. `128` (~1 Mbit) is safe on virtually any home uplink; raise on low-latency wired networks. A 4K capture may take a minute or more at the default, invisibly in the background. |
-| `Storm.ScreenshotEncodeKbPerTick` | `4` | `1..64` | Ceiling on source KiB base64-encoded per client tick during a `/screenshot` upload. **The client-lag fix.** Base64 runs on the single Lua main thread, so encoding a whole 24 KB piece per frame stalled rendering for the entire upload; encoding is also demand-driven (pauses once packets are buffered ahead of the throttled sender), so most ticks do little work. Lower = smoother frames; higher = faster encode but larger per-frame hitches. |
 | `Storm.ReapStalledConnectionSeconds` | `600` | `60..7200` | Wall-clock budget a connection gets to finish logging in **and spawn** before the stalled-connection reaper drops it and frees its RakNet slot — the sandbox mirror of `-Dstorm.reapStalledConnectionMs` (see [JVM flags](#jvm-flags) for the full exemption list: login queue, co-op approval, Google auth, active chunk download). Live-appliable: an admin sandbox push takes effect on the next sweep, no restart. **Precedence:** when `-Dstorm.reapStalledConnectionMs` is set on the server JVM, the flag always wins and this option is ignored (logged at INFO on every apply). |
 | `Storm.ZombieSightVehicleFastPath` | `true` | boolean | Chunk-windowed fast path for the zombie-sight vehicle-occlusion test (`IsoZombie.isVehicleBetween`). Vanilla scans every loaded vehicle (two matrix inversions each) per zombie sight roll; the fast path tests only vehicles near the ≤20-tile sight segment and skips entirely when the result is provably unused. Behavior-preserving; ~14% of main-thread CPU on vehicle-heavy servers. Set `false` to restore the vanilla scan (live-appliable via admin sandbox push). |
 | `Storm.PlayerLosFastPath` | `true` | boolean | Distance-culled, server-stripped fast path for `IsoPlayer.updateLOS()`. Vanilla walks every moving object in the loaded cell per player per tick; the fast path skips objects outside the player's 96×96 visibility window before any cast/visibility work and drops client-only bookkeeping (alpha targets, `musicZombies*`, jump-scare state) that nothing server-side reads. Spotting, panic, and boredom outputs are vanilla-exact. ~18% of main-thread CPU on a full server. Set `false` to restore the vanilla loop (live-appliable via admin sandbox push); the fast path also auto-reverts permanently if it ever throws. |
@@ -74,8 +97,7 @@ The matching `storm_*` Prometheus gauges (`storm_server_tick_interval_seconds`,
 `storm_inventory_item_sweep_tick_interval`, `storm_max_total_zombies`,
 `storm_server_los_threads`, `storm_netdata_cap_ms`,
 `storm_peer_send_buffer_kick_mb`, `storm_peer_send_buffer_kick_hold_ticks`,
-`storm_screenshot_pieces_per_packet`, `storm_screenshot_upload_kb_per_sec`,
-`storm_screenshot_encode_kb_per_tick`, `storm_connection_reap_timeout_seconds`,
+`storm_connection_reap_timeout_seconds`,
 `storm_zombie_sight_vehicle_fast_path`, `storm_player_los_fast_path`,
 `storm_using_player_sweep_fast_path`, `storm_fluid_container_update_fast_path`,
 `storm_ecs_class_cache`, `storm_cell_unload_budget_per_tick`,

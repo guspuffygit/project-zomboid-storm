@@ -32,12 +32,13 @@ import zombie.network.ServerOptions;
 
 /**
  * Posts a one-shot startup snapshot to a hardcoded Discord webhook on {@code OnServerStarted}:
- * public IP, machine specs, Storm settings, and the server's {@code Mods} / {@code WorkshopItems}
- * lists from {@link ServerOptions}.
+ * machine specs, Storm settings, and the server's {@code Mods} / {@code WorkshopItems} lists from
+ * {@link ServerOptions}.
  *
  * <p>The dump runs on a daemon thread; HTTP failures are logged and swallowed so analytics can't
- * delay or break server startup. The hardcoded webhook URL is intentional — analytics is always on
- * for any server running this Storm build.
+ * delay or break server startup. The hardcoded webhook URL is intentional — analytics is on by
+ * default for any server running this Storm build; operators opt out with {@code
+ * -DDISABLE_ANALYTICS=true}, and the startup log states which way it went.
  */
 public final class StormStartupAnalytics {
 
@@ -53,8 +54,6 @@ public final class StormStartupAnalytics {
                         StandardCharsets.UTF_8);
         return "https://" + host + path;
     }
-
-    static final String PUBLIC_IP_URL = "https://api.ipify.org";
 
     static final String DISABLE_ANALYTICS_PROPERTY = "DISABLE_ANALYTICS";
 
@@ -79,6 +78,12 @@ public final class StormStartupAnalytics {
             LOGGER.info("Storm startup analytics: disabled via -D{}", DISABLE_ANALYTICS_PROPERTY);
             return;
         }
+        LOGGER.info(
+                "Storm startup analytics: enabled — posting a one-time server snapshot (Storm/PZ"
+                        + " version, server name, OS/CPU/RAM, Storm settings, {} lists) to the"
+                        + " Storm developers. Disable with -D{}=true.",
+                String.join(" and ", POSTED_SERVER_OPTIONS),
+                DISABLE_ANALYTICS_PROPERTY);
         Thread t = new Thread(StormStartupAnalytics::collectAndPost, "Storm-StartupAnalytics");
         t.setDaemon(true);
         t.start();
@@ -87,9 +92,8 @@ public final class StormStartupAnalytics {
     private static void collectAndPost() {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         try {
-            String publicIp = fetchPublicIp(client);
             List<String> sections = new ArrayList<>();
-            sections.add(formatHeader(publicIp));
+            sections.add(formatHeader());
             sections.add(formatMachine());
             sections.add(formatStorm());
             sections.add(formatServerOptions());
@@ -104,32 +108,13 @@ public final class StormStartupAnalytics {
         }
     }
 
-    static String fetchPublicIp(HttpClient client) {
-        try {
-            HttpRequest req =
-                    HttpRequest.newBuilder(URI.create(PUBLIC_IP_URL))
-                            .timeout(Duration.ofSeconds(10))
-                            .GET()
-                            .build();
-            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                return resp.body().trim();
-            }
-            return "(ipify returned HTTP " + resp.statusCode() + ")";
-        } catch (Exception e) {
-            return "(failed: " + e.getMessage() + ")";
-        }
-    }
-
-    private static String formatHeader(String publicIp) {
+    private static String formatHeader() {
         return "**Storm server started** — `"
                 + StormVersion.getVersion()
                 + "`\nPZ version: `"
                 + Core.getInstance().getVersion()
                 + "`\nServer: `"
                 + ServerOptions.getInstance().publicName.getValue()
-                + "` @ `"
-                + publicIp
                 + "`";
     }
 

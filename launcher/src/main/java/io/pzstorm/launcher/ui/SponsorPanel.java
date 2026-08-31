@@ -1,6 +1,5 @@
 package io.pzstorm.launcher.ui;
 
-import io.pzstorm.launcher.A2sInfo;
 import io.pzstorm.launcher.Log;
 import java.awt.Cursor;
 import java.awt.Desktop;
@@ -14,8 +13,6 @@ import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.net.URI;
-import java.util.Timer;
-import java.util.TimerTask;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -23,23 +20,18 @@ import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
 
 /**
- * Sponsored card for the bottom of the detail pane: After The Fall (PvPvE), with a live player
- * count polled over Valve's A2S protocol on the server's own game port, a Discord invite link, and
- * a one-click "Play on ATF" profile setup (the window owns the profile flow; see the constructor).
+ * Sponsored card for the bottom of the detail pane: After The Fall (PvPvE), with a Discord invite
+ * link and a one-click "Play on ATF" profile setup (the window owns the profile flow; see the
+ * constructor). Deliberately no live player count: polling the server would send the user's IP to a
+ * third party they never chose, so the card goes on the network only when a link is clicked.
  */
 public final class SponsorPanel extends JPanel {
 
     public static final String ATF_HOST = "40.160.20.9";
     public static final int ATF_PORT = 16261;
     private static final String DISCORD_URL = "https://discord.gg/after-the-fall";
-
-    /** The spec says "every 5 to 10 minutes"; 7 keeps the poll rare and the count fresh enough. */
-    private static final long REFRESH_MILLIS = 7 * 60_000L;
-
-    private static final int QUERY_TIMEOUT_MILLIS = 4_000;
 
     /**
      * Logical logo edge. On a HiDPI display Swing scales this up, so the sponsor's art should be
@@ -96,8 +88,6 @@ public final class SponsorPanel extends JPanel {
         text.setAlignmentY(CENTER_ALIGNMENT);
         add(text);
         add(Box.createHorizontalGlue());
-
-        startRefresh();
     }
 
     @Override
@@ -105,37 +95,6 @@ public final class SponsorPanel extends JPanel {
         // BoxLayout stretches to maximum size; stretch across the pane but never grow taller,
         // so the glue above keeps this card pinned to the bottom.
         return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
-    }
-
-    private void startRefresh() {
-        Timer timer = new Timer("atf-sponsor-refresh", true);
-        timer.schedule(
-                new TimerTask() {
-                    @Override
-                    public void run() {
-                        refresh();
-                    }
-                },
-                0,
-                REFRESH_MILLIS);
-    }
-
-    private void refresh() {
-        A2sInfo.Result info = A2sInfo.query(ATF_HOST, ATF_PORT, QUERY_TIMEOUT_MILLIS);
-        // HTML so only the count is green; unwrapped text inherits the label's dim foreground
-        String text =
-                info == null
-                        ? "PvPvE server  ·  server offline"
-                        : "<html>PvPvE server  ·  <font color='"
-                                + hex(StormTheme.SUCCESS)
-                                + "'>"
-                                + info.players
-                                + " online</font></html>";
-        SwingUtilities.invokeLater(() -> playersLabel.setText(text));
-    }
-
-    private static String hex(java.awt.Color c) {
-        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 
     private static JLabel link(String text, Runnable action) {

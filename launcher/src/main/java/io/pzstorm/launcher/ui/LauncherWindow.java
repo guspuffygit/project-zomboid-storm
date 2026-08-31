@@ -8,6 +8,7 @@ import io.pzstorm.launcher.LauncherConfig;
 import io.pzstorm.launcher.LauncherInfo;
 import io.pzstorm.launcher.LauncherPaths;
 import io.pzstorm.launcher.Log;
+import io.pzstorm.launcher.PrivacyPolicy;
 import io.pzstorm.launcher.ServerProfile;
 import io.pzstorm.launcher.ServerStore;
 import io.pzstorm.launcher.SteamRestartRequiredException;
@@ -178,6 +179,8 @@ public final class LauncherWindow extends JFrame {
         header.add(version);
         header.add(Box.createHorizontalGlue());
         header.add(ghost("Send Logs", this::onSendLogs));
+        header.add(Box.createHorizontalStrut(4));
+        header.add(ghost("Privacy", this::onPrivacy));
         header.add(Box.createHorizontalStrut(4));
         header.add(ghost("Settings", this::onSettings));
         header.add(Box.createHorizontalStrut(4));
@@ -420,6 +423,11 @@ public final class LauncherWindow extends JFrame {
     /** Uploads metadata + zipped launcher/game/Zomboid/Storm logs to the Storm team's Discord. */
     private void onSendLogs() {
         SendLogsDialog.open(this, config);
+    }
+
+    /** Re-reads the accepted Terms of Use & Privacy Policy. */
+    private void onPrivacy() {
+        TermsDialog.view(this, PrivacyPolicy.current());
     }
 
     private void onQuit() {

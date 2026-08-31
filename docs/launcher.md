@@ -476,10 +476,37 @@ Alternatively, *Add a Non-Steam Game* pointing at `StormLauncher.bat` gives
 the launcher its own library entry; the game still authenticates through the
 running Steam client either way.
 
+## Terms of Use & Privacy Policy
+
+The launcher will not launch the game, talk to Steam, or go on the network
+until the player has accepted the current Terms of Use & Privacy Policy. The
+document is `launcher/src/main/resources/privacy-policy.txt`;
+`PrivacyPolicy` loads it and `TermsDialog` shows it. On first start
+the consent dialog blocks the UI (and a `--join` from Steam Launch Options)
+with a "read and agree" checkbox; declining exits with status 3. Acceptance
+is recorded in `launcher.json` as `termsAccepted` (`version`, `sha256`,
+`acceptedAt`).
+
+The identity that gates the launcher is the **SHA-256 of the normalized
+document text**, not the `Version:` header, so *any* edit to the file —
+including one nobody remembered to version — re-prompts every player with
+"the terms have changed" wording on their next start; the header line is
+purely for humans reading the acceptance record, so keep it in step with real
+revisions. The *Privacy* header button re-opens the accepted document
+read-only. A JVM with no display cannot prompt: scripted `--join` runs accept
+once with `--accept-terms` (prints the document, records acceptance, exits).
+
+The same file is copied into `storm.jar` by the core project's
+`processResources` and logged at every Storm JVM boot by `StormPrivacyNotice`
+(see [Startup analytics & privacy notice](server-configuration.md#startup-analytics--privacy-notice)),
+so dedicated-server operators — who never see the launcher dialog — get the
+notice in their server log.
+
 ## Headless / scripting
 
 ```
 java -jar storm-launcher.jar --list
+java -jar storm-launcher.jar --accept-terms
 java -jar storm-launcher.jar --print-launch <name|host:port>
 java -jar storm-launcher.jar --join <name|host:port>
 ```
