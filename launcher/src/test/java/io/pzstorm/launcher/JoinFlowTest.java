@@ -153,6 +153,24 @@ class JoinFlowTest {
     }
 
     @Test
+    void localStormVersionPicksTheNewestWhenSteamLeftAStaleJarBehind() throws IOException {
+        // field case h7bqizi857: storm-42.20.3_2.7.3.jar lingering next to the current jar
+        // sorts first and used to be reported as the installed version
+        LauncherConfig config = configWithStorm("42.20.4_2.8.0");
+        Path lib = Path.of(config.bootstrapDir).getParent().resolve("42").resolve("lib");
+        Files.createFile(lib.resolve("storm-42.20.3_2.7.3.jar"));
+        assertEquals("42.20.4_2.8.0", JoinFlow.localStormVersion(config));
+
+        // release outranks snapshot at the same version
+        Files.createFile(lib.resolve("storm-42.20.4_2.8.0-SNAPSHOT.jar"));
+        assertEquals("42.20.4_2.8.0", JoinFlow.localStormVersion(config));
+
+        // an unparseable digit-leading name is still better than nothing
+        LauncherConfig custom = configWithStorm("42dev");
+        assertEquals("42dev", JoinFlow.localStormVersion(custom));
+    }
+
+    @Test
     void supportsLauncherIntegrationComparesTheStormSegment() {
         assertFalse(JoinFlow.supportsLauncherIntegration(null), "no Storm: only +connect works");
         assertFalse(JoinFlow.supportsLauncherIntegration("42.20.2_2.5.0-SNAPSHOT"));

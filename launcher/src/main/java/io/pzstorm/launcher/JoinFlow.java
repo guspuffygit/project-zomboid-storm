@@ -158,6 +158,10 @@ public final class JoinFlow {
         if (scan != null && result.childRan) {
             repairInstallStampDesync(config, scan, items);
         }
+        // A storm jar Steam left behind after a rename-update inflates the item's byte total;
+        // pruning it here keeps the size check from cancelling the join over our own leftovers
+        // (the GameLaunch-time cleanup runs too late — the check would throw first).
+        StaleStormJarCleanup.run(config.resolveBootstrapDir(config.resolveGameDir()));
         repairContentSizeDesync(config, items);
     }
 
@@ -415,17 +419,37 @@ public final class JoinFlow {
                             + " alone.");
             return;
         }
+        List<Path> undeletable = new ArrayList<>();
         try (java.util.stream.Stream<Path> tree = Files.walk(dir)) {
             for (Path p : tree.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    // one locked file (e.g. a ~RF*.TMP rename-temp) must not preserve the
+                    // rest of the tree — keep deleting so Steam has as little stale content
+                    // to reconcile as possible
+                    undeletable.add(p);
+                }
             }
-            Log.info("Deleted " + dir + " so Steam performs a real re-download.");
         } catch (IOException e) {
             Log.warn(
                     "Could not delete "
                             + dir
                             + ": "
                             + e.getMessage()
+                            + " — Steam may skip the re-download.");
+            return;
+        }
+        if (undeletable.isEmpty()) {
+            Log.info("Deleted " + dir + " so Steam performs a real re-download.");
+        } else {
+            Log.warn(
+                    "Deleted "
+                            + dir
+                            + " except "
+                            + undeletable.size()
+                            + " locked path(s), first: "
+                            + undeletable.get(0)
                             + " — Steam may skip the re-download.");
         }
     }
@@ -969,13 +993,27 @@ public final class JoinFlow {
             return null;
         }
         try (DirectoryStream<Path> jars = Files.newDirectoryStream(libDir, "storm-*.jar")) {
+            // a stale jar Steam left behind can sort first; report the newest one, which is
+            // what the bootstrap will actually load once the stale ones are cleaned up
+            String best = null;
+            StaleStormJarCleanup.JarVersion bestVer = null;
             for (Path jar : jars) {
                 String name = jar.getFileName().toString();
                 String version = name.substring("storm-".length(), name.length() - 4);
-                if (!version.isEmpty() && Character.isDigit(version.charAt(0))) {
-                    return version;
+                if (version.isEmpty() || !Character.isDigit(version.charAt(0))) {
+                    continue;
+                }
+                StaleStormJarCleanup.JarVersion ver = StaleStormJarCleanup.parse(name);
+                if (best == null
+                        || (ver != null
+                                && (bestVer == null
+                                        || StaleStormJarCleanup.compareVersions(ver, bestVer)
+                                                > 0))) {
+                    best = version;
+                    bestVer = ver;
                 }
             }
+            return best;
         } catch (IOException ignored) {
             // purely informational; skew check just gets skipped
         }
