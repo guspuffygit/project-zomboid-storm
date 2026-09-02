@@ -29,6 +29,7 @@ import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
 import io.pzstorm.storm.patch.fixes.ActionGroupSyncPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
+import io.pzstorm.storm.patch.fixes.AdvancedAnimatorMissingFolderPatch;
 import io.pzstorm.storm.patch.fixes.AnimalZoneContainmentPatch;
 import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
 import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
@@ -388,6 +389,7 @@ public class StormClassTransformers {
             // vehicle load permanently deletes the vehicle from vehicles.db.
             registerTransformer(new AnimationSetLockPatch());
             registerTransformer(new RefreshAnimSetsLockPatch());
+            registerTransformer(new AdvancedAnimatorMissingFolderPatch());
             registerTransformer(new ActionGroupSyncPatch());
             registerTransformer(new AssetManagerSyncPatch());
         }
