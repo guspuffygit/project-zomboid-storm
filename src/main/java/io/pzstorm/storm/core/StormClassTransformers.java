@@ -144,6 +144,7 @@ import io.pzstorm.storm.patch.performance.GlobalModDataSavePatch;
 import io.pzstorm.storm.patch.performance.ImportantAreaManagerProcessPatch;
 import io.pzstorm.storm.patch.performance.IngameStateUpdatePatch;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepStridePatch;
+import io.pzstorm.storm.patch.performance.IsoAnimalReattachBackToMomCellAnimalsMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
 import io.pzstorm.storm.patch.performance.IsoCellGetAnimalsPatch;
@@ -172,6 +173,7 @@ import io.pzstorm.storm.patch.performance.IsoGameCharacterEcsMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterInvWeightMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterIsRagdollPatch;
 import io.pzstorm.storm.patch.performance.IsoGameCharacterRagdollMirrorsPatch;
+import io.pzstorm.storm.patch.performance.IsoGameCharacterUpdateEmitterServerSkipPatch;
 import io.pzstorm.storm.patch.performance.IsoGeneratorElectricityPatch;
 import io.pzstorm.storm.patch.performance.IsoGridSquareLosParallelPatch;
 import io.pzstorm.storm.patch.performance.IsoLightSwitchElectricityMemoPatch;
@@ -350,6 +352,9 @@ public class StormClassTransformers {
         registerTransformer(new BaseVehicleSavePatch());
         registerTransformer(new SitOnFurnitureBoxedInChairPatch());
         registerTransformer(new InventoryItemStoreByteDataPatch());
+        if (StormEnv.isStormServer() || Boolean.getBoolean("storm.experimental.clientperf")) {
+            registerTransformer(new AnimationPlayerRecorderIsActivePatch());
+        }
         if (Boolean.getBoolean("storm.experimental.clientperf")) {
             registerTransformer(new EcsComponentGetClassMemoPatch());
             registerTransformer(new IsoLightSwitchElectricityMemoPatch());
@@ -362,7 +367,6 @@ public class StormClassTransformers {
             registerTransformer(new AnimationVariableReferenceGetVariablePatch());
             registerTransformer(new IsoGameCharacterIsRagdollPatch());
             registerTransformer(new IsoGameCharacterRagdollMirrorsPatch());
-            registerTransformer(new AnimationPlayerRecorderIsActivePatch());
             registerTransformer(new KahluaTableRawgetPatch());
             registerTransformer(new EventTriggerFastPathPatch());
             registerTransformer(new CutawayLevelDataArrayCachePatch());
@@ -550,6 +554,8 @@ public class StormClassTransformers {
             registerTransformer(new DesignationZoneAnimalGetAllDZonesPatch());
             registerTransformer(new IsoCellObjectDeletionAdditionPatch());
             registerTransformer(new IsoCellGetAnimalsPatch());
+            registerTransformer(new IsoAnimalReattachBackToMomCellAnimalsMemoPatch());
+            registerTransformer(new IsoGameCharacterUpdateEmitterServerSkipPatch());
             registerTransformer(new IsoDeadBodyUpdateBodiesPatch());
             registerTransformer(new FishSchoolManagerUpdatePatch());
             registerTransformer(new WorldSimulationUpdatePatch());

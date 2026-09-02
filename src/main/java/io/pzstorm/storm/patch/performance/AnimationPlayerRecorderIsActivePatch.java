@@ -8,14 +8,16 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * EXPERIMENTAL, CLIENT-SIDE, opt-in via {@code -Dstorm.experimental.clientperf=true}. This is a
- * deliberate, user-approved exception to the no-client-patches rule — do not use it as precedent,
- * and do not register it outside the experimental gate.
- *
- * <p>Skips the synchronized-block entry in {@code
- * AnimationPlayerRecorder.isAnimationRecorderActive(IsoMovingObject)} when the recorder is fully
- * inactive (default in normal gameplay). See {@link
+ * Short-circuits {@code AnimationPlayerRecorder.isAnimationRecorderActive(IsoMovingObject)} when
+ * the debug animation recorder is fully inactive — the default in normal gameplay on both the
+ * client and the dedicated server. See {@link
  * io.pzstorm.storm.advice.animationplayerrecorderisactive.AnimationPlayerRecorderIsActiveAdvice}.
+ *
+ * <p>Registered on the server unconditionally and on the client behind {@code
+ * -Dstorm.experimental.clientperf=true}. The check is reached per moving object per tick from
+ * {@code IsoMovingObject.updateAnimationRecorder()} and per vehicle from {@code
+ * BaseVehicle.update}; with the recorder off, vanilla still walks every player slot before
+ * concluding "no".
  */
 public class AnimationPlayerRecorderIsActivePatch extends StormClassTransformer {
 
