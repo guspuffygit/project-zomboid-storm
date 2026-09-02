@@ -1,6 +1,6 @@
 package io.pzstorm.storm.advice.statsget;
 
-import java.util.Map;
+import io.pzstorm.storm.characters.StormIndexedMaps;
 import net.bytebuddy.asm.Advice;
 import zombie.characters.CharacterStat;
 
@@ -13,13 +13,13 @@ import zombie.characters.CharacterStat;
  * showed this single autobox dominating main-thread allocation (~92% of pressure), driven by
  * per-tick LOS calls into {@code IsoGameCharacter.getDetectionRange} for every remote player.
  *
- * <p>The advice replaces the body with a {@code Map.get} + null-check, so the default is only
- * computed (and never boxed) on a map miss. The storage path ({@code Stats.set}) still boxes once
- * per write, but writes are several orders of magnitude rarer than reads.
+ * <p>The advice replaces the body with {@link StormIndexedMaps#getFloat}: one array read on the
+ * character's {@link io.pzstorm.storm.characters.StormIndexedMap} (the {@code stats} field is
+ * redirected there by {@code StatsGetPatch}), unboxed, with the default only used on a miss. The
+ * storage path ({@code Stats.set}) still boxes once per write, as vanilla does.
  *
  * <p>Pattern: enter advice always returns {@code true} to skip the original body; exit advice
- * writes the computed value via {@code @Advice.Return(readOnly = false)}. Same shape as {@link
- * io.pzstorm.storm.patch.rendering.UIWorldMapV1Patch.GetOptionByIndexAdvice}.
+ * writes the computed value via {@code @Advice.Return(readOnly = false)}.
  */
 public class StatsGetAdvice {
 
@@ -30,14 +30,9 @@ public class StatsGetAdvice {
 
     @Advice.OnMethodExit
     public static void onExit(
+            @Advice.This Object self,
             @Advice.Argument(0) CharacterStat stat,
-            @Advice.FieldValue("stats") Map<CharacterStat, Float> stats,
             @Advice.Return(readOnly = false) float ret) {
-        Float v = stats.get(stat);
-        if (v != null) {
-            ret = v.floatValue();
-        } else {
-            ret = stat.getDefaultValue();
-        }
+        ret = StormIndexedMaps.getFloat(self, stat, stat.getDefaultValue());
     }
 }

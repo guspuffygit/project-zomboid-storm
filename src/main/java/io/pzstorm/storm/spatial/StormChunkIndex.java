@@ -46,6 +46,10 @@ public final class StormChunkIndex {
         int cx;
         int cy;
         final Object[][] items = new Object[NUM_TYPES][];
+
+        /** Packed integer tile position of each item (see {@link #packPos}), parallel to items. */
+        final long[][] pos = new long[NUM_TYPES][];
+
         final int[] counts = new int[NUM_TYPES];
 
         void reset(int cx, int cy) {
@@ -59,17 +63,23 @@ public final class StormChunkIndex {
             }
         }
 
-        void add(int type, Object o) {
+        void add(int type, Object o, long packedPos) {
             Object[] arr = items[type];
+            long[] p = pos[type];
             int n = counts[type];
             if (arr == null) {
                 arr = new Object[INITIAL_ITEMS_CAPACITY];
+                p = new long[INITIAL_ITEMS_CAPACITY];
                 items[type] = arr;
+                pos[type] = p;
             } else if (n == arr.length) {
                 arr = Arrays.copyOf(arr, n << 1);
+                p = Arrays.copyOf(p, n << 1);
                 items[type] = arr;
+                pos[type] = p;
             }
             arr[n] = o;
+            p[n] = packedPos;
             counts[type] = n + 1;
         }
     }
@@ -104,6 +114,19 @@ public final class StormChunkIndex {
         return ((long) cx << 32) | (cy & 0xFFFFFFFFL);
     }
 
+    /** Packs an integer tile position; the inverse is {@link #posX}/{@link #posY}. */
+    public static long packPos(int tx, int ty) {
+        return ((long) tx << 32) | (ty & 0xFFFFFFFFL);
+    }
+
+    public static int posX(long packedPos) {
+        return (int) (packedPos >> 32);
+    }
+
+    public static int posY(long packedPos) {
+        return (int) packedPos;
+    }
+
     /** Wipes the snapshot and stamps it with the tick it is being built for. */
     public void beginTick(long frame) {
         ready = false;
@@ -119,11 +142,16 @@ public final class StormChunkIndex {
         }
     }
 
-    /** Records {@code o} at tile position {@code (x, y)} under {@code type}. */
+    /**
+     * Records {@code o} at tile position {@code (x, y)} under {@code type}; the floored position is
+     * stored beside the object so {@link Cursor} can cull on it without touching the object.
+     */
     public void add(Object o, float x, float y, int type) {
-        int cx = chunkOf(x);
-        int cy = chunkOf(y);
-        bucketFor(cx, cy, true).add(type, o);
+        int tx = (int) Math.floor(x);
+        int ty = (int) Math.floor(y);
+        int cx = Math.floorDiv(tx, CHUNK_SIZE);
+        int cy = Math.floorDiv(ty, CHUNK_SIZE);
+        bucketFor(cx, cy, true).add(type, o, packPos(tx, ty));
         typeTotals[type]++;
         size++;
     }
@@ -217,6 +245,154 @@ public final class StormChunkIndex {
             for (int i = 0; i < n; i++) {
                 out.add(arr[i]);
             }
+        }
+    }
+
+    /** A reusable in-place walker over this index; see {@link Cursor}. */
+    public Cursor newCursor() {
+        return new Cursor();
+    }
+
+    /**
+     * Walks the objects of an inclusive tile rectangle in place — no candidate list, no copy — and
+     * culls on the snapshot position stored beside each object, so an object outside the rectangle
+     * costs one {@code long} read from a contiguous array and never a dereference. {@link #begin}
+     * derives the covering chunk rectangle; {@link #next} returns the next object whose snapshot
+     * tile lies inside the tile rectangle, or {@code null} when exhausted; {@link #culled} counts
+     * the objects in the chunk rectangle that the tile test rejected. Not valid across {@link
+     * StormChunkIndex#beginTick}; call {@link #end} when done so no world objects stay pinned.
+     */
+    public final class Cursor {
+        private int cx0;
+        private int cy0;
+        private int cx1;
+        private int cy1;
+        private int typeMask;
+        private int tileMinX;
+        private int tileMinY;
+        private int tileMaxX;
+        private int tileMaxY;
+
+        private boolean active;
+        private boolean scanAll;
+        private int cellX;
+        private int cellY;
+        private int bucketPos;
+        private Bucket bucket;
+        private int type;
+        private Object[] arr;
+        private long[] pos;
+        private int n;
+        private int i;
+        private int culled;
+
+        private Cursor() {}
+
+        /** Starts a walk over every object of a type in {@code typeMask} inside the tile rect. */
+        public void begin(int tileMinX, int tileMinY, int tileMaxX, int tileMaxY, int typeMask) {
+            this.tileMinX = tileMinX;
+            this.tileMinY = tileMinY;
+            this.tileMaxX = tileMaxX;
+            this.tileMaxY = tileMaxY;
+            this.typeMask = typeMask;
+            cx0 = chunkOf(tileMinX);
+            cy0 = chunkOf(tileMinY);
+            cx1 = chunkOf(tileMaxX);
+            cy1 = chunkOf(tileMaxY);
+            culled = 0;
+            bucket = null;
+            arr = null;
+            pos = null;
+            n = 0;
+            i = 0;
+            type = NUM_TYPES;
+            bucketPos = 0;
+            cellX = cx0;
+            cellY = cy0;
+            active = bucketCount > 0 && cx1 >= cx0 && cy1 >= cy0;
+            scanAll = active && (long) (cx1 - cx0 + 1) * (long) (cy1 - cy0 + 1) > bucketCount;
+        }
+
+        /** Next object inside the tile rect, or {@code null} once the walk is exhausted. */
+        public Object next() {
+            while (true) {
+                while (i < n) {
+                    int k = i++;
+                    long p = pos[k];
+                    int tx = posX(p);
+                    int ty = posY(p);
+                    if (tx < tileMinX || tx > tileMaxX || ty < tileMinY || ty > tileMaxY) {
+                        culled++;
+                        continue;
+                    }
+                    return arr[k];
+                }
+                if (bucket != null) {
+                    while (++type < NUM_TYPES) {
+                        if ((typeMask & (1 << type)) != 0 && bucket.counts[type] > 0) {
+                            arr = bucket.items[type];
+                            pos = bucket.pos[type];
+                            n = bucket.counts[type];
+                            i = 0;
+                            break;
+                        }
+                    }
+                    if (type < NUM_TYPES) {
+                        continue;
+                    }
+                }
+                Bucket b = nextBucket();
+                if (b == null) {
+                    return null;
+                }
+                bucket = b;
+                type = -1;
+                n = 0;
+                i = 0;
+            }
+        }
+
+        private Bucket nextBucket() {
+            if (!active) {
+                return null;
+            }
+            if (scanAll) {
+                while (bucketPos < bucketCount) {
+                    Bucket b = buckets[bucketPos++];
+                    if (b.cx >= cx0 && b.cx <= cx1 && b.cy >= cy0 && b.cy <= cy1) {
+                        return b;
+                    }
+                }
+                active = false;
+                return null;
+            }
+            while (cellY <= cy1) {
+                Bucket b = bucketFor(cellX, cellY, false);
+                if (++cellX > cx1) {
+                    cellX = cx0;
+                    cellY++;
+                }
+                if (b != null) {
+                    return b;
+                }
+            }
+            active = false;
+            return null;
+        }
+
+        /** Objects in the chunk rectangle whose snapshot tile fell outside the tile rectangle. */
+        public int culled() {
+            return culled;
+        }
+
+        /** Releases bucket references; the cursor can be reused with {@link #begin}. */
+        public void end() {
+            active = false;
+            bucket = null;
+            arr = null;
+            pos = null;
+            n = 0;
+            i = 0;
         }
     }
 

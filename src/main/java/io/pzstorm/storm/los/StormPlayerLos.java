@@ -5,12 +5,12 @@ import io.pzstorm.storm.logging.StormLogger;
 import io.pzstorm.storm.metrics.PlayerLosFastPathMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import io.pzstorm.storm.spatial.StormChunkIndex;
-import io.pzstorm.storm.spatial.StormObjectList;
 import io.pzstorm.storm.spatial.StormSpatialIndex;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Iterator;
 import java.util.Stack;
 import zombie.GameTime;
 import zombie.MovingObjectUpdateScheduler;
@@ -77,12 +77,14 @@ import zombie.vehicles.BaseVehicle;
  * throws.
  *
  * <p><b>Candidate source.</b> When the shared per-tick {@link StormSpatialIndex} snapshot is
- * published for the current scheduler frame, the loop walks only the objects bucketed in the chunk
- * rectangle covering the (slack-widened) visibility cube plus {@link #SNAPSHOT_SLACK_CHUNKS} of
- * movement slack, instead of the whole {@code IsoCell.objectList}. The per-object cube cull and
- * every downstream check still run against live positions, so the result is identical to the full
- * walk for any object that moved less than a chunk since tick start; if the index is not ready
- * (rebuild failed this tick, or patch not woven) the full walk runs as before.
+ * published for the current scheduler frame, the loop walks the snapshot in place through a {@link
+ * StormChunkIndex.Cursor} over the visibility cube widened by {@link #CULL_SLACK} plus {@link
+ * #SNAPSHOT_SLACK_TILES} of movement slack — no candidate list is built, and an object outside that
+ * rectangle is rejected on the tile position stored beside it in the snapshot without ever being
+ * dereferenced. The per-object cube cull and every downstream check still run against live
+ * positions, so the result is identical to the full walk for any object that moved less than a
+ * chunk since tick start; if the index is not ready (rebuild failed this tick, or patch not woven)
+ * the full walk over {@code IsoCell.objectList} runs as before.
  *
  * <p>Single-threaded by design: {@code IsoPlayer.updateLOS()} only runs on the server main thread
  * (via {@code ServerLOS.updateLOS}), so the counters, scratch list and latch need no
@@ -101,13 +103,14 @@ public final class StormPlayerLos {
     private static final int CULL_SLACK = 1;
 
     /**
-     * Chunks of tolerance added around the cube's chunk rectangle when querying the spatial index,
-     * covering movement between the tick-start snapshot and this call.
+     * Tiles of tolerance added around the (already {@link #CULL_SLACK}-widened) cube when culling
+     * on snapshot positions, covering movement between the tick-start snapshot and this call. One
+     * chunk: anything short of teleportation.
      */
-    private static final int SNAPSHOT_SLACK_CHUNKS = 1;
+    private static final int SNAPSHOT_SLACK_TILES = StormChunkIndex.CHUNK_SIZE;
 
-    /** Candidate objects for the current call; main-thread only, reused across calls. */
-    private static final StormObjectList CANDIDATES = new StormObjectList(1024);
+    /** In-place walker over the spatial-index snapshot; main-thread only, reused across calls. */
+    private static final StormChunkIndex.Cursor CURSOR = StormSpatialIndex.newCursor();
 
     /**
      * Kill switch, driven by the {@code Storm.PlayerLosFastPath} sandbox option through {@link
@@ -186,7 +189,7 @@ public final class StormPlayerLos {
             return true;
         } catch (Throwable t) {
             failed = true;
-            CANDIDATES.clear();
+            CURSOR.end();
             StormLogger.LOGGER.error(
                     "StormPlayerLos failed — reverting to vanilla IsoPlayer.updateLOS", t);
             PlayerLosFastPathMetrics.recordVanilla();
@@ -247,11 +250,24 @@ public final class StormPlayerLos {
         // the Stack is arbitrary in vanilla (HashSet iteration), so adding self up front is
         // equivalent and keeps it present even if the snapshot missed a teleport.
         spottedList.add(player);
-        boolean indexed = gatherCandidates(player, minX, minY, xDim, yDim);
-        int candidateCount = CANDIDATES.size();
+        boolean indexed = beginCandidates(minX, minY, xDim, yDim);
+        Iterator<IsoMovingObject> fallback =
+                indexed ? null : player.getCell().getObjectList().iterator();
 
-        for (int ci = 0; ci < candidateCount; ci++) {
-            IsoMovingObject movingObject = (IsoMovingObject) CANDIDATES.get(ci);
+        while (true) {
+            IsoMovingObject movingObject;
+            if (indexed) {
+                Object candidate = CURSOR.next();
+                if (candidate == null) {
+                    break;
+                }
+                movingObject = (IsoMovingObject) candidate;
+            } else {
+                if (!fallback.hasNext()) {
+                    break;
+                }
+                movingObject = fallback.next();
+            }
             if (movingObject instanceof IsoPhysicsObject || movingObject instanceof BaseVehicle) {
                 continue;
             }
@@ -399,39 +415,35 @@ public final class StormPlayerLos {
         stats.lastNumVisibleZombies = stats.numVisibleZombies;
         stats.lastVeryCloseZombies = vclose;
 
-        CANDIDATES.clear();
+        if (indexed) {
+            culled += CURSOR.culled();
+            CURSOR.end();
+        }
         PlayerLosFastPathMetrics.recordOptimized(culled, processed, indexed);
     }
 
     /**
-     * Fills {@link #CANDIDATES} with the objects this call must examine: the spatial-index
-     * snapshot's contents for the chunk rectangle around the visibility cube when a snapshot for
-     * the current frame is published, otherwise the whole {@code objectList} (vanilla's set).
+     * Starts the candidate walk for this call: {@link #CURSOR} over the spatial-index snapshot when
+     * one is published for the current frame, otherwise nothing (the caller walks the whole {@code
+     * objectList}, vanilla's set). The cursor rectangle is the live cull rectangle ({@link
+     * #CULL_SLACK} around the cube) widened by {@link #SNAPSHOT_SLACK_TILES}, so every object the
+     * live cull could accept is inside it unless it moved more than a chunk since tick start.
      *
-     * @return {@code true} if the index supplied the candidates
+     * @return {@code true} if the index supplies the candidates
      */
-    private static boolean gatherCandidates(
-            IsoPlayer player, int minX, int minY, int xDim, int yDim) {
-        CANDIDATES.clear();
+    private static boolean beginCandidates(int minX, int minY, int xDim, int yDim) {
         long frame = MovingObjectUpdateScheduler.instance.getFrameCounter();
-        if (StormSpatialIndex.isReadyFor(frame)) {
-            int cx0 = StormChunkIndex.chunkOf(minX - CULL_SLACK) - SNAPSHOT_SLACK_CHUNKS;
-            int cy0 = StormChunkIndex.chunkOf(minY - CULL_SLACK) - SNAPSHOT_SLACK_CHUNKS;
-            int cx1 = StormChunkIndex.chunkOf(minX + xDim + CULL_SLACK) + SNAPSHOT_SLACK_CHUNKS;
-            int cy1 = StormChunkIndex.chunkOf(minY + yDim + CULL_SLACK) + SNAPSHOT_SLACK_CHUNKS;
-            StormSpatialIndex.collectChunkRect(
-                    cx0,
-                    cy0,
-                    cx1,
-                    cy1,
-                    StormChunkIndex.MASK_ALL & ~StormChunkIndex.MASK_VEHICLE,
-                    CANDIDATES);
-            return true;
+        if (!StormSpatialIndex.isReadyFor(frame)) {
+            return false;
         }
-        for (IsoMovingObject movingObject : player.getCell().getObjectList()) {
-            CANDIDATES.add(movingObject);
-        }
-        return false;
+        int slack = CULL_SLACK + SNAPSHOT_SLACK_TILES;
+        CURSOR.begin(
+                minX - slack,
+                minY - slack,
+                minX + xDim - 1 + slack,
+                minY + yDim - 1 + slack,
+                StormChunkIndex.MASK_ALL & ~StormChunkIndex.MASK_VEHICLE);
+        return true;
     }
 
     private static void ensureInit() throws ReflectiveOperationException {

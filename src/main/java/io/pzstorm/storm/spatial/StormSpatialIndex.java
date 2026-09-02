@@ -130,6 +130,14 @@ public final class StormSpatialIndex {
         return INDEX.collectChunkRect(cx0, cy0, cx1, cy1, typeMask, out);
     }
 
+    /**
+     * A reusable in-place walker over the shared snapshot; see {@link StormChunkIndex.Cursor}. Only
+     * valid while {@link #isReadyFor(long)} holds for the current frame.
+     */
+    public static StormChunkIndex.Cursor newCursor() {
+        return INDEX.newCursor();
+    }
+
     /** Objects of {@code type} in the current snapshot. */
     public static int totalOf(int type) {
         return INDEX.totalOf(type);

@@ -182,6 +182,130 @@ class StormChunkIndexTest implements UnitTest {
         }
     }
 
+    private static Set<Object> cursorCollect(
+            StormChunkIndex index, int tx0, int ty0, int tx1, int ty1, int mask, int[] culledOut) {
+        StormChunkIndex.Cursor cursor = index.newCursor();
+        cursor.begin(tx0, ty0, tx1, ty1, mask);
+        Set<Object> set = new HashSet<>();
+        int n = 0;
+        for (Object o = cursor.next(); o != null; o = cursor.next()) {
+            set.add(o);
+            n++;
+        }
+        assertEquals(n, set.size(), "no duplicates");
+        culledOut[0] = cursor.culled();
+        cursor.end();
+        return set;
+    }
+
+    @Test
+    void cursorReturnsExactTileRectAndCountsCulled() {
+        StormChunkIndex index = new StormChunkIndex();
+        index.beginTick(1);
+        Obj inside = new Obj(10.9F, 10.1F, 0);
+        Obj edgeMin = new Obj(5.0F, 5.0F, 0);
+        Obj edgeMax = new Obj(20.99F, 20.99F, 1);
+        Obj outsideSameChunk = new Obj(21.0F, 10F, 0);
+        Obj negInside = new Obj(-0.5F, 6F, 2);
+        Obj negOutside = new Obj(-1.5F, 6F, 2);
+        Obj maskedOut = new Obj(10F, 10F, 3);
+        for (Obj o :
+                new Obj[] {
+                    inside, edgeMin, edgeMax, outsideSameChunk, negInside, negOutside, maskedOut
+                }) {
+            index.add(o, o.x, o.y, o.type);
+        }
+        index.endTick();
+        int[] culled = new int[1];
+        Set<Object> got = cursorCollect(index, -1, 5, 20, 20, 0b0111, culled);
+        assertEquals(Set.of(inside, edgeMin, edgeMax, negInside), got);
+        assertEquals(2, culled[0], "outsideSameChunk and negOutside share chunks with the rect");
+        assertEquals(
+                Set.of(inside, edgeMin, outsideSameChunk),
+                cursorCollect(index, 0, 0, 30, 15, 0b0001, culled));
+        assertTrue(
+                cursorCollect(index, 100, 100, 200, 200, StormChunkIndex.MASK_ALL, culled)
+                        .isEmpty());
+        assertEquals(0, culled[0]);
+        assertTrue(cursorCollect(index, 20, 20, 5, 5, StormChunkIndex.MASK_ALL, culled).isEmpty());
+    }
+
+    @Test
+    void cursorIsReusableAndEndDropsReferences() {
+        StormChunkIndex index = new StormChunkIndex();
+        index.beginTick(1);
+        Obj a = new Obj(1F, 1F, 0);
+        index.add(a, a.x, a.y, a.type);
+        index.endTick();
+        StormChunkIndex.Cursor cursor = index.newCursor();
+        cursor.begin(0, 0, 3, 3, StormChunkIndex.MASK_ALL);
+        assertSame(a, cursor.next());
+        cursor.end();
+        assertEquals(null, cursor.next());
+        cursor.begin(0, 0, 3, 3, StormChunkIndex.MASK_ALL);
+        assertSame(a, cursor.next());
+        assertEquals(null, cursor.next());
+        cursor.end();
+        assertEquals(StormChunkIndex.packPos(-3, 7), StormChunkIndex.packPos(-3, 7));
+        assertEquals(-3, StormChunkIndex.posX(StormChunkIndex.packPos(-3, 7)));
+        assertEquals(7, StormChunkIndex.posY(StormChunkIndex.packPos(-3, 7)));
+        assertEquals(-7, StormChunkIndex.posY(StormChunkIndex.packPos(3, -7)));
+    }
+
+    @Test
+    void cursorRandomizedAgainstBruteForce() {
+        Random rng = new Random(7);
+        StormChunkIndex index = new StormChunkIndex();
+        for (int tick = 0; tick < 4; tick++) {
+            int n = tick == 0 ? 20_000 : 500 + rng.nextInt(9_000);
+            List<Obj> objs = new ArrayList<>(n);
+            index.beginTick(tick);
+            for (int i = 0; i < n; i++) {
+                Obj o =
+                        new Obj(
+                                (rng.nextFloat() - 0.5F) * 4000F,
+                                (rng.nextFloat() - 0.5F) * 4000F,
+                                rng.nextInt(StormChunkIndex.NUM_TYPES));
+                objs.add(o);
+                index.add(o, o.x, o.y, o.type);
+            }
+            index.endTick();
+            for (int q = 0; q < 200; q++) {
+                int tx0 = rng.nextInt(4200) - 2100;
+                int ty0 = rng.nextInt(4200) - 2100;
+                int tx1 = tx0 + rng.nextInt(q % 7 == 0 ? 5000 : 120);
+                int ty1 = ty0 + rng.nextInt(q % 7 == 0 ? 5000 : 120);
+                int mask = rng.nextInt(StormChunkIndex.MASK_ALL + 1);
+                Set<Object> expected = new HashSet<>();
+                int expectedCulled = 0;
+                int cx0 = StormChunkIndex.chunkOf(tx0);
+                int cy0 = StormChunkIndex.chunkOf(ty0);
+                int cx1 = StormChunkIndex.chunkOf(tx1);
+                int cy1 = StormChunkIndex.chunkOf(ty1);
+                for (Obj o : objs) {
+                    if ((mask & (1 << o.type)) == 0) {
+                        continue;
+                    }
+                    int tx = (int) Math.floor(o.x);
+                    int ty = (int) Math.floor(o.y);
+                    int cx = StormChunkIndex.chunkOf(o.x);
+                    int cy = StormChunkIndex.chunkOf(o.y);
+                    if (cx < cx0 || cx > cx1 || cy < cy0 || cy > cy1) {
+                        continue;
+                    }
+                    if (tx >= tx0 && tx <= tx1 && ty >= ty0 && ty <= ty1) {
+                        expected.add(o);
+                    } else {
+                        expectedCulled++;
+                    }
+                }
+                int[] culled = new int[1];
+                assertEquals(expected, cursorCollect(index, tx0, ty0, tx1, ty1, mask, culled));
+                assertEquals(expectedCulled, culled[0]);
+            }
+        }
+    }
+
     @Test
     void objectListGrowsAndClearsSlots() {
         StormObjectList list = new StormObjectList(2);
