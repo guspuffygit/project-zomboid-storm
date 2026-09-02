@@ -22,7 +22,8 @@ public final class InventoryWeightMemoMetrics {
                     .name("storm_inv_weight_memo_misses_total")
                     .help(
                             "IsoGameCharacter.getInventoryWeight calls that ran the vanilla walk"
-                                    + " (epoch advanced by tick or inventory mutation).")
+                                    + " (the character's epoch advanced: an inventory, equip,"
+                                    + " worn, fluid or item-weight mutation reached it).")
                     .callback(callback -> callback.call((double) StormInventoryWeight.misses))
                     .register(StormPrometheus.registry());
 

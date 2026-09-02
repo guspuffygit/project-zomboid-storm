@@ -1,0 +1,43 @@
+package io.pzstorm.storm.patch.performance;
+
+import io.pzstorm.storm.core.StormClassTransformer;
+import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.implementation.FieldAccessor;
+import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.pool.TypePool;
+
+/**
+ * Implements {@link io.pzstorm.storm.entity.StormVariableLookup} onto the private nested {@code
+ * CharacterVariableCondition$CharacterVariableLookup}, exposing its {@code variableReference} field
+ * so {@code CharacterVariableResolveTypedPatch} can resolve the slot typed. Server-only by
+ * registration gate. Fails loud if the field is renamed.
+ */
+public class CharacterVariableLookupAccessorPatch extends StormClassTransformer {
+
+    private static final String TARGET =
+            "zombie.characters.action.conditions.CharacterVariableCondition"
+                    + "$CharacterVariableLookup";
+
+    public CharacterVariableLookupAccessorPatch() {
+        super(TARGET);
+    }
+
+    @Override
+    public DynamicType.Builder<Object> dynamicType(
+            ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
+        if (typePool.describe(TARGET)
+                .resolve()
+                .getDeclaredFields()
+                .filter(ElementMatchers.named("variableReference"))
+                .isEmpty()) {
+            throw new IllegalStateException(
+                    "CharacterVariableLookupAccessorPatch: CharacterVariableLookup no longer"
+                            + " declares variableReference — re-verify against the current game"
+                            + " source.");
+        }
+        return builder.implement(
+                        typePool.describe("io.pzstorm.storm.entity.StormVariableLookup").resolve())
+                .intercept(FieldAccessor.ofField("variableReference"));
+    }
+}

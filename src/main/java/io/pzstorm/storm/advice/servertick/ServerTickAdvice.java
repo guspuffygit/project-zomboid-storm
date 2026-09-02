@@ -1,7 +1,6 @@
 package io.pzstorm.storm.advice.servertick;
 
 import io.pzstorm.storm.connection.SteamPlayerListReconciler;
-import io.pzstorm.storm.inventory.StormInventoryWeight;
 import io.pzstorm.storm.metrics.ChunkHydrationMetrics;
 import io.pzstorm.storm.metrics.ChunkStreamMetrics;
 import io.pzstorm.storm.metrics.ServerTickMetrics;
@@ -27,6 +26,5 @@ public class ServerTickAdvice {
         SteamPlayerListReconciler.sweep();
         StormZombieTotalCap.onServerTick();
         StormVehicleSleep.onServerTick();
-        StormInventoryWeight.onServerTick();
     }
 }

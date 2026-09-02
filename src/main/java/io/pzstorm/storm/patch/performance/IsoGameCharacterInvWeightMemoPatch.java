@@ -11,16 +11,17 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Adds the {@code stormInvWeight} field (public volatile {@code long}) to {@code
- * zombie.characters.IsoGameCharacter}, implements {@link
- * io.pzstorm.storm.entity.StormInvWeightHolder} with accessors over it, memoizes {@code
- * getInventoryWeight()} via {@code InventoryWeightMemoAdvice}, and bumps the validity epoch on hand
- * equip changes ({@code setPrimaryHandItem}/{@code setSecondaryHandItem} change the equipped
- * 0.7&times; weight multiplier).
+ * Adds the {@code stormInvWeight} (public volatile {@code long}) and {@code stormInvEpoch} (public
+ * volatile {@code int}) fields to {@code zombie.characters.IsoGameCharacter}, implements {@link
+ * io.pzstorm.storm.entity.StormInvWeightHolder} with accessors over them, memoizes {@code
+ * getInventoryWeight()} via {@code InventoryWeightMemoAdvice}, and bumps the character's epoch on
+ * its own weigh-input changes ({@code CharacterInvEpochBumpAdvice}: hand setters, {@code
+ * setInventory}, {@code onWornItemsChanged}).
  *
  * <p>Covers every subclass &mdash; {@code IsoPlayer}, {@code IsoZombie}, and {@code IsoAnimal}.
  * Server-only by registration gate ({@code StormEnv.isStormServer()}). See {@link
- * io.pzstorm.storm.inventory.StormInventoryWeight} for the rationale and staleness contract.
+ * io.pzstorm.storm.inventory.StormInventoryWeight} for the rationale and the full epoch-source
+ * list.
  */
 public class IsoGameCharacterInvWeightMemoPatch extends StormClassTransformer {
 
@@ -38,9 +39,11 @@ public class IsoGameCharacterInvWeightMemoPatch extends StormClassTransformer {
                         long.class,
                         Visibility.PUBLIC,
                         FieldManifestation.VOLATILE)
+                .defineField(
+                        "stormInvEpoch", int.class, Visibility.PUBLIC, FieldManifestation.VOLATILE)
                 .implement(
                         typePool.describe("io.pzstorm.storm.entity.StormInvWeightHolder").resolve())
-                .intercept(FieldAccessor.ofField("stormInvWeight"))
+                .intercept(FieldAccessor.ofBeanProperty())
                 .visit(
                         Advice.to(
                                         typePool.describe(PKG + "InventoryWeightMemoAdvice")
@@ -51,11 +54,14 @@ public class IsoGameCharacterInvWeightMemoPatch extends StormClassTransformer {
                                                 .and(ElementMatchers.takesArguments(0))))
                 .visit(
                         Advice.to(
-                                        typePool.describe(PKG + "InventoryWeightEpochBumpAdvice")
+                                        typePool.describe(PKG + "CharacterInvEpochBumpAdvice")
                                                 .resolve(),
                                         locator)
                                 .on(
                                         ElementMatchers.namedOneOf(
-                                                "setPrimaryHandItem", "setSecondaryHandItem")));
+                                                "setPrimaryHandItem",
+                                                "setSecondaryHandItem",
+                                                "setInventory",
+                                                "onWornItemsChanged")));
     }
 }

@@ -15,7 +15,9 @@ import net.bytebuddy.pool.TypePool;
  * patch removes the remaining per-call {@code HashMap} probe for characters via the per-instance
  * memo installed by {@link IsoGameCharacterEcsMemoPatch} — together the {@code getOwner}/{@code
  * getOwnerPlayer}/{@code getStateMachineComponent}/{@code getFrameKeeper} chains were ~1.5% of
- * server main (ATF profile 2026-08-26, 135 players).
+ * server main (ATF profile 2026-08-26, 135 players). Null lookups are memoized too (the {@code
+ * AIComponent} probes behind {@code isNpc()} and the per-tick {@code update} call), so {@code
+ * setECSComponent} — the only map put — also gets an exit advice that drops the memo.
  *
  * <p>Pair with {@link IsoGameCharacterEcsMemoPatch}; without it every entity fails the {@code
  * instanceof} guard and the advice is a no-op. Server-only by registration gate ({@code
@@ -47,11 +49,20 @@ public class EcsEntityTryGetMemoPatch extends StormClassTransformer {
                             + " against the current game source.");
         }
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "EcsTryGetComponentMemoAdvice").resolve(),
-                                locator)
-                        .on(
-                                ElementMatchers.named("tryGetECSComponent")
-                                        .and(ElementMatchers.takesArguments(1))));
+                        Advice.to(
+                                        typePool.describe(PKG + "EcsTryGetComponentMemoAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("tryGetECSComponent")
+                                                .and(ElementMatchers.takesArguments(1))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "EcsSetComponentMemoClearAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("setECSComponent")
+                                                .and(ElementMatchers.takesArguments(1))));
     }
 }

@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
+import io.pzstorm.storm.core.StormClassTransformer;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -21,165 +23,226 @@ import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
 
 /**
- * Weave-verifies the inventory-weight memo: {@link IsoGameCharacterInvWeightMemoPatch} installs the
- * packed {@code stormInvWeight} field, the {@code StormInvWeightHolder} accessor pair, the memo
- * advice on {@code getInventoryWeight()} (vanilla walk kept as the miss path) and epoch bumps on
- * the hand setters; {@link ItemContainerMutationEpochPatch} and {@link WornItemsMutationEpochPatch}
- * bump the epoch on exactly the allowlisted mutators and touch nothing else.
+ * Weave-verifies the per-character inventory-weight memo: {@link
+ * IsoGameCharacterInvWeightMemoPatch} installs the packed weight + epoch fields, the {@code
+ * StormInvWeightHolder} accessors, the memo advice on {@code getInventoryWeight()} (vanilla walk
+ * kept as the miss path) and the character's own epoch bumps; {@link ItemContainerTrackedListPatch}
+ * swaps in the tracked list wherever {@code items} is assigned; and every epoch-source patch bumps
+ * exactly its allowlisted methods (every overload) while leaving every other method byte-for-byte
+ * equivalent in what it calls.
  */
 class InvWeightMemoPatchesTest implements UnitTest {
 
     private static final String HOLDER = "io/pzstorm/storm/entity/StormInvWeightHolder";
+    private static final String WORN_HOLDER = "io/pzstorm/storm/entity/StormWornItemsOwnerHolder";
     private static final String EPOCH_OWNER = "io/pzstorm/storm/inventory/StormInventoryWeight";
-    private static final String FIELD = "stormInvWeight";
-    private static final String FIELD_DESC = "J";
-
-    private static final Set<String> ITEM_CONTAINER_MUTATORS =
-            new HashSet<>(
-                    Arrays.asList(
-                            "addItem",
-                            "addItems",
-                            "AddItem",
-                            "AddItems",
-                            "AddItemBlind",
-                            "DoAddItem",
-                            "DoAddItemBlind",
-                            "Remove",
-                            "RemoveAll",
-                            "RemoveOneOf",
-                            "DoRemoveItem",
-                            "removeItemOnServer",
-                            "removeAllItems",
-                            "removeItemWithID",
-                            "removeItemWithIDRecurse",
-                            "emptyIt",
-                            "clear",
-                            "setItems"));
-
-    private static final Set<String> WORN_ITEMS_MUTATORS =
-            new HashSet<>(Arrays.asList("setItem", "remove", "clear", "setFromItemVisuals"));
+    private static final String TRACKED_LIST = "io/pzstorm/storm/inventory/StormTrackedItemList";
 
     @Test
-    void characterPatchInstallsFieldInterfaceMemoAndHandBumps() throws Exception {
+    void characterPatchInstallsFieldsInterfaceMemoAndOwnBumps() throws Exception {
         byte[] raw = readClass("zombie/characters/IsoGameCharacter");
         byte[] transformed = new IsoGameCharacterInvWeightMemoPatch().transform(raw);
         assertNotNull(transformed);
-        assertTrue(transformed.length > 0);
 
         Shape before = readShape(raw);
         Shape after = readShape(transformed);
-
         assertFalse(before.interfaces.contains(HOLDER));
-        assertTrue(
-                after.interfaces.contains(HOLDER),
-                "patched IsoGameCharacter must implement StormInvWeightHolder");
-
-        assertFalse(before.fields.containsKey(FIELD + ":" + FIELD_DESC));
-        Integer fieldAccess = after.fields.get(FIELD + ":" + FIELD_DESC);
-        assertNotNull(fieldAccess, "patched class must declare stormInvWeight J");
-        assertTrue((fieldAccess & Opcodes.ACC_PUBLIC) != 0, "stormInvWeight must be public");
-        assertTrue((fieldAccess & Opcodes.ACC_VOLATILE) != 0, "stormInvWeight must be volatile");
-        assertEquals(
-                before.fields.size() + 1, after.fields.size(), "exactly one field must be added");
-
-        assertTrue(after.methods.contains("getStormInvWeight()J"), "getter must be generated");
-        assertTrue(after.methods.contains("setStormInvWeight(J)V"), "setter must be generated");
-        assertTrue(
-                after.methods.containsAll(before.methods),
-                "no vanilla method may disappear from IsoGameCharacter");
+        assertTrue(after.interfaces.contains(HOLDER));
+        assertVolatilePublicField(before, after, "stormInvWeight:J");
+        assertVolatilePublicField(before, after, "stormInvEpoch:I");
+        assertEquals(before.fields.size() + 2, after.fields.size());
+        assertTrue(after.methods.contains("getStormInvWeight()J"));
+        assertTrue(after.methods.contains("setStormInvWeight(J)V"));
+        assertTrue(after.methods.contains("getStormInvEpoch()I"));
+        assertTrue(after.methods.contains("setStormInvEpoch(I)V"));
+        assertTrue(after.methods.containsAll(before.methods));
 
         Map<String, Counts> countsBefore = countPerMethod(raw);
         Map<String, Counts> countsAfter = countPerMethod(transformed);
-
         Counts weighBefore = countsBefore.get("getInventoryWeight()F");
         Counts weighAfter = countsAfter.get("getInventoryWeight()F");
-        assertNotNull(weighBefore, "vanilla IsoGameCharacter must declare getInventoryWeight()F");
-        assertEquals(0, weighBefore.holderInstanceofs, "vanilla must not know the holder");
+        assertNotNull(weighBefore);
+        assertEquals(0, weighBefore.holderInstanceofs);
         assertEquals(
                 2,
                 weighAfter.holderInstanceofs,
                 "enter and exit advice each guard on instanceof StormInvWeightHolder");
-        assertTrue(
-                weighAfter.epochReads >= 2,
-                "enter (validate) and exit (store) each read StormInventoryWeight.epoch");
+        assertTrue(weighAfter.wornHolderInstanceofs >= 1, "miss path stamps the worn-items owner");
         assertTrue(
                 weighAfter.unequippedWeightCalls >= 1
                         && weighAfter.unequippedWeightCalls == weighBefore.unequippedWeightCalls,
                 "the vanilla item walk must survive as the miss path");
+        assertEquals(0, weighAfter.bumps.size(), "the weigh itself must not bump");
 
-        for (String hand : Arrays.asList("setPrimaryHandItem", "setSecondaryHandItem")) {
-            int bumps = 0;
-            for (Map.Entry<String, Counts> entry : countsAfter.entrySet()) {
-                if (entry.getKey().startsWith(hand + "(")) {
-                    bumps += entry.getValue().bumpCalls;
-                }
-            }
-            assertTrue(bumps >= 1, hand + " must bump the epoch");
-        }
+        assertBumpsExactly(
+                "IsoGameCharacter",
+                countsBefore,
+                countsAfter,
+                "bumpCharacter",
+                setOf(
+                        "setPrimaryHandItem",
+                        "setSecondaryHandItem",
+                        "setInventory",
+                        "onWornItemsChanged"),
+                setOf("getInventoryWeight"));
+    }
 
-        for (Map.Entry<String, Counts> entry : countsBefore.entrySet()) {
+    @Test
+    void itemContainerPatchInstallsTrackedListWhereverItemsIsAssigned() throws Exception {
+        byte[] raw = readClass("zombie/inventory/ItemContainer");
+        byte[] transformed = new ItemContainerTrackedListPatch().transform(raw);
+        Map<String, Counts> before = countPerMethod(raw);
+        Map<String, Counts> after = countPerMethod(transformed);
+        Set<String> seen = new HashSet<>();
+        for (Map.Entry<String, Counts> entry : after.entrySet()) {
             String key = entry.getKey();
-            if (key.equals("getInventoryWeight()F")
-                    || key.startsWith("setPrimaryHandItem(")
-                    || key.startsWith("setSecondaryHandItem(")) {
-                continue;
+            String name = key.substring(0, key.indexOf('('));
+            if (name.equals("<init>") || name.equals("setItems") || name.equals("emptyIt")) {
+                seen.add(name);
+                assertEquals(0, before.get(key).trackedListNews, key);
+                assertEquals(1, entry.getValue().trackedListNews, key + " must wrap items");
+                assertEquals(1, entry.getValue().bumps.getOrDefault("bumpContainer", 0), key);
+            } else {
+                assertEquals(before.get(key), entry.getValue(), "ItemContainer." + key);
             }
-            assertEquals(
-                    entry.getValue(),
-                    countsAfter.get(key),
-                    "method " + key + " must be untouched by the patch");
         }
+        assertEquals(setOf("<init>", "setItems", "emptyIt"), seen);
     }
 
     @Test
-    void itemContainerPatchBumpsExactlyTheMutators() throws Exception {
+    void wornItemsPatchInstallsOwnerAndBumpsExactlyTheMutators() throws Exception {
+        byte[] raw = readClass("zombie/characters/WornItems/WornItems");
+        byte[] transformed = new WornItemsMutationEpochPatch().transform(raw);
+        Shape before = readShape(raw);
+        Shape after = readShape(transformed);
+        assertFalse(before.interfaces.contains(WORN_HOLDER));
+        assertTrue(after.interfaces.contains(WORN_HOLDER));
+        assertVolatilePublicField(before, after, "stormOwner:Ljava/lang/Object;");
+        assertTrue(after.methods.contains("getStormOwner()Ljava/lang/Object;"));
+        assertTrue(after.methods.contains("setStormOwner(Ljava/lang/Object;)V"));
         assertBumpsExactly(
-                "zombie/inventory/ItemContainer",
-                new ItemContainerMutationEpochPatch()
-                        .transform(readClass("zombie/inventory/ItemContainer")),
-                readClass("zombie/inventory/ItemContainer"),
-                ITEM_CONTAINER_MUTATORS);
+                "WornItems",
+                countPerMethod(raw),
+                countPerMethod(transformed),
+                "bumpWornItems",
+                setOf("setItem", "remove", "clear", "setFromItemVisuals", "copyFrom", "load"),
+                setOf());
     }
 
     @Test
-    void wornItemsPatchBumpsExactlyTheMutators() throws Exception {
+    void inventoryItemPatchBumpsExactlyTheWeightInputs() throws Exception {
+        assertNamedPatch(
+                "zombie/inventory/InventoryItem",
+                new InventoryItemInvEpochPatch(),
+                "bumpItem",
+                setOf(
+                        "setActualWeight",
+                        "setCurrentAmmoCount",
+                        "setAttachedSlot",
+                        "setName",
+                        "setCustomWeight",
+                        "addExtraItem",
+                        "load"));
+    }
+
+    @Test
+    void foodPatchBumpsExactlyTheWeightInputs() throws Exception {
+        assertNamedPatch(
+                "zombie/inventory/types/Food",
+                new FoodInvEpochPatch(),
+                "bumpItem",
+                setOf("setHungChange", "setThirstChange", "setBaseHunger"));
+    }
+
+    @Test
+    void handWeaponPatchBumpsExactlyTheWeightInputs() throws Exception {
+        assertNamedPatch(
+                "zombie/inventory/types/HandWeapon",
+                new HandWeaponInvEpochPatch(),
+                "bumpItem",
+                setOf("setWeaponPart", "clearWeaponPart", "clearAllWeaponParts"));
+    }
+
+    @Test
+    void fluidContainerPatchBumpsExactlyTheAmountMutators() throws Exception {
+        assertNamedPatch(
+                "zombie/entity/components/fluids/FluidContainer",
+                new FluidContainerInvEpochPatch(),
+                "bumpFluidContainer",
+                setOf(
+                        "setCapacity",
+                        "adjustAmount",
+                        "adjustSpecificFluidAmount",
+                        "addFluid",
+                        "removeFluid",
+                        "copyFluidsFrom",
+                        "Empty",
+                        "removeFluidInstanceIfEmpty",
+                        "load"));
+    }
+
+    private static void assertNamedPatch(
+            String internalName, StormClassTransformer patch, String bump, Set<String> mutators)
+            throws Exception {
+        byte[] raw = readClass(internalName);
+        byte[] transformed = patch.transform(raw);
+        assertNotNull(transformed);
+        Shape before = readShape(raw);
+        Shape after = readShape(transformed);
+        assertEquals(before.fields.size(), after.fields.size());
+        assertEquals(before.interfaces, after.interfaces);
         assertBumpsExactly(
-                "zombie/characters/WornItems/WornItems",
-                new WornItemsMutationEpochPatch()
-                        .transform(readClass("zombie/characters/WornItems/WornItems")),
-                readClass("zombie/characters/WornItems/WornItems"),
-                WORN_ITEMS_MUTATORS);
+                internalName,
+                countPerMethod(raw),
+                countPerMethod(transformed),
+                bump,
+                mutators,
+                setOf());
     }
 
     private static void assertBumpsExactly(
-            String className, byte[] transformed, byte[] raw, Set<String> mutators) {
-        assertNotNull(transformed);
-        assertTrue(transformed.length > 0);
-        Map<String, Counts> before = countPerMethod(raw);
-        Map<String, Counts> after = countPerMethod(transformed);
-
-        Set<String> mutatorsSeen = new HashSet<>();
+            String className,
+            Map<String, Counts> before,
+            Map<String, Counts> after,
+            String bump,
+            Set<String> mutators,
+            Set<String> otherwiseAdvised) {
+        Set<String> seen = new HashSet<>();
         for (Map.Entry<String, Counts> entry : after.entrySet()) {
-            String name = entry.getKey().substring(0, entry.getKey().indexOf('('));
+            String key = entry.getKey();
+            String name = key.substring(0, key.indexOf('('));
             if (mutators.contains(name)) {
-                mutatorsSeen.add(name);
-                assertTrue(
-                        entry.getValue().bumpCalls >= 1,
-                        className + "." + entry.getKey() + " must bump the epoch");
-            } else {
+                seen.add(name);
                 assertEquals(
-                        before.get(entry.getKey()),
+                        1,
+                        entry.getValue().bumps.getOrDefault(bump, 0),
+                        className + "." + key + " must call " + bump + " exactly once");
+                assertEquals(1, entry.getValue().bumps.size(), className + "." + key);
+            } else if (!otherwiseAdvised.contains(name) && before.containsKey(key)) {
+                assertEquals(
+                        before.get(key),
                         entry.getValue(),
-                        className + "." + entry.getKey() + " must be untouched");
+                        className + "." + key + " must be untouched");
             }
         }
         assertEquals(
                 mutators,
-                mutatorsSeen,
+                seen,
                 "every allowlisted mutator must exist in "
                         + className
-                        + " — a missing name means"
-                        + " the vanilla method was renamed and the bump silently vanished");
+                        + " — a missing name means the vanilla method was renamed");
+    }
+
+    private static void assertVolatilePublicField(Shape before, Shape after, String field) {
+        assertFalse(before.fields.containsKey(field), field + " must not exist in vanilla");
+        Integer access = after.fields.get(field);
+        assertNotNull(access, "patched class must declare " + field);
+        assertTrue((access & Opcodes.ACC_PUBLIC) != 0, field + " must be public");
+        assertTrue((access & Opcodes.ACC_VOLATILE) != 0, field + " must be volatile");
+    }
+
+    private static Set<String> setOf(String... names) {
+        return new HashSet<>(Arrays.asList(names));
     }
 
     private static byte[] readClass(String internalName) throws Exception {
@@ -213,15 +276,12 @@ class InvWeightMemoPatchesTest implements UnitTest {
                                         if (opcode == Opcodes.INSTANCEOF && HOLDER.equals(type)) {
                                             method.holderInstanceofs++;
                                         }
-                                    }
-
-                                    @Override
-                                    public void visitFieldInsn(
-                                            int opcode, String owner, String fname, String fdesc) {
-                                        if (opcode == Opcodes.GETSTATIC
-                                                && EPOCH_OWNER.equals(owner)
-                                                && "epoch".equals(fname)) {
-                                            method.epochReads++;
+                                        if (opcode == Opcodes.INSTANCEOF
+                                                && WORN_HOLDER.equals(type)) {
+                                            method.wornHolderInstanceofs++;
+                                        }
+                                        if (opcode == Opcodes.NEW && TRACKED_LIST.equals(type)) {
+                                            method.trackedListNews++;
                                         }
                                     }
 
@@ -233,13 +293,13 @@ class InvWeightMemoPatchesTest implements UnitTest {
                                             String mdesc,
                                             boolean isInterface) {
                                         if (opcode == Opcodes.INVOKESTATIC
-                                                && EPOCH_OWNER.equals(owner)
-                                                && "bump".equals(mname)) {
-                                            method.bumpCalls++;
+                                                && EPOCH_OWNER.equals(owner)) {
+                                            method.bumps.merge(mname, 1, Integer::sum);
                                         }
                                         if ("getUnequippedWeight".equals(mname)) {
                                             method.unequippedWeightCalls++;
                                         }
+                                        method.calls++;
                                     }
                                 };
                             }
@@ -291,16 +351,18 @@ class InvWeightMemoPatchesTest implements UnitTest {
     }
 
     private static final class Shape {
-        final List<String> interfaces = new java.util.ArrayList<>();
+        final List<String> interfaces = new ArrayList<>();
         final Map<String, Integer> fields = new HashMap<>();
-        final Set<String> methods = new HashSet<>();
+        final List<String> methods = new ArrayList<>();
     }
 
     private static final class Counts {
         int holderInstanceofs;
-        int epochReads;
-        int bumpCalls;
+        int wornHolderInstanceofs;
+        int trackedListNews;
         int unequippedWeightCalls;
+        int calls;
+        final Map<String, Integer> bumps = new HashMap<>();
 
         @Override
         public boolean equals(Object o) {
@@ -309,28 +371,28 @@ class InvWeightMemoPatchesTest implements UnitTest {
             }
             Counts other = (Counts) o;
             return holderInstanceofs == other.holderInstanceofs
-                    && epochReads == other.epochReads
-                    && bumpCalls == other.bumpCalls
-                    && unequippedWeightCalls == other.unequippedWeightCalls;
+                    && wornHolderInstanceofs == other.wornHolderInstanceofs
+                    && trackedListNews == other.trackedListNews
+                    && unequippedWeightCalls == other.unequippedWeightCalls
+                    && calls == other.calls
+                    && bumps.equals(other.bumps);
         }
 
         @Override
         public int hashCode() {
-            return ((holderInstanceofs * 31 + epochReads) * 31 + bumpCalls) * 31
-                    + unequippedWeightCalls;
+            return calls * 31 + bumps.hashCode();
         }
 
         @Override
         public String toString() {
-            return "Counts{holderInstanceofs="
+            return "calls="
+                    + calls
+                    + " bumps="
+                    + bumps
+                    + " holderInstanceofs="
                     + holderInstanceofs
-                    + ", epochReads="
-                    + epochReads
-                    + ", bumpCalls="
-                    + bumpCalls
-                    + ", unequippedWeightCalls="
-                    + unequippedWeightCalls
-                    + '}';
+                    + " trackedListNews="
+                    + trackedListNews;
         }
     }
 }

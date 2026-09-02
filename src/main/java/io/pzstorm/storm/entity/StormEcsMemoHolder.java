@@ -18,11 +18,23 @@ package io.pzstorm.storm.entity;
  * in the millions; non-character entities fall through to the vanilla lookup via an {@code
  * instanceof} check in the advice.
  *
+ * <p>Negative results are memoized too, as the {@link #ABSENT} sentinel in the component slot:
+ * {@code isNpc()} ({@code hasECSComponent(AIComponent.class)}) and the per-tick {@code
+ * tryGetECSComponent(AIComponent.class)} in {@code IsoGameCharacter.update} probe a component
+ * players never carry, so without it every such call paid the full miss path (1.6% of player
+ * update, scan #10, 2026-09-02). A negative entry cannot be validated by ownership, so the whole
+ * memo is dropped ({@code setStormEcsMemo(null)}) whenever {@code ECSEntity.setECSComponent} runs
+ * on the entity — the only path that puts into the component map. Component registration happens in
+ * constructors and {@code IsoPlayer.setNpc}; both are cold.
+ *
  * <p>The field is volatile and pairs are freshly allocated per store, so a racy cross-thread read
  * sees either the correct value or {@code null} in a pair slot (guarded in the advice) — never a
  * torn pair.
  */
 public interface StormEcsMemoHolder {
+
+    /** Slot marker for "the vanilla lookup returned null for this class". */
+    Object ABSENT = new Object();
 
     Object[] getStormEcsMemo();
 

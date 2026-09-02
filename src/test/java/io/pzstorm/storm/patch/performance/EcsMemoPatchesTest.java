@@ -61,8 +61,19 @@ class EcsMemoPatchesTest implements UnitTest {
                 "the vanilla ECSComponent.getECSClass map-lookup path must survive as the miss"
                         + " path");
 
+        String setComponent = findSingleMethod(before.keySet(), "setECSComponent(");
+        Counts setBefore = before.get(setComponent);
+        Counts setAfter = after.get(setComponent);
+        assertEquals(0, setBefore.holderInstanceofs);
+        assertEquals(
+                1,
+                setAfter.holderInstanceofs,
+                "setECSComponent exit advice drops the memo behind one holder instanceof");
+        assertEquals(setBefore.identityHashCodes, setAfter.identityHashCodes);
+        assertEquals(setBefore.getEcsClassCalls, setAfter.getEcsClassCalls);
+
         for (Map.Entry<String, Counts> entry : before.entrySet()) {
-            if (tryGet.equals(entry.getKey())) {
+            if (tryGet.equals(entry.getKey()) || setComponent.equals(entry.getKey())) {
                 continue;
             }
             assertEquals(
@@ -70,6 +81,82 @@ class EcsMemoPatchesTest implements UnitTest {
                     after.get(entry.getKey()),
                     "method " + entry.getKey() + " must be untouched by the patch");
         }
+    }
+
+    @Test
+    void stateMachinePatchAddsFieldAndAdvisesOnlyTheGetter() throws Exception {
+        byte[] raw = readClass("zombie/characters/IsoGameCharacter");
+        byte[] transformed = new IsoGameCharacterStateMachineMemoPatch().transform(raw);
+        assertNotNull(transformed);
+
+        Shape before = readShape(raw);
+        Shape after = readShape(transformed);
+        String field = "stormStateMachine:Ljava/lang/Object;";
+        assertFalse(before.fields.containsKey(field));
+        Integer access = after.fields.get(field);
+        assertNotNull(access, "patched class must declare stormStateMachine Object");
+        assertTrue((access & Opcodes.ACC_PUBLIC) != 0);
+        assertEquals(before.fields.size() + 1, after.fields.size());
+        assertTrue(after.methods.containsAll(before.methods));
+
+        Map<String, Integer> ownerBefore = countOwnerCalls(raw);
+        Map<String, Integer> ownerAfter = countOwnerCalls(transformed);
+        String getter = "getStateMachineComponent()";
+        String getterKey = null;
+        for (String key : ownerBefore.keySet()) {
+            if (key.startsWith(getter)) {
+                getterKey = key;
+            }
+        }
+        assertNotNull(getterKey, "IsoGameCharacter must declare getStateMachineComponent()");
+        assertEquals(0, ownerBefore.get(getterKey));
+        assertEquals(
+                1,
+                ownerAfter.get(getterKey),
+                "enter advice validates the cached component by getECSOwnerEntity once");
+        for (Map.Entry<String, Integer> entry : ownerBefore.entrySet()) {
+            if (getterKey.equals(entry.getKey())) {
+                continue;
+            }
+            assertEquals(
+                    entry.getValue(),
+                    ownerAfter.get(entry.getKey()),
+                    "method " + entry.getKey() + " must be untouched by the patch");
+        }
+    }
+
+    private static Map<String, Integer> countOwnerCalls(byte[] classBytes) {
+        Map<String, Integer> counts = new HashMap<>();
+        new ClassReader(classBytes)
+                .accept(
+                        new ClassVisitor(Opcodes.ASM9) {
+                            @Override
+                            public MethodVisitor visitMethod(
+                                    int access,
+                                    String name,
+                                    String descriptor,
+                                    String signature,
+                                    String[] exceptions) {
+                                String key = name + descriptor;
+                                counts.putIfAbsent(key, 0);
+                                return new MethodVisitor(Opcodes.ASM9) {
+                                    @Override
+                                    public void visitMethodInsn(
+                                            int opcode,
+                                            String owner,
+                                            String mname,
+                                            String mdesc,
+                                            boolean isInterface) {
+                                        if (ECS_COMPONENT.equals(owner)
+                                                && "getECSOwnerEntity".equals(mname)) {
+                                            counts.merge(key, 1, Integer::sum);
+                                        }
+                                    }
+                                };
+                            }
+                        },
+                        ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+        return counts;
     }
 
     @Test
