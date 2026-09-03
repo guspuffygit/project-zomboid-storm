@@ -103,3 +103,6 @@ docs/*
 !docs/chunk-streaming-observability.md
 
 CLAUDE.local.md
+
+### Claude Code local hooks ###
+.claude/local/

@@ -30,12 +30,8 @@
       "Edit(./.github/**)"
     ],
     "deny": [
-      "Read(./.git)",
-      "Read(./.git/**)",
       "Edit(./.git)",
       "Edit(./.git/**)",
-      "Read(./.gradle)",
-      "Read(./.gradle/**)",
       "Edit(./.gradle)",
       "Edit(./.gradle/**)",
       "mcp__pzmcp__pz_find_jvm",
