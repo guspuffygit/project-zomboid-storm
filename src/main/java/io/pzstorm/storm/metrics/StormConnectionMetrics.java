@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.raknet.UdpEngine;
 import zombie.core.znet.ZNetStatistics;
@@ -227,6 +228,9 @@ public final class StormConnectionMetrics {
             }
 
             String username = labelFor(c);
+            if (username == null) {
+                continue;
+            }
             currentUsernames.add(username);
 
             SEND_BUFFER_BYTES
@@ -298,7 +302,8 @@ public final class StormConnectionMetrics {
 
         if (toKick != null) {
             for (UdpConnection c : toKick) {
-                String username = labelFor(c);
+                String label = labelFor(c);
+                String username = label != null ? label : "guid:" + c.getConnectedGUID();
                 double mb = 0.0;
                 ZNetStatistics stats = c.getStatistics();
                 if (stats != null) {
@@ -323,11 +328,18 @@ public final class StormConnectionMetrics {
         }
     }
 
+    /**
+     * The per-peer metric label, or {@code null} until the connection has a username. A guid-based
+     * fallback would mint a label set per connection attempt that nothing ever removes, so the
+     * registry would grow with uptime rather than with players. A shared placeholder label is not
+     * an option either: every nameless peer would {@code set()} over the last one.
+     */
+    @Nullable
     private static String labelFor(UdpConnection c) {
         String name = c.getUserName();
         if (name != null && !name.isEmpty()) {
             return name;
         }
-        return "guid:" + c.getConnectedGUID();
+        return null;
     }
 }
