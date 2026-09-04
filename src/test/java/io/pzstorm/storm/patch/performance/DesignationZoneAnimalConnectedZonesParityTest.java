@@ -3,6 +3,7 @@ package io.pzstorm.storm.patch.performance;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,9 +75,9 @@ class DesignationZoneAnimalConnectedZonesParityTest implements UnitTest {
             int count = 1 + rng.nextInt(40);
             for (int i = 0; i < count; i++) {
                 zone(
-                        rng.nextInt(30),
-                        rng.nextInt(30),
-                        rng.nextInt(3),
+                        rng.nextInt(90) - 30,
+                        rng.nextInt(90) - 30,
+                        rng.nextInt(4) - 1,
                         1 + rng.nextInt(6),
                         1 + rng.nextInt(6));
             }
@@ -91,6 +92,96 @@ class DesignationZoneAnimalConnectedZonesParityTest implements UnitTest {
             }
         }
         assertFalse(DesignationZoneAnimalConnectedZones.isBroken());
+    }
+
+    @Test
+    void probesMatchVanillaGetZoneAcrossBucketsOverlapsAndLevels() throws Exception {
+        Random rng = new Random(20260904L);
+        for (int layout = 0; layout < 40; layout++) {
+            clearZones();
+            int count = 1 + rng.nextInt(60);
+            for (int i = 0; i < count; i++) {
+                zone(
+                        rng.nextInt(200) - 100,
+                        rng.nextInt(200) - 100,
+                        rng.nextInt(4) - 1,
+                        1 + rng.nextInt(40),
+                        1 + rng.nextInt(40));
+            }
+            for (int probe = 0; probe < 2000; probe++) {
+                int x = rng.nextInt(260) - 130;
+                int y = rng.nextInt(260) - 130;
+                int z = rng.nextInt(5) - 2;
+                assertSame(
+                        DesignationZoneAnimal.getZone(x, y, z),
+                        DesignationZoneAnimalConnectedZones.lookupZone(x, y, z),
+                        "probe " + x + "," + y + "," + z);
+            }
+        }
+        assertFalse(DesignationZoneAnimalConnectedZones.isBroken());
+    }
+
+    @Test
+    void overlappingZonesResolveToTheFirstInListOrder() throws Exception {
+        DesignationZoneAnimal under = zone(10, 10, 0, 10, 10);
+        DesignationZoneAnimal over = zone(12, 12, 0, 10, 10);
+        assertSame(under, DesignationZoneAnimal.getZone(15, 15, 0));
+        assertSame(under, DesignationZoneAnimalConnectedZones.lookupZone(15, 15, 0));
+        assertSame(over, DesignationZoneAnimalConnectedZones.lookupZone(21, 21, 0));
+
+        DesignationZoneAnimal.designationAnimalZoneList.remove(under);
+        DesignationZoneAnimal.designationAnimalZoneList.add(under);
+        assertSame(over, DesignationZoneAnimal.getZone(15, 15, 0));
+        assertSame(over, DesignationZoneAnimalConnectedZones.lookupZone(15, 15, 0));
+    }
+
+    @Test
+    void snapshotFollowsEveryMutationVanillaCanMake() throws Exception {
+        DesignationZoneAnimal a = zone(0, 0, 0, 4, 4);
+        DesignationZoneAnimal b = zone(40, 0, 0, 4, 4);
+        assertNull(DesignationZoneAnimalConnectedZones.lookupZone(20, 1, 0));
+        long rebuilds = DesignationZoneAnimalConnectedZones.getIndexRebuilds();
+        assertSame(a, DesignationZoneAnimalConnectedZones.lookupZone(1, 1, 0));
+        assertEquals(rebuilds, DesignationZoneAnimalConnectedZones.getIndexRebuilds());
+
+        a.w = 40;
+        assertSame(a, DesignationZoneAnimal.getZone(20, 1, 0));
+        assertSame(a, DesignationZoneAnimalConnectedZones.lookupZone(20, 1, 0));
+        assertSameElements(
+                DesignationZoneAnimal.getAllDZones(null, a, null),
+                DesignationZoneAnimalConnectedZones.getAllDZones(null, a, null));
+
+        a.z = 1;
+        assertNull(DesignationZoneAnimal.getZone(1, 1, 0));
+        assertNull(DesignationZoneAnimalConnectedZones.lookupZone(1, 1, 0));
+        assertSame(a, DesignationZoneAnimalConnectedZones.lookupZone(1, 1, 1));
+
+        DesignationZoneAnimal.designationAnimalZoneList.remove(b);
+        assertNull(DesignationZoneAnimal.getZone(41, 1, 0));
+        assertNull(DesignationZoneAnimalConnectedZones.lookupZone(41, 1, 0));
+
+        DesignationZoneAnimal c = zone(41, 1, 0, 1, 1);
+        assertSame(c, DesignationZoneAnimalConnectedZones.lookupZone(41, 1, 0));
+
+        DesignationZoneAnimal.designationAnimalZoneList.clear();
+        assertNull(DesignationZoneAnimalConnectedZones.lookupZone(41, 1, 0));
+        assertNull(DesignationZoneAnimalConnectedZones.lookupZone(1, 1, 1));
+    }
+
+    @Test
+    void degenerateGeometryMatchesVanilla() throws Exception {
+        zone(5, 5, 0, 0, 3);
+        zone(9, 9, 0, 3, 0);
+        zone(20, 20, 0, -2, 3);
+        DesignationZoneAnimal real = zone(5, 5, 0, 2, 2);
+        for (int x = 0; x < 30; x++) {
+            for (int y = 0; y < 30; y++) {
+                assertSame(
+                        DesignationZoneAnimal.getZone(x, y, 0),
+                        DesignationZoneAnimalConnectedZones.lookupZone(x, y, 0));
+            }
+        }
+        assertSame(real, DesignationZoneAnimalConnectedZones.lookupZone(6, 6, 0));
     }
 
     @Test

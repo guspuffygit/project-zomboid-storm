@@ -52,9 +52,10 @@ class EcsMemoPatchesTest implements UnitTest {
                 tryGetAfter.holderInstanceofs,
                 "enter and exit advice each guard on instanceof StormEcsMemoHolder");
         assertEquals(
-                tryGetBefore.identityHashCodes + 2,
+                tryGetBefore.identityHashCodes,
                 tryGetAfter.identityHashCodes,
-                "enter (slot probe) and exit (slot store) each add one identityHashCode call");
+                "the memo is scanned by class identity, never slot-addressed by identityHashCode"
+                        + " (per-boot slot collisions silently defeated the memo, scan #12)");
         assertTrue(
                 tryGetAfter.getEcsClassCalls >= 1
                         && tryGetAfter.getEcsClassCalls == tryGetBefore.getEcsClassCalls,

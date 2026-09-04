@@ -12,6 +12,15 @@ import zombie.characters.ecs.ECSComponent;
  * for layout and the ownership-revalidation invariant that keeps a positive hit exactly equivalent
  * to the vanilla lookup.
  *
+ * <p>The memo is scanned linearly by requested class, not slot-addressed. The original
+ * identity-hash slot scheme depended on {@code System.identityHashCode} of the component classes,
+ * which is assigned fresh per JVM boot: on ATF (scan #12, 2026-09-04) {@code
+ * NetworkZombieComponent}, {@code NetworkComponent} and {@code AIComponent} all landed in one slot,
+ * so every zombie lookup evicted the previous one and fell through to the map — the memo reported
+ * itself loaded and engaged while doing nothing. Seven distinct component classes are ever
+ * requested (vanilla plus Storm), so eight scanned slots never collide; a ninth class overwrites
+ * the last slot.
+ *
  * <p>Null results are memoized as {@link StormEcsMemoHolder#ABSENT}; the memo is dropped wholesale
  * by {@link EcsSetComponentMemoClearAdvice} whenever a component is registered, so a negative hit
  * is only served while the component map is provably unchanged for that key. Entities that do not
@@ -42,8 +51,18 @@ public class EcsTryGetComponentMemoAdvice {
         if (memo == null) {
             return 0;
         }
-        Object[] pair = (Object[]) memo[(System.identityHashCode(componentTypeClass) >>> 4) & 7];
-        if (pair == null || pair[0] != componentTypeClass) {
+        Object[] pair = null;
+        for (int i = 0; i < memo.length; i++) {
+            Object[] candidate = (Object[]) memo[i];
+            if (candidate == null) {
+                break;
+            }
+            if (candidate[0] == componentTypeClass) {
+                pair = candidate;
+                break;
+            }
+        }
+        if (pair == null) {
             return 0;
         }
         Object component = pair[1];
@@ -84,6 +103,14 @@ public class EcsTryGetComponentMemoAdvice {
         Object[] pair = new Object[2];
         pair[0] = componentTypeClass;
         pair[1] = ret == null ? StormEcsMemoHolder.ABSENT : ret;
-        memo[(System.identityHashCode(componentTypeClass) >>> 4) & 7] = pair;
+        int slot = memo.length - 1;
+        for (int i = 0; i < memo.length; i++) {
+            Object[] existing = (Object[]) memo[i];
+            if (existing == null || existing[0] == componentTypeClass) {
+                slot = i;
+                break;
+            }
+        }
+        memo[slot] = pair;
     }
 }
