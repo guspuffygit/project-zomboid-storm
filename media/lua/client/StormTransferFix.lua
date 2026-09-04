@@ -256,6 +256,80 @@ local function createStormBatch(character, items, srcContainer, destContainer)
 end
 
 ---------------------------------------------------------------------------
+-- Mannequin dressing
+---------------------------------------------------------------------------
+
+local MANNEQUIN_RETRY_MS = 1200
+local MANNEQUIN_RETRY_STEP_MS = 150
+
+local mannequinJobs = {}
+
+-- wearItem with a character sweeps every non-worn item back to that character,
+-- so the batch is registered with nil first and swept once at the end.
+local function dressMannequin(job)
+    local container = job.mannequin:getContainer()
+    if not container then
+        job.items = {}
+        return
+    end
+    local last = nil
+    for i = #job.items, 1, -1 do
+        local item = job.items[i]
+        if container:contains(item) then
+            job.mannequin:wearItem(item, nil)
+            last = item
+            table.remove(job.items, i)
+        end
+    end
+    if last then
+        job.mannequin:wearItem(last, job.character)
+    end
+end
+
+local function onMannequinTick()
+    local now = getTimestampMs()
+    for i = #mannequinJobs, 1, -1 do
+        local job = mannequinJobs[i]
+        if now >= job.nextAt then
+            job.nextAt = now + MANNEQUIN_RETRY_STEP_MS
+            dressMannequin(job)
+            if #job.items == 0 or now >= job.expiresAt then
+                table.remove(mannequinJobs, i)
+            end
+        end
+    end
+    if #mannequinJobs == 0 then
+        Events.OnTick.Remove(onMannequinTick)
+    end
+end
+
+local function queueMannequinDress(action, items)
+    local parent = action.destContainer and action.destContainer:getParent()
+    if not parent or not instanceof(parent, "IsoMannequin") then
+        return
+    end
+    local job = {
+        mannequin = parent,
+        character = action.character,
+        items = {},
+    }
+    for _, item in ipairs(items) do
+        table.insert(job.items, item)
+    end
+    dressMannequin(job)
+    if #job.items == 0 then
+        return
+    end
+    local now = getTimestampMs()
+    job.nextAt = now + MANNEQUIN_RETRY_STEP_MS
+    job.expiresAt = now + MANNEQUIN_RETRY_MS
+    table.insert(mannequinJobs, job)
+    if #mannequinJobs == 1 then
+        Events.OnTick.Add(onMannequinTick)
+    end
+end
+
+---------------------------------------------------------------------------
 -- Override start()
 ---------------------------------------------------------------------------
 
@@ -419,8 +493,8 @@ function ISInventoryTransferAction:update()
     self.character:setMetabolicTarget(Metabolics.LightWork)
 
     -- Storm transaction state checks (replaces vanilla byte-ID checks). The action
-    -- completes when every batch member is done; any reject/timeout/vanished item
-    -- stops it, and stop() cancels the batch's outstanding members server-side.
+    -- completes when every batch member is done; any reject/timeout stops it, and
+    -- stop() cancels the batch's outstanding members server-side.
     local transfers = self._stormTransfers or {}
     local allDone = true
     for _, transfer in ipairs(transfers) do
@@ -433,10 +507,6 @@ function ISInventoryTransferAction:update()
         end
         if not isStormTransactionDone(transfer.uuid) then
             allDone = false
-            if not self.srcContainer:contains(transfer.item) then
-                self:forceStop()
-                return
-            end
         end
     end
     if allDone then
@@ -497,6 +567,7 @@ function ISInventoryTransferAction:perform()
             end
             self:playTransferCompleteSound(item)
         end
+        queueMannequinDress(self, queuedItem.items)
     end
 
     -- Merge actions queued while this batch was in flight (vanilla runs

@@ -22,6 +22,7 @@ import zombie.core.Core;
 import zombie.core.random.Rand;
 import zombie.inventory.InventoryItem;
 import zombie.inventory.ItemContainer;
+import zombie.inventory.ItemPickerJava;
 import zombie.inventory.types.AnimalInventoryItem;
 import zombie.inventory.types.Clothing;
 import zombie.inventory.types.DrainableComboItem;
@@ -464,6 +465,8 @@ public class StormTransferHandler {
         // Broadcast to relevant clients (same as Transaction.update())
         GameServer.sendRemoveItemFromContainer(src, item);
         GameServer.sendAddItemToContainer(dest, item);
+        refreshContainerOverlay(src);
+        refreshContainerOverlay(dest);
 
         LOGGER.debug(
                 "processPending: moved item {} for {} uuid={}",
@@ -518,6 +521,7 @@ public class StormTransferHandler {
         item.setWorldItem(null);
         dest.addItem(item);
         GameServer.sendAddItemToContainer(dest, item);
+        refreshContainerOverlay(dest);
 
         recordLightweightPickup(p.player, item);
 
@@ -560,6 +564,7 @@ public class StormTransferHandler {
 
         src.Remove(item);
         GameServer.sendRemoveItemFromContainer(src, item);
+        refreshContainerOverlay(src);
 
         // Drop offsets within the square (port of ISTransferAction.GetDropItemOffset)
         float dropX = Rand.Next(0.0F, 1.0F);
@@ -718,6 +723,12 @@ public class StormTransferHandler {
                 placement.z,
                 player.getUsername());
         return true;
+    }
+
+    private static void refreshContainerOverlay(ItemContainer container) {
+        IsoObject parent = container.getParent();
+        if (parent == null) return;
+        ItemPickerJava.updateOverlaySprite(parent);
     }
 
     private static void complete(String uuid, PendingTransfer p, InventoryItem item) {

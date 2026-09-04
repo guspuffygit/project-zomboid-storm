@@ -1,6 +1,10 @@
 package io.pzstorm.storm.patch.fixes;
 
+import static io.pzstorm.storm.logging.StormLogger.LOGGER;
+
 import java.lang.reflect.Field;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import zombie.core.ActionManager;
 import zombie.core.NetTimedAction;
 import zombie.core.Transaction;
@@ -29,6 +33,12 @@ public class NetTimedActionPacketFix {
     private static volatile Field stateField;
     private static volatile Field idField;
     private static volatile Field playerIdField;
+
+    /**
+     * Action types already reported by {@link #reportMalformedAction}; keeps the log to one line
+     * per broken action type instead of one per attempt.
+     */
+    private static final Set<String> reportedMalformedTypes = ConcurrentHashMap.newKeySet();
 
     private static synchronized void initFieldHandles() throws ReflectiveOperationException {
         if (stateField != null) return;
@@ -84,6 +94,8 @@ public class NetTimedActionPacketFix {
         if (state == Transaction.TransactionState.Request) {
             boolean consistent = packet.isConsistent(connection);
             boolean hasAction = packet.action != null;
+
+            reportMalformedAction(packet, hasAction);
 
             if (shouldLog) {
                 NtaDebugLog.log(
@@ -243,5 +255,58 @@ public class NetTimedActionPacketFix {
         }
 
         return true;
+    }
+
+    /**
+     * Names the offending timed action when {@code NetTimedAction.parse} fails to rebuild it
+     * server-side.
+     *
+     * <p>The server reconstructs a client's timed action by calling {@code <Type>.new(...)} with
+     * values the client read out of the action instance using the <em>constructor's parameter
+     * names</em> as field names ({@code NetTimedAction.set}), then re-supplied positionally ({@code
+     * NetTimedAction.parse}). Two things routinely break that round trip and both are silent in
+     * vanilla:
+     *
+     * <ul>
+     *   <li>The class is not loaded on the server (timed actions under {@code media/lua/client/}
+     *       are checksum-only there), or its {@code new} threw — {@code action} comes back null and
+     *       the action is rejected with no explanation.
+     *   <li>{@code character} came back nil — the constructor's first parameter is not named {@code
+     *       character}, or an earlier argument's type is missing from {@code
+     *       PZNetKahluaTableImpl.getValueByte} and was dropped from the wire, shifting the rest.
+     *       Every later Lua call then dies on {@code self.character}, starting with {@code
+     *       ISBaseTimedAction:adjustMaxTime}.
+     * </ul>
+     */
+    private static void reportMalformedAction(NetTimedActionPacket packet, boolean hasAction) {
+        try {
+            String type = packet.type == null || packet.type.isEmpty() ? "?" : packet.type;
+            if (!hasAction) {
+                if (reportedMalformedTypes.add("missing:" + type)) {
+                    LOGGER.warn(
+                            "{} timed action '{}' could not be rebuilt server-side (class not"
+                                    + " loaded on the server, or its new() failed) - rejecting it. Move"
+                                    + " the action out of media/lua/client/ into media/lua/shared/.",
+                            NtaDebugLog.PREFIX,
+                            type);
+                }
+                return;
+            }
+            if (packet.action.rawget("character") == null
+                    && reportedMalformedTypes.add("character:" + type)) {
+                LOGGER.warn(
+                        "{} timed action '{}' rebuilt server-side with a nil character - its"
+                                + " adjustMaxTime/isValid/complete will all fail. Check that {}:new()"
+                                + " takes 'character' first and stores every parameter under its own"
+                                + " name, and that no earlier parameter holds a type"
+                                + " PZNetKahluaTableImpl cannot serialize (a Lua function, an enum, a"
+                                + " Fluid) - those are dropped from the wire and shift the rest.",
+                        NtaDebugLog.PREFIX,
+                        type,
+                        type);
+            }
+        } catch (Exception ignored) {
+            // diagnostics must never take down packet handling
+        }
     }
 }
