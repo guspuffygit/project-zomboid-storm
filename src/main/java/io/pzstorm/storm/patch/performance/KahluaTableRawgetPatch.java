@@ -10,10 +10,6 @@ import net.bytebuddy.pool.TypePool;
 /**
  * Halves map work per {@code KahluaTableImpl.rawget}. See {@link
  * io.pzstorm.storm.advice.kahluatablerawget.KahluaTableRawgetAdvice} for the mechanism.
- *
- * <p>Registered unconditionally on the server (the double probe profiled at ~1.7% of the main
- * thread at 144 players), and on the client only behind {@code
- * -Dstorm.experimental.clientperf=true}.
  */
 public class KahluaTableRawgetPatch extends StormClassTransformer {
 

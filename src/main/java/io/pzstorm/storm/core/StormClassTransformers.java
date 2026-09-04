@@ -377,6 +377,7 @@ public class StormClassTransformers {
         registerTransformer(new BaseVehicleSavePatch());
         registerTransformer(new SitOnFurnitureBoxedInChairPatch());
         registerTransformer(new InventoryItemStoreByteDataPatch());
+        registerTransformer(new KahluaTableRawgetPatch());
         if (StormEnv.isStormServer() || Boolean.getBoolean("storm.experimental.clientperf")) {
             registerTransformer(new AnimationPlayerRecorderIsActivePatch());
         }
@@ -392,7 +393,6 @@ public class StormClassTransformers {
             registerTransformer(new AnimationVariableReferenceGetVariablePatch());
             registerTransformer(new IsoGameCharacterIsRagdollPatch());
             registerTransformer(new IsoGameCharacterRagdollMirrorsPatch());
-            registerTransformer(new KahluaTableRawgetPatch());
             registerTransformer(new EventTriggerFastPathPatch());
             registerTransformer(new CutawayLevelDataArrayCachePatch());
             registerTransformer(new FBORenderLevelsFreeSkipPatch());
@@ -492,18 +492,10 @@ public class StormClassTransformers {
             registerTransformer(new ZombieAuthScanFastPathPatch());
             registerTransformer(new NetworkZombiePackerAuthPassPatch());
             registerTransformer(new AnimalSyncManagerUpdatePatch());
-            // Also registered in the experimental clientperf block above — guard against
-            // weaving the same advice twice on a server started with that flag.
-            if (!Boolean.getBoolean("storm.experimental.clientperf")) {
-                registerTransformer(new KahluaTableRawgetPatch());
-            }
             registerTransformer(new LuaMainloopPatch());
             registerTransformer(new IsoWorldUpdatePatch());
             registerTransformer(new AnimalControllerUpdatePatch());
             registerTransformer(new ZomboidRadioUpdatePatch());
-            // Server profiles show the containsKey+get double probe at ~1.7% of main
-            // (~1.2 ms/tick at 144 players); also registered under the clientperf gate.
-            registerTransformer(new KahluaTableRawgetPatch());
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerStartPMChatPatch());
