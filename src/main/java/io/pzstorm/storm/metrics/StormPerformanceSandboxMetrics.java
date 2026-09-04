@@ -23,6 +23,7 @@ import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
+import io.pzstorm.storm.patch.performance.ZombieRainWanderInterval;
 import io.pzstorm.storm.vehicles.StormVehicleAlphaCheckSkip;
 import io.pzstorm.storm.vehicles.StormVehicleSoundRelevance;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
@@ -116,6 +117,18 @@ public final class StormPerformanceSandboxMetrics {
                                     + " zombies keep vanilla's 2s gate. Sourced from the"
                                     + " Storm.ZombieAuthTickInterval sandbox option. Vanilla 1"
                                     + " (every tick).")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge ZOMBIE_RAIN_WANDER_PERCENT =
+            Gauge.builder()
+                    .name("storm_zombie_rain_wander_percent")
+                    .help(
+                            "Percentage applied to an idle zombie's wander interval while it is"
+                                    + " raining. Vanilla applies its 1.5x lengthening on the dry"
+                                    + " branch only, so idle zombies re-path 1.5x as often in"
+                                    + " rain. Sourced from the Storm.ZombieRainWanderPercent"
+                                    + " sandbox option. 100 = vanilla; 150 = a raining interval"
+                                    + " matches the dry distribution.")
                     .register(StormPrometheus.registry());
 
     private static final Gauge INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
@@ -397,6 +410,7 @@ public final class StormPerformanceSandboxMetrics {
         ANIMAL_LOS_TICK_INTERVAL.set(AnimalLOSTickInterval.DEFAULT_TICK_INTERVAL);
         VIRTUAL_ANIMAL_TICK_INTERVAL.set(VirtualAnimalTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_AUTH_TICK_INTERVAL.set(ZombieAuthTickInterval.DEFAULT_TICK_INTERVAL);
+        ZOMBIE_RAIN_WANDER_PERCENT.set(ZombieRainWanderInterval.VANILLA_PERCENT);
         INVENTORY_ITEM_SWEEP_TICK_INTERVAL.set(
                 InventoryItemSweepTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.VANILLA_DEFAULT);
@@ -449,6 +463,10 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setZombieAuthTickInterval(int interval) {
         ZOMBIE_AUTH_TICK_INTERVAL.set(interval);
+    }
+
+    public static void setZombieRainWanderPercent(int percent) {
+        ZOMBIE_RAIN_WANDER_PERCENT.set(percent);
     }
 
     public static void setInventoryItemSweepTickInterval(int interval) {

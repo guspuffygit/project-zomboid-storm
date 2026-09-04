@@ -28,6 +28,7 @@ import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
+import io.pzstorm.storm.patch.performance.ZombieRainWanderInterval;
 import io.pzstorm.storm.vehicles.StormVehicleAlphaCheckSkip;
 import io.pzstorm.storm.vehicles.StormVehicleSoundRelevance;
 import io.pzstorm.storm.zombie.StormZombieTotalCap;
@@ -54,6 +55,7 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_ANIMAL_LOS_TICK_INTERVAL = "Storm.AnimalLOSTickInterval";
     public static final String OPT_VIRTUAL_ANIMAL_TICK_INTERVAL = "Storm.VirtualAnimalTickInterval";
     public static final String OPT_ZOMBIE_AUTH_TICK_INTERVAL = "Storm.ZombieAuthTickInterval";
+    public static final String OPT_ZOMBIE_RAIN_WANDER_PERCENT = "Storm.ZombieRainWanderPercent";
     public static final String OPT_INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
             "Storm.InventoryItemSweepTickInterval";
     public static final String OPT_MAX_TOTAL_ZOMBIES = "Storm.MaxTotalZombies";
@@ -115,6 +117,7 @@ public final class StormPerformanceSandboxApplier {
         applyAnimalLosTickInterval();
         applyVirtualAnimalTickInterval();
         applyZombieAuthTickInterval();
+        applyZombieRainWanderPercent();
         applyInventoryItemSweepTickInterval();
         refreshZombieCullThreshold();
         applyMaxTotalZombies();
@@ -473,6 +476,14 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         ZombieAuthTickInterval.setTickInterval(value);
+    }
+
+    private static void applyZombieRainWanderPercent() {
+        Integer value = readIntOption(OPT_ZOMBIE_RAIN_WANDER_PERCENT);
+        if (value == null) {
+            return;
+        }
+        ZombieRainWanderInterval.setPercent(value);
     }
 
     private static void applyInventoryItemSweepTickInterval() {
