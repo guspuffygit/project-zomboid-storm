@@ -57,8 +57,12 @@ import zombie.vehicles.BaseVehicle;
  * is near over the strict LRU head, at most a few per tick (see {@link #evictOverBudget(ServerMap,
  * boolean)}).
  *
- * <p>Gated server-side on {@link StormCellWarmingConfig#isEnabled()}. Single-threaded — all calls
- * happen from the server main thread.
+ * <p>Owns {@code postupdate} while {@link #isActive()}: whenever {@link
+ * StormCellWarmingConfig#isEnabled()} is on, and after it is switched off live for as long as warm
+ * cells remain. In that drain mode no new cells are warmed and the whole warm set is retired
+ * through {@link #evictOverBudget(ServerMap, boolean)} at its usual per-tick rate, so a live
+ * disable never hands a detached cell to the vanilla loop and never spikes a tick. Single-threaded
+ * — all calls happen from the server main thread.
  */
 public final class StormCellWarmer {
 
@@ -208,6 +212,33 @@ public final class StormCellWarmer {
     }
 
     /**
+     * Whether the warmer must own {@code ServerMap.postupdate} this tick: warming is enabled, or it
+     * was disabled live and warm cells are still being drained. The budgeted and vanilla postupdate
+     * bodies must not run while this is true — they would tick or destructively unload cells whose
+     * world-system bindings are detached.
+     */
+    public static boolean isActive() {
+        return ownsPostUpdate(StormCellWarmingConfig.isEnabled(), WARM_CELLS.size());
+    }
+
+    /** Pure form of {@link #isActive()}; package-private for tests. */
+    static boolean ownsPostUpdate(boolean enabled, int warmCount) {
+        return enabled || warmCount > 0;
+    }
+
+    /**
+     * Cap the eviction pass enforces this tick: the configured cap while enabled, {@code 0} while
+     * draining (retire everything), or {@code -1} for "no eviction pass" when enabled and
+     * unbounded. Package-private for tests.
+     */
+    static int effectiveEvictionCap(boolean enabled, int configuredMax) {
+        if (!enabled) {
+            return 0;
+        }
+        return configuredMax <= 0 ? -1 : configuredMax;
+    }
+
+    /**
      * Fast O(1) test used by {@code MovingObjectSchedulerBucketAddAdvice} to skip warm animals at
      * the bucket-add chokepoint. Returns {@code false} for non-animals and for any animal that
      * isn't currently inside a warmed cell.
@@ -230,10 +261,13 @@ public final class StormCellWarmer {
      * </ul>
      *
      * Called from {@code ServerMapPostUpdateWarmAdvice} which short-circuits the vanilla method
-     * body when {@link StormCellWarmingConfig#isEnabled()}.
+     * body while {@link #isActive()}. With warming switched off (drain mode) the first branch still
+     * rewarms cells that became relevant, the second never warms, and the eviction pass retires
+     * whatever is left.
      */
     public static void runPostUpdate(ServerMap serverMap) {
         bindServerCellInternals();
+        boolean draining = !StormCellWarmingConfig.isEnabled();
         boolean pathfindPaused = false;
         long cancelledQueued = 0;
         long cancelledInFlight = 0;
@@ -278,7 +312,7 @@ public final class StormCellWarmer {
                         cell.cancelLoading = true;
                     }
                 } else if (!shouldBeLoaded) {
-                    if (warm(cell)) {
+                    if (!draining && warm(cell)) {
                         // Warmed in-place: stays in cellMap/loadedCells with isLoaded=true.
                         continue;
                     }
@@ -299,6 +333,10 @@ public final class StormCellWarmer {
                 }
             }
             pathfindPaused = evictOverBudget(serverMap, pathfindPaused);
+            if (draining && WARM_CELLS.isEmpty()) {
+                StormLogger.LOGGER.info(
+                        "Cell warming drain complete — ServerMap.postupdate returns to vanilla");
+            }
             // Inside the guard: this is Storm instrumentation, and a metric class whose own
             // <clinit> fails would otherwise throw an Error straight into the tick.
             ChunkHydrationMetrics.recordCancelledCells(cancelledQueued, cancelledInFlight);
@@ -613,10 +651,11 @@ public final class StormCellWarmer {
     /**
      * Memory bound on the warm set. A warm cell keeps its full chunk/square state resident, so
      * without a cap the map grows with every cell any player has ever walked away from. Evicts warm
-     * cells above {@link StormCellWarmingConfig#maxWarmCells()} through the vanilla destructive
-     * path: reconnect first, so the pop managers virtualize animals and the chunk save jobs persist
-     * state exactly as a vanilla Unload of a live cell would — via {@link #evictLiteReconnect},
-     * which skips the re-attach work the immediate unload would only undo.
+     * cells above {@link StormCellWarmingConfig#maxWarmCells()} (above zero while draining after a
+     * live disable, see {@link #effectiveEvictionCap}) through the vanilla destructive path:
+     * reconnect first, so the pop managers virtualize animals and the chunk save jobs persist state
+     * exactly as a vanilla Unload of a live cell would — via {@link #evictLiteReconnect}, which
+     * skips the re-attach work the immediate unload would only undo.
      *
      * <p>Victim choice is distance-aware (the influence grid is rebuilt every tick): the LRU head
      * is often a cell a player is standing two cells away from — the very cell most likely to be
@@ -635,8 +674,10 @@ public final class StormCellWarmer {
      * @return updated pathfindPaused flag — caller's finally block resumes ServerLOS.
      */
     private static boolean evictOverBudget(ServerMap serverMap, boolean pathfindPaused) {
-        int max = StormCellWarmingConfig.maxWarmCells();
-        if (max <= 0) {
+        int max =
+                effectiveEvictionCap(
+                        StormCellWarmingConfig.isEnabled(), StormCellWarmingConfig.maxWarmCells());
+        if (max < 0) {
             return pathfindPaused;
         }
         boolean evicted = false;

@@ -14,7 +14,7 @@ import io.prometheus.metrics.core.metrics.Histogram;
  *       + binary parse + RecalcAll2).
  *   <li>{@code storm_cell_warm_count} — current number of warm cells held in memory.
  *   <li>{@code storm_cell_warm_evicted_total} — warm cells destructively unloaded because the warm
- *       set exceeded {@code -Dstorm.cells.maxWarm}.
+ *       set exceeded {@code Storm.MaxWarmCells} (or is draining after a live disable).
  *   <li>{@code storm_cell_warm_eligibility_fail_total} — cells that fell through to vanilla unload
  *       because the eligibility predicate rejected them, labelled by {@code reason}.
  *   <li>{@code storm_cell_warm_duration_seconds} — time a cell spent in warm state before either
@@ -52,7 +52,8 @@ public final class StormCellWarmingMetrics {
                     .name("storm_cell_warm_evicted_total")
                     .help(
                             "Warm cells destructively unloaded because the warm set exceeded"
-                                    + " -Dstorm.cells.maxWarm.")
+                                    + " Storm.MaxWarmCells, or because Storm.KeepCellsWarm was"
+                                    + " switched off live and the set is draining.")
                     .register(StormPrometheus.registry());
 
     private static final Counter ELIGIBILITY_FAILS =
@@ -95,9 +96,10 @@ public final class StormCellWarmingMetrics {
             Gauge.builder()
                     .name("storm_cell_warm_over_cap")
                     .help(
-                            "Warm cells above -Dstorm.cells.maxWarm after this tick's evictions;"
+                            "Warm cells above Storm.MaxWarmCells after this tick's evictions;"
                                     + " the per-tick eviction cap trims the excess over the"
-                                    + " following ticks.")
+                                    + " following ticks. Equals storm_cell_warm_count while"
+                                    + " draining after a live disable.")
                     .register(StormPrometheus.registry());
 
     private static final Histogram REWARM_OP_DURATION =

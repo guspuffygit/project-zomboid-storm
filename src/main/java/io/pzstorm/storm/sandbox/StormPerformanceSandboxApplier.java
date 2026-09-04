@@ -24,6 +24,7 @@ import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFact
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
+import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
@@ -77,6 +78,8 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_MAX_PLAYERS = "Storm.MaxPlayers";
     public static final String OPT_LOGIN_QUEUE_MAX_CONCURRENT_LOADERS =
             "Storm.LoginQueueMaxConcurrentLoaders";
+    public static final String OPT_KEEP_CELLS_WARM = "Storm.KeepCellsWarm";
+    public static final String OPT_MAX_WARM_CELLS = "Storm.MaxWarmCells";
 
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
@@ -127,6 +130,37 @@ public final class StormPerformanceSandboxApplier {
         applyEntityRemoveFastPath();
         applyMaxPlayersOverride();
         applyLoginQueueMaxConcurrentLoaders();
+        applyMaxWarmCells();
+        applyKeepCellsWarm();
+    }
+
+    /**
+     * Pushes {@link #OPT_MAX_WARM_CELLS} through {@link
+     * StormCellWarmingConfig#setMaxWarmCells(int)} — the bound on the warm set. Applied before the
+     * enable flag so a first-time enable starts with the intended cap rather than the compiled-in
+     * default for one tick.
+     */
+    private static void applyMaxWarmCells() {
+        Integer value = readIntOption(OPT_MAX_WARM_CELLS);
+        if (value == null) {
+            return;
+        }
+        StormCellWarmingConfig.setMaxWarmCells(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_KEEP_CELLS_WARM} through {@link
+     * StormCellWarmingConfig#setEnabled(boolean)}. Both directions are live: on starts warming at
+     * the next postupdate; off leaves {@code StormCellWarmer} owning postupdate in drain mode until
+     * every warm cell has gone through the eviction path, then hands the body back to the unload
+     * budget / vanilla.
+     */
+    private static void applyKeepCellsWarm() {
+        Boolean value = readBooleanOption(OPT_KEEP_CELLS_WARM);
+        if (value == null) {
+            return;
+        }
+        StormCellWarmingConfig.setEnabled(value);
     }
 
     /**

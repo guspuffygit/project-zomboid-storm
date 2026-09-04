@@ -1,16 +1,17 @@
 package io.pzstorm.storm.advice.servermappostupdatewarm;
 
 import io.pzstorm.storm.patch.performance.StormCellWarmer;
-import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
 import zombie.network.ServerMap;
 
 /**
- * Body-replacement advice for {@code ServerMap.postupdate}. When cell warming is enabled, delegates
- * the entire postupdate loop to {@link StormCellWarmer#runPostUpdate(ServerMap)} so warm cells stay
- * resident in {@code cellMap}/{@code loadedCells} instead of being destructively unloaded. When
- * warming is disabled, returns 0 to let vanilla run unchanged.
+ * Body-replacement advice for {@code ServerMap.postupdate}. While the warmer is active (cell
+ * warming enabled, or disabled live with warm cells still draining — {@link
+ * StormCellWarmer#isActive()}), delegates the entire postupdate loop to {@link
+ * StormCellWarmer#runPostUpdate(ServerMap)} so warm cells stay resident in {@code cellMap}/{@code
+ * loadedCells} instead of being destructively unloaded. Otherwise returns 0 to let vanilla (or the
+ * unload-budget advice) run unchanged.
  *
  * <p>Stacks under the existing {@code ServerMapPostUpdateAdvice} timing wrapper — both advices'
  * enter/exit hooks fire regardless of body skip, so per-tick timings continue to record the elapsed
@@ -23,7 +24,7 @@ public class ServerMapPostUpdateWarmAdvice {
         if (!GameServer.server) {
             return 0;
         }
-        if (!StormCellWarmingConfig.isEnabled()) {
+        if (!StormCellWarmer.isActive()) {
             return 0;
         }
         if (!(thisObj instanceof ServerMap serverMap)) {

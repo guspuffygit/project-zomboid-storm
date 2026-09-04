@@ -376,17 +376,24 @@ budgeted pass calls the same patched methods. The applied budget is exposed as
 ### Cell warming (StormCellWarmingMetrics)
 
 Cell warming is opt-in and **off by default** — every series here reads a flat `0` unless the
-server JVM was started with `-Dstorm.cells.keepWarm=true`. With it on, `StormCellWarmer` body-
-replaces `ServerMap.postupdate`: a cell that leaves player influence has its chunks detached from
+`Storm.KeepCellsWarm` sandbox option is on (`storm_cell_warming_enabled`). With it on,
+`StormCellWarmer` body-replaces `ServerMap.postupdate`: a cell that leaves player influence has its chunks detached from
 collision, pathfinding and both population managers and its animals and dead bodies drained into a
 side stash, but the `ServerCell` itself stays in `cellMap` and `loadedCells` with `isLoaded = true`.
 Walking back in re-attaches it, which is the whole point: no disk read, no binary parse, no
 `RecalcAll2`.
 
-Two things bound it. `-Dstorm.cells.maxWarm` (default 64) caps the warm set, because a warm cell
-keeps its full chunk and square state resident; cells over the cap are evicted through the ordinary
-destructive unload, oldest-warmed first. And an eligibility predicate refuses to warm anything
-during a soft reset or a queued save/quit, falling through to vanilla unload instead.
+Two things bound it. `Storm.MaxWarmCells` (default 128, `storm_max_warm_cells`) caps the warm set,
+because a warm cell keeps its full chunk and square state resident; cells over the cap are evicted
+through the ordinary destructive unload, oldest-warmed first. And an eligibility predicate refuses
+to warm anything during a soft reset or a queued save/quit, falling through to vanilla unload
+instead.
+
+Both options are live. Switching `Storm.KeepCellsWarm` off does not release `postupdate`
+immediately: the warmer stays in charge in a drain mode — no new warms, the whole set evicted at
+the normal per-tick eviction rate — until `storm_cell_warm_count` hits 0. During the drain
+`storm_cell_warm_over_cap` equals the warm count and `storm_cell_warm_evicted_total` climbs by up
+to 4 per tick; `storm_cell_warming_enabled` already reads 0.
 
 Warming also takes ownership of `postupdate` away from the cell-unload budget above — the two body
 replacements are mutually exclusive and the warm advice is registered outermost — so
@@ -397,10 +404,10 @@ replacements are mutually exclusive and the warm advice is registered outermost 
 |------|------|--------|------|
 | `storm_cell_warmed_total` | Counter | — | Cells whose `ServerCell.Unload` was short-circuited into the warm map. On its own this is just deferred work; it only becomes a saving when the cell is rewarmed rather than evicted. |
 | `storm_cell_rewarmed_total` | Counter | — | Warm cells re-attached because a player came back into influence — each one a disk read, parse and `RecalcAll2` that never happened. A rewarm rate close to the warm rate means players are pacing a boundary and the feature is earning its memory. Steady warms with near-zero rewarms means you are holding cells nobody returns to, and the cap is the only thing stopping that from growing. |
-| `storm_cell_warm_count` | Gauge | — | Cells currently held warm. Pinned at `-Dstorm.cells.maxWarm` means the cap is binding, and from that point every additional warm costs an eviction. |
+| `storm_cell_warm_count` | Gauge | — | Cells currently held warm. Pinned at `Storm.MaxWarmCells` means the cap is binding, and from that point every additional warm costs an eviction. |
 | `storm_cell_warm_evicted_total` | Counter | — | Warm cells destructively unloaded because the set exceeded the cap. An eviction is strictly worse than never having warmed the cell — it pays the detach and the re-attach *before* the vanilla unload it was trying to avoid. A sustained eviction rate means the cap is too low for how far apart your players are, or the player spread is simply beyond what warming can help with. Eviction is distance-aware: the first 8 LRU-ordered candidates are scanned for one no player is within 2 cells of, and at most 4 cells are evicted per tick. |
 | `storm_cell_warm_evict_near_skip_total` | Counter | — | LRU-head eviction candidates spared because player influence was within 2 cells — a farther cell was evicted instead of one likely to be rewarmed moments later. A high rate relative to `storm_cell_warm_evicted_total` means the LRU order alone would have been thrashing (evicting exactly the cells players are pacing next to) and the distance-aware pass is doing real work. |
-| `storm_cell_warm_over_cap` | Gauge | — | Warm cells above `-Dstorm.cells.maxWarm` after this tick's evictions. Non-zero is normal for a few ticks after a warm burst (the per-tick eviction cap of 4 spreads the unload cost); a value that stays high means cells are going warm faster than 4/tick can retire them. |
+| `storm_cell_warm_over_cap` | Gauge | — | Warm cells above `Storm.MaxWarmCells` after this tick's evictions. Non-zero is normal for a few ticks after a warm burst (the per-tick eviction cap of 4 spreads the unload cost); a value that stays high means cells are going warm faster than 4/tick can retire them. |
 | `storm_cell_warm_eligibility_fail_total` | Counter | `reason={soft_reset,no_server_map,save_or_quit_queued,chunk_soft_reset}` | `ServerCell.Unload` calls where the predicate refused to warm and vanilla destructive unload ran. All four reasons are correct-by-design refusals around a save, a quit or a soft reset rather than errors, so a burst of `save_or_quit_queued` at autosave time is expected. Sustained `chunk_soft_reset` outside a reset window is not, and `no_server_map` outside startup/shutdown should never appear. |
 | `storm_cell_warm_duration_seconds` | Histogram (native) | — | How long a cell stayed warm before leaving the warm map — observed on both exits, rewarm and eviction, so it covers every warmed cell that has finished. This distribution is how you size the cap: if the bulk of rewarms land within a few seconds, a small cap suffices, and a long tail is memory being held for nothing. |
 | `storm_cell_warm_op_duration_seconds` | Histogram (native) | — | Main-thread time inside one `warm()`: dead-body drain, then per-chunk animal drain and detach from `MapCollisionData`, both population managers and the pathfinder. Charged to the tick that would have unloaded the cell, so this is the cost warming *adds* to `pz_server_map_post_update_call_duration_seconds`. |
@@ -420,7 +427,7 @@ rate(storm_cell_warm_evicted_total[1m]) > 0
 rate(storm_cell_warm_op_duration_seconds_sum[1m])
   + rate(storm_cell_rewarm_op_duration_seconds_sum[1m])
 
-# how long cells actually survive warm — the input to sizing -Dstorm.cells.maxWarm
+# how long cells actually survive warm — the input to sizing Storm.MaxWarmCells
 histogram_quantile(0.90, rate(storm_cell_warm_duration_seconds[1m]))
 ```
 
@@ -638,7 +645,7 @@ zero on these series, never an exception on the tick path.
 | `storm_chunk_hydration_cancelled_cells_total` | Counter | `stage={before_dispatch,in_flight}` | Cell loads cancelled because no player is near them any more. `before_dispatch` was still queued, so nothing was wasted. `in_flight` had a worker on it, so up to 64 chunks of disk reads or worldgen are discarded — and a cell holding brand-new chunks cannot be cancelled at the recalc stage at all, so it pays the full three-pass recalc before being thrown away. A driver outrunning hydration generates this continuously: cells requested, half-loaded, abandoned on the way past, requested again on the way back. High `in_flight` means the hydration threads are busy on work nobody will see, which is why the cells actually ahead of the player stay pending. Counted only on Storm's own `postupdate` bodies — cell warming, or the unload budget when `Storm.CellUnloadBudgetPerTick > 0`. Set the budget to 0 with warming off, or trip either failure latch, and the uninstrumented vanilla body runs instead: cancellation carries on, this counter flatlines, and zero then means *unmeasured*, not *none*. |
 
 Counted from Storm's re-implementations of `ServerMap.postupdate` — `StormCellUnloadBudget` and,
-under `-Dstorm.cells.keepWarm=true`, `StormCellWarmer`. **Coverage hole:** with
+while cell warming is active (`Storm.KeepCellsWarm`), `StormCellWarmer`. **Coverage hole:** with
 `CellUnloadBudgetPerTick = 0`, or after the budget latches off on error, vanilla's own `postupdate`
 body runs the cancel branch instead and this counter stays flat. The budget defaults to 2, so that
 is an opt-out, not the normal case.

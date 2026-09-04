@@ -71,3 +71,9 @@ option Storm.AnimalZoneLeashDistance
 
 option Storm.LoginQueueMaxConcurrentLoaders
 {type = integer, min = 1, max = 32, default = 1, page = Storm, translation = Storm_LoginQueueMaxConcurrentLoaders,}
+
+option Storm.KeepCellsWarm
+{type = boolean, default = false, page = Storm, translation = Storm_KeepCellsWarm,}
+
+option Storm.MaxWarmCells
+{type = integer, min = 0, max = 1024, default = 128, page = Storm, translation = Storm_MaxWarmCells,}

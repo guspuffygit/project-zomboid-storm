@@ -19,6 +19,7 @@ import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
+import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
 import io.pzstorm.storm.patch.performance.VirtualAnimalTickInterval;
 import io.pzstorm.storm.patch.performance.ZombieAuthTickInterval;
@@ -344,6 +345,28 @@ public final class StormPerformanceSandboxMetrics {
                                     + " until LoginQueueDone and never released early.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge CELL_WARMING_ENABLED =
+            Gauge.builder()
+                    .name("storm_cell_warming_enabled")
+                    .help(
+                            "Whether cell warming is enabled — stale server cells are kept resident"
+                                    + " with their world-system bindings detached instead of being"
+                                    + " destructively unloaded. Sourced from the Storm.KeepCellsWarm"
+                                    + " sandbox option. 0 = vanilla unload (default). After a live"
+                                    + " 0, storm_cell_warm_count drains to zero over the following"
+                                    + " ticks before postupdate returns to vanilla.")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge MAX_WARM_CELLS =
+            Gauge.builder()
+                    .name("storm_max_warm_cells")
+                    .help(
+                            "Maximum cells held warm at once; above it the least-recently-warmed"
+                                    + " cells are evicted through the vanilla unload path. Sourced"
+                                    + " from the Storm.MaxWarmCells sandbox option. Default 128; 0 ="
+                                    + " unbounded.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -373,6 +396,8 @@ public final class StormPerformanceSandboxMetrics {
         MAX_PLAYERS_OVERRIDE.set(StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
         LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(
                 LoginQueueEarlyRelease.DEFAULT_MAX_CONCURRENT_LOADERS);
+        CELL_WARMING_ENABLED.set(StormCellWarmingConfig.DEFAULT_ENABLED ? 1 : 0);
+        MAX_WARM_CELLS.set(StormCellWarmingConfig.DEFAULT_MAX_WARM_CELLS);
     }
 
     private StormPerformanceSandboxMetrics() {}
@@ -479,5 +504,13 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setLoginQueueMaxConcurrentLoaders(int loaders) {
         LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(loaders);
+    }
+
+    public static void setCellWarmingEnabled(boolean enabled) {
+        CELL_WARMING_ENABLED.set(enabled ? 1 : 0);
+    }
+
+    public static void setMaxWarmCells(int cells) {
+        MAX_WARM_CELLS.set(cells);
     }
 }

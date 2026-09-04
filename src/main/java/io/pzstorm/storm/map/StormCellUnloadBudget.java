@@ -5,7 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.metrics.CellUnloadBudgetMetrics;
 import io.pzstorm.storm.metrics.ChunkHydrationMetrics;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
-import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
+import io.pzstorm.storm.patch.performance.StormCellWarmer;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,11 +50,12 @@ import zombie.popman.NetworkZombiePacker;
  * <p>Composes with the other postupdate patches: the {@code ServerMapPostUpdatePatch} stopwatch is
  * registered <em>after</em> the budget patch so its advice wraps the skip and {@code
  * pz_server_map_post_update_call_duration_seconds} times both paths; {@code
- * ServerMapPostUpdateWarmPatch} is registered later still (outermost) and owns the whole body when
- * {@code -Dstorm.cells.keepWarm=true} — {@link #runBudgeted(Object)} defers to it explicitly via
- * the {@link StormCellWarmingConfig#isEnabled()} gate so exactly one body replacement can run.
- * {@code ServerCellUnloadPatch} and {@code IsoChunkRemoveFromWorldPatch} advise methods this helper
- * calls, so their timing metrics keep recording on the budgeted path.
+ * ServerMapPostUpdateWarmPatch} is registered later still (outermost) and owns the whole body while
+ * cell warming is active ({@code Storm.KeepCellsWarm} on, or off with warm cells still draining) —
+ * {@link #runBudgeted(Object)} defers to it explicitly via the {@link StormCellWarmer#isActive()}
+ * gate so exactly one body replacement can run. {@code ServerCellUnloadPatch} and {@code
+ * IsoChunkRemoveFromWorldPatch} advise methods this helper calls, so their timing metrics keep
+ * recording on the budgeted path.
  *
  * <p>Vanilla behavior is restored wholesale with {@code Storm.CellUnloadBudgetPerTick = 0}
  * (live-appliable), and permanently if the budgeted body ever throws outside the vanilla-replicated
@@ -131,10 +132,11 @@ public final class StormCellUnloadBudget {
         if (failed || budget <= 0) {
             return false;
         }
-        if (StormCellWarmingConfig.isEnabled()) {
-            // The warm advice (registered outermost) body-replaces postupdate itself; with
-            // warming on it intercepts before this advice ever runs. This gate only matters if
-            // that registration order changes — exactly one body replacement may run.
+        if (StormCellWarmer.isActive()) {
+            // The warm advice (registered outermost) body-replaces postupdate itself; while the
+            // warmer is active (enabled, or draining after a live disable) it intercepts before
+            // this advice ever runs. This gate only matters if that registration order changes —
+            // exactly one body replacement may run.
             return false;
         }
         try {

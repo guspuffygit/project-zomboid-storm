@@ -1,7 +1,6 @@
 package io.pzstorm.storm.advice.loadedareasadd;
 
 import io.pzstorm.storm.patch.performance.StormCellWarmer;
-import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import java.lang.reflect.Field;
 import net.bytebuddy.asm.Advice;
 import zombie.network.GameServer;
@@ -19,7 +18,9 @@ import zombie.popman.LoadedAreas;
  * instance (serverCells=false) and are left untouched — players need their relevant areas reported
  * even when those areas overlap warm cells.
  *
- * <p>Server-only via {@code GameServer.server} gate.
+ * <p>Server-only via {@code GameServer.server} gate. Gated on the warm set being non-empty rather
+ * than on the enable flag, so cells still draining after a live disable stay filtered until they
+ * are actually evicted.
  */
 public class LoadedAreasAddAdvice {
 
@@ -41,7 +42,7 @@ public class LoadedAreasAddAdvice {
         if (!GameServer.server) {
             return 0;
         }
-        if (!StormCellWarmingConfig.isEnabled()) {
+        if (StormCellWarmer.warmCount() == 0) {
             return 0;
         }
         boolean serverCells;
