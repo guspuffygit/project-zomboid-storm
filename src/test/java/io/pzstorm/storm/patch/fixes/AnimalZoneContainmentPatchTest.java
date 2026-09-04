@@ -7,11 +7,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
+import sun.misc.Unsafe;
+import zombie.iso.areas.DesignationZoneAnimal;
 
 /**
  * Verifies that {@link AnimalZoneContainmentPatch} weaves the containment helper into exactly the
@@ -61,6 +65,49 @@ class AnimalZoneContainmentPatchTest implements UnitTest {
         assertEquals(1, AnimalZoneContainment.rectDistance(100, 100, 10, 10, 99, 99));
         assertEquals(20, AnimalZoneContainment.rectDistance(100, 100, 10, 10, 129, 105));
         assertEquals(5, AnimalZoneContainment.rectDistance(100, 100, 10, 10, 95, 103));
+    }
+
+    @Test
+    void troughApproachSquareOneTileOutsideZoneIsNotClamped() throws Exception {
+        // A trough on the zone's bottom edge row (y = 109) has its standing square at y = 110,
+        // one tile past the rectangle. IsoAnimal.pathToTrough paths there; clamping it would strand
+        // the animal short of the trough and put the trough on vanilla's never-cleared
+        // ignoredTrough list.
+        ArrayList<DesignationZoneAnimal> zones = new ArrayList<>();
+        zones.add(zone(100, 100, 0, 10, 10));
+        assertTrue(AnimalZoneContainment.isWithinZones(zones, 105, 105, 0, 0));
+        assertTrue(AnimalZoneContainment.isWithinZones(zones, 105, 110, 0, 1));
+        assertTrue(AnimalZoneContainment.isWithinZones(zones, 99, 99, 0, 1));
+        assertFalse(AnimalZoneContainment.isWithinZones(zones, 105, 110, 0, 0));
+        assertFalse(AnimalZoneContainment.isWithinZones(zones, 105, 111, 0, 1));
+        assertFalse(AnimalZoneContainment.isWithinZones(zones, 105, 105, 1, 1));
+        assertEquals(1, AnimalZoneContainment.ZONE_MARGIN);
+    }
+
+    @Test
+    void overlappingForeignZoneDoesNotHideOwnZoneMembership() throws Exception {
+        // DesignationZoneAnimal.getZone returns the first zone in the global list, which for
+        // overlapping zones can be one the animal is not connected to; the margin test is over the
+        // animal's own list, so the target still counts as inside.
+        zone(90, 90, 0, 30, 30);
+        ArrayList<DesignationZoneAnimal> own = new ArrayList<>();
+        own.add(zone(100, 100, 0, 10, 10));
+        assertTrue(AnimalZoneContainment.isWithinZones(own, 105, 105, 0, 0));
+        assertFalse(AnimalZoneContainment.isWithinZones(own, 92, 92, 0, 1));
+    }
+
+    private static DesignationZoneAnimal zone(int x, int y, int z, int w, int h) throws Exception {
+        Field f = Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        Unsafe unsafe = (Unsafe) f.get(null);
+        DesignationZoneAnimal zone =
+                (DesignationZoneAnimal) unsafe.allocateInstance(DesignationZoneAnimal.class);
+        zone.x = x;
+        zone.y = y;
+        zone.z = z;
+        zone.w = w;
+        zone.h = h;
+        return zone;
     }
 
     @Test

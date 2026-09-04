@@ -30,6 +30,7 @@ import io.pzstorm.storm.patch.fixes.ActionGroupSyncPatch;
 import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.AdvancedAnimatorMissingFolderPatch;
+import io.pzstorm.storm.patch.fixes.AnimalIgnoredTroughExpiryPatch;
 import io.pzstorm.storm.patch.fixes.AnimalZoneContainmentPatch;
 import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
 import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
@@ -565,6 +566,7 @@ public class StormClassTransformers {
             registerTransformer(new CoopHatchPositionFixPatch());
             registerTransformer(new HutchDirtRateFixPatch());
             registerTransformer(new AnimalZoneContainmentPatch());
+            registerTransformer(new AnimalIgnoredTroughExpiryPatch());
             registerTransformer(new IsoObjectTransmitUpdatedSpriteGuardPatch());
 
             registerTransformer(new BodyDamageUpdatePacketPatch());

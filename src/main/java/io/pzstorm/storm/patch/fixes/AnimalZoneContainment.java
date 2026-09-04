@@ -58,12 +58,19 @@ import zombie.iso.areas.DesignationZoneAnimal;
  *       and doubling as the way home for an animal that is already out.
  * </ul>
  *
- * <p>Everything a zone points animals at is inside the zone by construction ({@code zone.troughs},
- * {@code zone.foodOnGround}, and {@code nearWaterSquares}, which is itself filtered on {@code
- * getZone(sq) == this}), so clamping does not cut a contained animal off from its food or water.
- * Food-luring is unaffected because it moves the animal through {@code pathToCharacter}, not {@code
- * pathToLocation}; a player's {@code callOut} will bring contained animals to the near edge of the
- * zone rather than out of it.
+ * <p>Everything a zone registers sits inside the zone rectangle ({@code zone.troughs}, {@code
+ * zone.foodOnGround}, and {@code nearWaterSquares}, which is itself filtered on {@code getZone(sq)
+ * == this}), but the square an animal actually walks to can be one tile outside it: {@code
+ * IsoAnimal.pathToTrough} targets a standing square <i>adjacent</i> to the trough, and a trough on
+ * the zone's edge row has that square just past the boundary. Clamping such a target would land the
+ * animal short of the trough, and {@code BaseAnimalBehavior.drinkFromTrough} then adds the trough
+ * to {@code ignoredTrough} — a blacklist vanilla only clears in {@code removeFromWorld}, so the
+ * animal would die of thirst next to a full trough. Targets within {@link #ZONE_MARGIN} tile of the
+ * animal's connected zone are therefore left alone; an animal one tile outside is still contained
+ * (it cannot break out, and its next wander target is clamped back in). Food-luring is unaffected
+ * because it moves the animal through {@code pathToCharacter}, not {@code pathToLocation}; a
+ * player's {@code callOut} will bring contained animals to the near edge of the zone rather than
+ * out of it.
  *
  * <p>The trade the fix makes deliberately: a contained animal that runs out of food and water will
  * now stay in its pen and starve instead of eating the wall and leaving. That is the point of the
@@ -87,6 +94,12 @@ public final class AnimalZoneContainment {
 
     /** Returned by {@link #clampTarget} when the caller's target must be left alone. */
     public static final long NO_CLAMP = Long.MIN_VALUE;
+
+    /**
+     * Tiles outside a connected zone rectangle a path target may still point at without being
+     * clamped: the standing square {@code IsoAnimal.pathToTrough} picks next to an edge-row trough.
+     */
+    public static final int ZONE_MARGIN = 1;
 
     /** Attempts to find a free square inside the zone before giving up on a clamp. */
     private static final int FREE_SQUARE_TRIES = 16;
@@ -176,8 +189,8 @@ public final class AnimalZoneContainment {
                 return home == null ? NO_CLAMP : clampInto(animal, home, x, y, z);
             }
             // Vanilla's wanderIdle accepts any zone anywhere; only the animal's own connected
-            // zone group counts as inside.
-            if (zones.contains(DesignationZoneAnimal.getZone(x, y, z))) {
+            // zone group counts as inside, plus the one-tile margin a trough approach needs.
+            if (isWithinZones(zones, x, y, z, ZONE_MARGIN)) {
                 return NO_CLAMP;
             }
             long best = NO_CLAMP;
@@ -220,6 +233,26 @@ public final class AnimalZoneContainment {
         int dx = Math.max(Math.max(zoneX - x, x - (zoneX + w - 1)), 0);
         int dy = Math.max(Math.max(zoneY - y, y - (zoneY + h - 1)), 0);
         return Math.max(dx, dy);
+    }
+
+    /**
+     * Whether {@code (x, y, z)} lies inside, or within {@code margin} tiles of, any zone in {@code
+     * zones}. Pure geometry over the zone rectangles, so overlapping zones that {@code
+     * DesignationZoneAnimal.getZone} would resolve to a foreign first-listed zone still count.
+     */
+    public static boolean isWithinZones(
+            ArrayList<DesignationZoneAnimal> zones, int x, int y, int z, int margin) {
+        for (int i = 0; i < zones.size(); i++) {
+            DesignationZoneAnimal zone = zones.get(i);
+            if (zone != null
+                    && zone.z == z
+                    && zone.w > 0
+                    && zone.h > 0
+                    && rectDistance(zone.x, zone.y, zone.w, zone.h, x, y) <= margin) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
