@@ -1,6 +1,7 @@
 package io.pzstorm.storm.metrics;
 
 import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.CounterWithCallback;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.core.metrics.Histogram;
 
@@ -23,6 +24,13 @@ import io.prometheus.metrics.core.metrics.Histogram;
  *       operation itself (chunk disconnect + animal/dead-body drain).
  *   <li>{@code storm_cell_rewarm_op_duration_seconds} — wall-clock time spent inside the rewarm
  *       operation itself (chunk reconnect + animal/dead-body restore + event dispatch).
+ *   <li>{@code storm_cell_warm_process_objects_drained_total} — ticking static objects (stoves,
+ *       generators, washers, compost, traps) taken off {@code IsoCell.processIsoObject} because
+ *       their cell went warm; each goes back on rewarm.
+ *   <li>{@code storm_cell_warm_vehicles_parked_total} — vehicles parked because their cell went
+ *       warm; each is released on rewarm or eviction.
+ *   <li>{@code storm_cell_warm_vehicle_updates_skipped_total} — {@code BaseVehicle.update()} calls
+ *       skipped because the vehicle was parked.
  * </ul>
  */
 public final class StormCellWarmingMetrics {
@@ -111,7 +119,53 @@ public final class StormCellWarmingMetrics {
                     .nativeOnly()
                     .register(StormPrometheus.registry());
 
+    private static final Counter PROCESS_OBJECTS_DRAINED =
+            Counter.builder()
+                    .name("storm_cell_warm_process_objects_drained_total")
+                    .help(
+                            "Ticking static objects (stoves, generators, washers, compost, traps)"
+                                    + " taken off the cell-global IsoCell.processIsoObject list"
+                                    + " because their cell went warm. Each one is put back on"
+                                    + " rewarm; a warm cell's stove no longer books an"
+                                    + " ImportantAreaManager slot.")
+                    .register(StormPrometheus.registry());
+
+    private static final Counter VEHICLES_PARKED =
+            Counter.builder()
+                    .name("storm_cell_warm_vehicles_parked_total")
+                    .help(
+                            "Vehicles parked because their cell went warm: BaseVehicle.update() is"
+                                    + " skipped for them until rewarm releases them (eviction"
+                                    + " releases them too).")
+                    .register(StormPrometheus.registry());
+
+    /** Main-thread writer (StormVehicleSleep.enterUpdate); read dirty at scrape time. */
+    public static long vehicleUpdatesSkipped;
+
+    @SuppressWarnings("unused")
+    private static final CounterWithCallback VEHICLE_UPDATES_SKIPPED =
+            CounterWithCallback.builder()
+                    .name("storm_cell_warm_vehicle_updates_skipped_total")
+                    .help(
+                            "BaseVehicle.update calls skipped because the vehicle sat in a warm"
+                                    + " cell. Counted separately from storm_vehicle_sleep_skips_total,"
+                                    + " which is the parked-and-inert throttle.")
+                    .callback(callback -> callback.call((double) vehicleUpdatesSkipped))
+                    .register(StormPrometheus.registry());
+
     private StormCellWarmingMetrics() {}
+
+    public static void recordProcessObjectsDrained(int count) {
+        if (count > 0) {
+            PROCESS_OBJECTS_DRAINED.inc(count);
+        }
+    }
+
+    public static void recordVehiclesParked(int count) {
+        if (count > 0) {
+            VEHICLES_PARKED.inc(count);
+        }
+    }
 
     public static void incCellsWarmed() {
         CELLS_WARMED.inc();

@@ -451,7 +451,9 @@ Cell warming is opt-in and **off by default** — every series here reads a flat
 `Storm.KeepCellsWarm` sandbox option is on (`storm_cell_warming_enabled`). With it on,
 `StormCellWarmer` body-replaces `ServerMap.postupdate`: a cell that leaves player influence has its chunks detached from
 collision, pathfinding and both population managers and its animals and dead bodies drained into a
-side stash, but the `ServerCell` itself stays in `cellMap` and `loadedCells` with `isLoaded = true`.
+side stash, its ticking static objects (stoves, generators, washers, compost, traps) taken off the
+cell-global `IsoCell.processIsoObject` list and its vehicles parked out of `BaseVehicle.update()`,
+but the `ServerCell` itself stays in `cellMap` and `loadedCells` with `isLoaded = true`.
 Walking back in re-attaches it, which is the whole point: no disk read, no binary parse, no
 `RecalcAll2`.
 
@@ -484,6 +486,9 @@ replacements are mutually exclusive and the warm advice is registered outermost 
 | `storm_cell_warm_duration_seconds` | Histogram (native) | — | How long a cell stayed warm before leaving the warm map — observed on both exits, rewarm and eviction, so it covers every warmed cell that has finished. This distribution is how you size the cap: if the bulk of rewarms land within a few seconds, a small cap suffices, and a long tail is memory being held for nothing. |
 | `storm_cell_warm_op_duration_seconds` | Histogram (native) | — | Main-thread time inside one `warm()`: dead-body drain, then per-chunk animal drain and detach from `MapCollisionData`, both population managers and the pathfinder. Charged to the tick that would have unloaded the cell, so this is the cost warming *adds* to `pz_server_map_post_update_call_duration_seconds`. |
 | `storm_cell_rewarm_op_duration_seconds` | Histogram (native) | — | Main-thread time inside one `rewarm()`: chunk re-attach, animal and dead-body restore, and one `OnChunkRewarmedEvent` per non-null chunk (up to 64 per cell, so a slow mod handler shows up here). Compare it against `pz_server_cell_load2_call_duration_seconds`, the cold path it replaces — if it is not dramatically cheaper, warming is not paying for itself. |
+| `storm_cell_warm_process_objects_drained_total` | Counter | — | Ticking static objects taken off the cell-global `IsoCell.processIsoObject` list because their cell went warm, and put back on rewarm. Vanilla only ever empties that list through the destructive `IsoChunk.removeFromWorld` that warming skips; without the drain a lit stove in a warm cell kept ticking and kept booking an `ImportantAreaManager` slot. Roughly the number of stoves, generators, washers, compost bins and traps in the cells that go warm. |
+| `storm_cell_warm_vehicles_parked_total` | Counter | — | Vehicles parked because their cell went warm. A parked vehicle stays on its chunk and in `IsoCell.vehicles` (so `getVehicles` and the chunk stream stay truthful) but its `BaseVehicle.update()` is skipped until rewarm or eviction releases it, which is what stops an idling engine or alarm in a warm cell from booking an important area. |
+| `storm_cell_warm_vehicle_updates_skipped_total` | Counter | — | `BaseVehicle.update()` calls skipped because the vehicle was parked. Separate from `storm_vehicle_sleep_skips_total`, the parked-and-inert throttle: a warm-cell skip ignores the stagger and every wake reason. |
 
 Useful PromQL:
 

@@ -1,7 +1,9 @@
 package io.pzstorm.storm.vehicles;
 
 import io.pzstorm.storm.metrics.BaseVehicleUpdateMetrics;
+import io.pzstorm.storm.metrics.StormCellWarmingMetrics;
 import io.pzstorm.storm.metrics.VehicleSleepMetrics;
+import io.pzstorm.storm.patch.performance.StormCellWarmer;
 import java.util.ArrayList;
 import zombie.network.GameServer;
 import zombie.vehicles.BaseVehicle;
@@ -35,6 +37,15 @@ import zombie.vehicles.BaseVehicle;
  *
  * <p>{@code timeSinceLastAuth > 0} blocks sleep and cannot deadlock: while it is positive the
  * vehicle takes full updates, and the full update is what decrements it.
+ *
+ * <p>A vehicle inside a cell that {@code StormCellWarmer} holds warm is parked outright: no
+ * stagger, no wake reasons, no update at all until the cell is rewarmed ({@link
+ * StormCellWarmer#isWarmedVehicle}). Its cell has no player near it by definition, and this is the
+ * state vanilla's destructive unload would have left it in, minus the reload. It is checked before
+ * the throttle so parking works with {@code storm.vehicle.sleepTicks} disabled too. The reason it
+ * matters: {@code BaseVehicle.update()} ends in {@code updateImportantAreas()}, and a vehicle with
+ * its engine, alarm or siren running kept booking a slot in the engine's 100-entry {@code
+ * ImportantAreaManager} list from inside a warm cell, where nothing could ever retire it.
  *
  * <p>Configured with {@code -Dstorm.vehicle.sleepTicks=N} (default {@value #DEFAULT_SLEEP_TICKS};
  * {@code 0} or {@code 1} disables the throttle entirely).
@@ -74,6 +85,10 @@ public final class StormVehicleSleep {
     public static long enterUpdate(Object vehicleObj) {
         if (!GameServer.server) {
             return -1L;
+        }
+        if (StormCellWarmer.isWarmedVehicle(vehicleObj)) {
+            StormCellWarmingMetrics.vehicleUpdatesSkipped++;
+            return 0L;
         }
         if (shouldSkip(vehicleObj)) {
             skips++;

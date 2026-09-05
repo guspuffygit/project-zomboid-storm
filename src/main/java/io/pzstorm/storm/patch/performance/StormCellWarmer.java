@@ -23,6 +23,7 @@ import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoMovingObject;
+import zombie.iso.IsoObject;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.IsoDeadBody;
 import zombie.network.GameServer;
@@ -46,6 +47,19 @@ import zombie.vehicles.BaseVehicle;
  * cell/chunks while warm, so client chunk-stream requests, AI pathfinding, line-of-sight, vehicle
  * code, etc. all continue to see the live in-memory state instead of getting nulls (which would
  * route them through stale-disk-read or {@code sendNotRequired} fallbacks).
+ *
+ * <p>Two more per-tick lists are parked while a cell is warm, because neither is per-chunk and
+ * neither is gated on ServerCell relevance: the cell-global {@code IsoCell.processIsoObject} list
+ * (stoves, generators, washers, compost, traps: anything that registered through {@code
+ * IsoCell.addToProcessIsoObject} and is ticked by {@code IsoCell.update} every tick) and the warm
+ * cell's vehicles, whose {@code BaseVehicle.update()} is skipped through {@code
+ * StormVehicleSleep} while parked. Vanilla only ever takes those objects off their lists through
+ * the destructive {@code IsoChunk.removeFromWorld()} that warming deliberately skips, so without
+ * this a lit stove or an idling car in a warm cell kept ticking and kept calling {@code
+ * ImportantAreaManager.updateOrAdd}, which holds the engine's 100-entry list at its cap for good
+ * once a busy map has filled it (the cap evicts a random entry and returns null, so nothing in a
+ * warm cell ever left contention). Both stashes are restored on rewarm; on eviction the vanilla
+ * unload takes them the vanilla way. See {@link #drainProcessObjects} and {@link #parkVehicles}.
  *
  * <p>The decision to warm vs. destructively unload, and the rewarm-on-relevance, both happen inside
  * {@link #runPostUpdate(ServerMap)} which body-replaces vanilla {@code ServerMap.postupdate}.
@@ -76,6 +90,12 @@ public final class StormCellWarmer {
     // skip a warm animal at the bucket-add chokepoint without iterating WARM_CELLS each frame.
     // Server main-thread only — no synchronization needed.
     private static final Set<IsoAnimal> WARMED_ANIMALS =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+
+    // Identity-backed set of every vehicle currently inside a warmed cell, maintained by
+    // parkVehicles / releaseVehicles. StormVehicleSleep.enterUpdate consults it once per vehicle
+    // per tick so a parked vehicle's whole BaseVehicle.update() body is skipped. Main thread only.
+    private static final Set<BaseVehicle> WARMED_VEHICLES =
             Collections.newSetFromMap(new IdentityHashMap<>());
 
     // Per-tick influence set (see StormPlayerInfluenceGrid): rebuilt at the top of runPostUpdate,
@@ -177,6 +197,8 @@ public final class StormCellWarmer {
         final long warmedAtNanos;
         final List<WarmAnimal> animals;
         final List<IsoDeadBody> deadBodies;
+        final List<IsoObject> processObjects;
+        final List<BaseVehicle> vehicles;
         int rewarmFailures;
         long retryNotBeforeNanos;
         int reconnectCursor;
@@ -185,11 +207,15 @@ public final class StormCellWarmer {
                 ServerMap.ServerCell cell,
                 long warmedAtNanos,
                 List<WarmAnimal> animals,
-                List<IsoDeadBody> deadBodies) {
+                List<IsoDeadBody> deadBodies,
+                List<IsoObject> processObjects,
+                List<BaseVehicle> vehicles) {
             this.cell = cell;
             this.warmedAtNanos = warmedAtNanos;
             this.animals = animals;
             this.deadBodies = deadBodies;
+            this.processObjects = processObjects;
+            this.vehicles = vehicles;
         }
     }
 
@@ -245,6 +271,15 @@ public final class StormCellWarmer {
      */
     public static boolean isWarmedAnimal(Object obj) {
         return obj instanceof IsoAnimal animal && WARMED_ANIMALS.contains(animal);
+    }
+
+    /**
+     * Fast O(1) test used by {@code StormVehicleSleep.enterUpdate} to skip the whole {@code
+     * BaseVehicle.update()} of a vehicle parked inside a warmed cell (see {@link #parkVehicles}).
+     * Returns {@code false} for non-vehicles and for any vehicle not currently parked.
+     */
+    public static boolean isWarmedVehicle(Object obj) {
+        return obj instanceof BaseVehicle vehicle && WARMED_VEHICLES.contains(vehicle);
     }
 
     /**
@@ -427,6 +462,8 @@ public final class StormCellWarmer {
         long now = System.nanoTime();
         List<WarmAnimal> animals = new ArrayList<>();
         List<IsoDeadBody> deadBodies = new ArrayList<>();
+        List<IsoObject> processObjects = new ArrayList<>();
+        List<BaseVehicle> vehicles = new ArrayList<>();
         IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
         int disconnectedX = -1, disconnectedY = -1;
 
@@ -443,6 +480,8 @@ public final class StormCellWarmer {
                     disconnectedY = y;
                 }
             }
+            drainProcessObjects(isoCell, cell.chunks, processObjects);
+            parkVehicles(cell.chunks, vehicles);
         } catch (Throwable t) {
             StormLogger.LOGGER.error(
                     "StormCellWarmer.warm failed for cell {},{} — rolling back",
@@ -466,6 +505,8 @@ public final class StormCellWarmer {
                         }
                     }
                 }
+                restoreProcessObjects(isoCell, processObjects);
+                releaseVehicles(vehicles);
                 restoreAnimals(animals);
                 restoreDeadBodies(deadBodies);
             } catch (Throwable rollbackErr) {
@@ -478,8 +519,12 @@ public final class StormCellWarmer {
             return false;
         }
 
-        WARM_CELLS.put(key(cell.wx, cell.wy), new WarmCell(cell, now, animals, deadBodies));
+        WARM_CELLS.put(
+                key(cell.wx, cell.wy),
+                new WarmCell(cell, now, animals, deadBodies, processObjects, vehicles));
         StormCellWarmingMetrics.incCellsWarmed();
+        StormCellWarmingMetrics.recordProcessObjectsDrained(processObjects.size());
+        StormCellWarmingMetrics.recordVehiclesParked(vehicles.size());
         StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
         StormCellWarmingMetrics.recordWarmOpNanos(System.nanoTime() - now);
         return true;
@@ -562,6 +607,10 @@ public final class StormCellWarmer {
         }
         restoreAnimals(warm.animals);
         restoreDeadBodies(warm.deadBodies);
+        restoreProcessObjects(
+                IsoWorld.instance == null ? null : IsoWorld.instance.currentCell,
+                warm.processObjects);
+        releaseVehicles(warm.vehicles);
     }
 
     /**
@@ -599,6 +648,11 @@ public final class StormCellWarmer {
      *       still near the evicted cell drops the instance instead of keeping a frozen ghost.
      *   <li>Dead bodies are fully restored ({@link #restoreDeadBodies}) so unload's save path
      *       serializes them under the ObjectIDs vanilla knows them by.
+     *   <li>The parked {@code processIsoObject} entries stay off the list and the stash is dropped:
+     *       {@code IsoChunk.removeFromWorld} is about to call {@code removeFromWorldToMeta} on
+     *       every object, which queues the same removal again (a no-op for an object that is not
+     *       on the list), and the chunk save reads the square lists, not the tick list. Parked
+     *       vehicles are released so the identity set does not pin objects the unload discards.
      * </ul>
      *
      * Advances the shared {@code reconnectCursor} chunk by chunk like the full path, so a throw
@@ -620,6 +674,8 @@ public final class StormCellWarmer {
         }
         virtualizeAnimals(warm.animals);
         restoreDeadBodies(warm.deadBodies);
+        warm.processObjects.clear();
+        releaseVehicles(warm.vehicles);
     }
 
     /**
@@ -855,6 +911,122 @@ public final class StormCellWarmer {
         } else {
             PolygonalMap2.instance.addChunkToWorld(chunk);
         }
+    }
+
+    /**
+     * Takes every object on the cell-global {@code IsoCell.processIsoObject} list whose square sits
+     * in one of {@code chunks} off that list, through vanilla's own deferred-removal API, and
+     * stashes it in {@code out} for {@link #restoreProcessObjects}. {@code IsoCell.ProcessIsoObject}
+     * applies the pending removals before it iterates, so a drained object ticks for the last time
+     * on the tick that warmed its cell and never again until rewarm. This is the same list a
+     * destructive unload empties through {@code IsoObject.removeFromWorld}, minus the destruction:
+     * the object itself stays on its square and in the chunk save exactly as it was.
+     *
+     * <p>Walks the process list once (it holds every ticking static object on the server, a few
+     * thousand at most) against an identity set of the cell's 64 chunks, rather than walking the
+     * cell's squares, because the list is the thing being edited and the membership question is
+     * per object. Objects already queued for removal are left to leave on their own. Package-private
+     * for tests.
+     */
+    static void drainProcessObjects(IsoCell isoCell, IsoChunk[][] chunks, List<IsoObject> out) {
+        if (isoCell == null) {
+            return;
+        }
+        ArrayList<IsoObject> process = isoCell.getProcessIsoObjects();
+        if (process == null || process.isEmpty()) {
+            return;
+        }
+        Set<IsoChunk> cellChunks = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (IsoChunk[] column : chunks) {
+            for (IsoChunk chunk : column) {
+                if (chunk != null) {
+                    cellChunks.add(chunk);
+                }
+            }
+        }
+        if (cellChunks.isEmpty()) {
+            return;
+        }
+        Set<IsoObject> pending = isoCell.getProcessIsoObjectRemove();
+        for (int i = 0, n = process.size(); i < n; i++) {
+            IsoObject obj = process.get(i);
+            if (obj == null) {
+                continue;
+            }
+            IsoGridSquare sq = obj.getSquare();
+            if (sq == null || !cellChunks.contains(sq.getChunk())) {
+                continue;
+            }
+            if (pending != null && pending.contains(obj)) {
+                continue;
+            }
+            isoCell.addToProcessIsoObjectRemove(obj);
+            out.add(obj);
+        }
+    }
+
+    /**
+     * Puts drained objects back on {@code IsoCell.processIsoObject}: the same call {@code
+     * IsoStove.addToWorld} and the other registrants make on chunk load, and idempotent through
+     * vanilla's own set guard. An object whose square or chunk has gone while the cell was warm is
+     * left off, as a reloaded chunk would have left it. Drains the stash as it goes so a retried
+     * rewarm cannot re-add, mirroring {@link #restoreDeadBodies}.
+     */
+    static void restoreProcessObjects(IsoCell isoCell, List<IsoObject> stash) {
+        if (stash.isEmpty()) {
+            return;
+        }
+        Iterator<IsoObject> it = stash.iterator();
+        while (it.hasNext()) {
+            IsoObject obj = it.next();
+            it.remove();
+            if (isoCell == null) {
+                continue;
+            }
+            try {
+                IsoGridSquare sq = obj.getSquare();
+                if (sq == null || sq.getChunk() == null) {
+                    continue;
+                }
+                isoCell.addToProcessIsoObject(obj);
+            } catch (Throwable t) {
+                StormLogger.LOGGER.error("StormCellWarmer failed to restore a ticking object", t);
+            }
+        }
+    }
+
+    /**
+     * Marks every vehicle registered on one of {@code chunks} as parked, so {@code
+     * StormVehicleSleep.enterUpdate} skips its {@code BaseVehicle.update()} body until {@link
+     * #releaseVehicles}. The vehicle stays in {@code IsoCell.vehicles}, on its chunk and in the
+     * save, which is what keeps {@code getVehicles} and the chunk stream truthful while warm; only
+     * the per-tick body (and with it {@code updateImportantAreas}) is withheld, as it would be for
+     * a vehicle in an unloaded cell. A vehicle already parked by another cell is not stashed twice.
+     * Package-private for tests.
+     */
+    static void parkVehicles(IsoChunk[][] chunks, List<BaseVehicle> out) {
+        for (IsoChunk[] column : chunks) {
+            for (IsoChunk chunk : column) {
+                if (chunk == null) {
+                    continue;
+                }
+                ArrayList<BaseVehicle> vehicles = chunk.vehicles;
+                for (int i = 0; i < vehicles.size(); i++) {
+                    BaseVehicle vehicle = vehicles.get(i);
+                    if (vehicle != null && WARMED_VEHICLES.add(vehicle)) {
+                        out.add(vehicle);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Unparks the stashed vehicles and empties the stash so a retry cannot release twice. */
+    static void releaseVehicles(List<BaseVehicle> stash) {
+        for (int i = 0; i < stash.size(); i++) {
+            WARMED_VEHICLES.remove(stash.get(i));
+        }
+        stash.clear();
     }
 
     private static void restoreAnimals(List<WarmAnimal> animals) {
