@@ -23,6 +23,7 @@ import io.pzstorm.storm.patch.fixes.HutchDirtRateFix;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch.UpdateLimitFactory;
 import io.pzstorm.storm.patch.networking.ServerFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.ImportantAreasPolicy;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
 import io.pzstorm.storm.patch.performance.StormZombieCullConfig;
@@ -56,6 +57,7 @@ public final class StormPerformanceSandboxApplier {
     public static final String OPT_VIRTUAL_ANIMAL_TICK_INTERVAL = "Storm.VirtualAnimalTickInterval";
     public static final String OPT_ZOMBIE_AUTH_TICK_INTERVAL = "Storm.ZombieAuthTickInterval";
     public static final String OPT_ZOMBIE_RAIN_WANDER_PERCENT = "Storm.ZombieRainWanderPercent";
+    public static final String OPT_IMPORTANT_AREAS_MAXIMUM = "Storm.ImportantAreasMaximum";
     public static final String OPT_INVENTORY_ITEM_SWEEP_TICK_INTERVAL =
             "Storm.InventoryItemSweepTickInterval";
     public static final String OPT_MAX_TOTAL_ZOMBIES = "Storm.MaxTotalZombies";
@@ -118,6 +120,7 @@ public final class StormPerformanceSandboxApplier {
         applyVirtualAnimalTickInterval();
         applyZombieAuthTickInterval();
         applyZombieRainWanderPercent();
+        applyImportantAreasMaximum();
         applyInventoryItemSweepTickInterval();
         refreshZombieCullThreshold();
         applyMaxTotalZombies();
@@ -484,6 +487,20 @@ public final class StormPerformanceSandboxApplier {
             return;
         }
         ZombieRainWanderInterval.setPercent(value);
+    }
+
+    /**
+     * Pushes {@link #OPT_IMPORTANT_AREAS_MAXIMUM} through {@link
+     * ImportantAreasPolicy#setMaximum(int)} — the cap on the engine's {@code ImportantAreaManager}
+     * list, which vanilla inlines as 100. Read on every {@code updateOrAdd}, so live-appliable
+     * trivially; a lowered cap trims one entry per miss rather than in one go.
+     */
+    private static void applyImportantAreasMaximum() {
+        Integer value = readIntOption(OPT_IMPORTANT_AREAS_MAXIMUM);
+        if (value == null) {
+            return;
+        }
+        ImportantAreasPolicy.setMaximum(value);
     }
 
     private static void applyInventoryItemSweepTickInterval() {

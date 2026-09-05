@@ -508,6 +508,34 @@ rate(storm_cell_warm_op_duration_seconds_sum[1m])
 histogram_quantile(0.90, rate(storm_cell_warm_duration_seconds[1m]))
 ```
 
+### Important areas (ImportantAreasMetrics)
+
+`ImportantAreaManager` is the engine's list of 64x64-tile cells that must stay loaded with nobody
+near them: `IsoStove.update` books one while a stove, oven, barbecue or fireplace is lit with
+something to cook, `BaseVehicle.updateImportantAreas` while a vehicle's engine, alarm or siren is
+running, and `process()` drops an entry ten seconds after its last refresh. Vanilla caps the list at
+an inlined `100` and, at the cap, evicts a random entry and returns `null` to the caller. With
+`Storm.ImportantAreasMaximum` (`storm_important_areas_maximum`, default 100) Storm owns the body of
+`updateOrAdd` on the server: the cap is the option, the victim is the least-recently-refreshed
+entry, and the warning line is rate-limited. Everything here reads `0` on a client JVM and after
+the policy's failure latch has handed the method back to vanilla.
+
+| Name | Type | Labels | What |
+|------|------|--------|------|
+| `pz_important_areas_size` | Gauge | — | Entries after the last `updateOrAdd`. Pinned at `storm_important_areas_maximum` means the cap is binding: more stoves and running vehicles want a slot than there are slots, warming or not. A busy server sits here with nothing misconfigured, because every connection pins a 3x3-to-4x4 block of cells that never unloads. |
+| `pz_important_area_evictions_total` | Counter | — | Bookings that found the list full and evicted the oldest entry. Each one is a cell that will unload, or go warm, with something still cooking or running in it. A steady rate is the case for raising the cap; with cell warming on, compare against `storm_cell_warmed_total`, since before the warm-cell drains an evicted stove in a warm cell re-booked on the next tick and the rate never fell. |
+| `pz_important_area_cap_warnings_total` | Counter | — | `ImportantAreas size is too big` lines actually written: one per second at most, the eviction count folded in. Vanilla wrote one per eviction, which on a full list was several per tick. |
+
+Useful PromQL:
+
+```promql
+# the cap is binding
+pz_important_areas_size >= storm_important_areas_maximum
+
+# how much cooking is being unloaded per second
+rate(pz_important_area_evictions_total[1m])
+```
+
 ### Entity removal index (StormEntityIndex)
 
 Tallies for the O(1) indexed removal from the engine's entity arrays — the global
