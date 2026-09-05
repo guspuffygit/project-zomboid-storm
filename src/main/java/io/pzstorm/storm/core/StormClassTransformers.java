@@ -156,6 +156,7 @@ import io.pzstorm.storm.patch.performance.GameServerNetDataPatch;
 import io.pzstorm.storm.patch.performance.GlobalModDataSavePatch;
 import io.pzstorm.storm.patch.performance.HandWeaponInvEpochPatch;
 import io.pzstorm.storm.patch.performance.ImportantAreaManagerProcessPatch;
+import io.pzstorm.storm.patch.performance.ImportantAreasCapPatch;
 import io.pzstorm.storm.patch.performance.IngameStateUpdatePatch;
 import io.pzstorm.storm.patch.performance.InventoryItemInvEpochPatch;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepStridePatch;
@@ -705,6 +706,7 @@ public class StormClassTransformers {
             registerTransformer(new VirtualAnimalStridePatch());
             registerTransformer(new ZombieAuthStridePatch());
             registerTransformer(new ZombieRainWanderPatch());
+            registerTransformer(new ImportantAreasCapPatch());
             registerTransformer(new InventoryItemSweepStridePatch());
         }
 

@@ -17,6 +17,7 @@ import io.pzstorm.storm.patch.fixes.HutchDirtRateFix;
 import io.pzstorm.storm.patch.networking.GameServerTickRatePatch;
 import io.pzstorm.storm.patch.networking.ServerLockFpsConfig;
 import io.pzstorm.storm.patch.performance.AnimalLOSTickInterval;
+import io.pzstorm.storm.patch.performance.ImportantAreasPolicy;
 import io.pzstorm.storm.patch.performance.InventoryItemSweepTickInterval;
 import io.pzstorm.storm.patch.performance.IsoPhysicsObjectFpsConfig;
 import io.pzstorm.storm.patch.performance.StormCellWarmingConfig;
@@ -403,6 +404,19 @@ public final class StormPerformanceSandboxMetrics {
                                     + " unbounded.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge IMPORTANT_AREAS_MAXIMUM =
+            Gauge.builder()
+                    .name("storm_important_areas_maximum")
+                    .help(
+                            "Cap on the engine's ImportantAreaManager list: 64x64-tile cells kept"
+                                    + " loaded for a lit stove or a vehicle with its engine, alarm"
+                                    + " or siren running while nobody is near. Sourced from the"
+                                    + " Storm.ImportantAreasMaximum sandbox option. 100 = vanilla's"
+                                    + " inlined constant; at the cap Storm evicts the"
+                                    + " least-recently-refreshed entry where vanilla evicts a random"
+                                    + " one.")
+                    .register(StormPrometheus.registry());
+
     static {
         SERVER_TICK_INTERVAL_SECONDS.set(GameServerTickRatePatch.DEFAULT_TICK_INTERVAL_MS / 1000.0);
         SERVER_LOCK_FPS.set(ServerLockFpsConfig.DEFAULT_LOCK_FPS);
@@ -411,6 +425,7 @@ public final class StormPerformanceSandboxMetrics {
         VIRTUAL_ANIMAL_TICK_INTERVAL.set(VirtualAnimalTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_AUTH_TICK_INTERVAL.set(ZombieAuthTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_RAIN_WANDER_PERCENT.set(ZombieRainWanderInterval.VANILLA_PERCENT);
+        IMPORTANT_AREAS_MAXIMUM.set(ImportantAreasPolicy.VANILLA_MAXIMUM);
         INVENTORY_ITEM_SWEEP_TICK_INTERVAL.set(
                 InventoryItemSweepTickInterval.DEFAULT_TICK_INTERVAL);
         ZOMBIE_CULL_THRESHOLD.set(StormZombieCullConfig.VANILLA_DEFAULT);
@@ -563,5 +578,9 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setMaxWarmCells(int cells) {
         MAX_WARM_CELLS.set(cells);
+    }
+
+    public static void setImportantAreasMaximum(int maximum) {
+        IMPORTANT_AREAS_MAXIMUM.set(maximum);
     }
 }
