@@ -20,8 +20,8 @@ import zombie.network.GameServer;
  * <p>An important area is a 64x64-tile square (one {@code ServerMap} cell). Two engine callers book
  * one every tick: {@code IsoStove.update} while a stove, oven, barbecue or fireplace is lit with
  * something to cook, and {@code BaseVehicle.updateImportantAreas} while a vehicle's engine, alarm
- * or siren is running. {@code ImportantAreaManager.process} then keeps each booked cell resident and
- * drops an entry ten seconds after its last refresh.
+ * or siren is running. {@code ImportantAreaManager.process} then keeps each booked cell resident
+ * and drops an entry ten seconds after its last refresh.
  *
  * <h2>The two vanilla decisions this replaces</h2>
  *
@@ -66,8 +66,10 @@ public final class ImportantAreasPolicy {
     /** Floor. Below vanilla would unload cooking that vanilla keeps, which nobody wants. */
     public static final int MIN_MAXIMUM = 100;
 
-    /** Ceiling. Each entry pins a 64-chunk cell resident; this matches {@code Storm.MaxWarmCells}. */
-    public static final int MAX_MAXIMUM = 1024;
+    /**
+     * Ceiling. Each entry pins a 64-chunk cell resident; this matches {@code Storm.MaxWarmCells}.
+     */
+    public static final int MAX_MAXIMUM = 2048;
 
     /** Area side in tiles: vanilla's {@code PZMath.coorddivision(x, 64)}, one ServerMap cell. */
     public static final int AREA_TILES = 64;
@@ -140,15 +142,16 @@ public final class ImportantAreasPolicy {
     /**
      * The decision, called from the enter advice on {@code ImportantAreaManager.updateOrAdd} with
      * the instrumented class's own {@code ImportantAreas} list. Returns {@code null} to let the
-     * vanilla body run, {@link #EVICTED} when the cap was hit (the caller gets {@code null}), or the
-     * {@link ImportantArea} the caller should get.
+     * vanilla body run, {@link #EVICTED} when the cap was hit (the caller gets {@code null}), or
+     * the {@link ImportantArea} the caller should get.
      */
     public static Object decide(LinkedList<ImportantArea> areas, int x, int y) {
         if (failureLatched || areas == null || !GameServer.server) {
             return null;
         }
         try {
-            ImportantArea area = updateOrAdd(areas, x, y, currentMaximum, System.currentTimeMillis());
+            ImportantArea area =
+                    updateOrAdd(areas, x, y, currentMaximum, System.currentTimeMillis());
             return area == null ? EVICTED : area;
         } catch (Throwable t) {
             latch(t);

@@ -40,17 +40,16 @@ import zombie.vehicles.BaseVehicle;
  *   <li><b>Controls against the unpatched engine.</b> {@link
  *       #controlEngineTicksProcessObjectsWithNoRelevanceGate} and {@link
  *       #controlVanillaRemovalIsAppliedBeforeTheNextPass} drive the real {@code IsoCell} and prove
- *       the premise: the list is ticked unconditionally and only a deferred removal stops it. {@link
- *       #controlStovesAndVehiclesStillBookImportantAreas} pins, at bytecode level, that a stove
- *       registers on that list and books an important area from {@code update()}, and that a
+ *       the premise: the list is ticked unconditionally and only a deferred removal stops it.
+ *       {@link #controlStovesAndVehiclesStillBookImportantAreas} pins, at bytecode level, that a
+ *       stove registers on that list and books an important area from {@code update()}, and that a
  *       vehicle books from the tail of {@code BaseVehicle.update()}. If any of these stop holding,
  *       the engine has changed and the patch must be re-read before it is trusted.
  *   <li><b>The parking helpers</b>, driven on real engine objects: drain picks exactly the cell's
- *       objects and they stop ticking on the next pass; restore puts them back and they tick
- *       again; a vehicle in a warm cell has its whole update skipped by {@code StormVehicleSleep}
- *       and runs again once released. Each patched case is paired with the same call on an
- *       unparked object, which is the control that shows the skip is the parking and not the
- *       throttle.
+ *       objects and they stop ticking on the next pass; restore puts them back and they tick again;
+ *       a vehicle in a warm cell has its whole update skipped by {@code StormVehicleSleep} and runs
+ *       again once released. Each patched case is paired with the same call on an unparked object,
+ *       which is the control that shows the skip is the parking and not the throttle.
  *   <li><b>Wiring</b>, at bytecode level: {@code warm()} calls both drains, {@code
  *       reconnectAndRestore} both restores, {@code evictLiteReconnect} the release, and {@code
  *       StormVehicleSleep.enterUpdate} the parked check. {@code warm()} itself needs a live {@code
@@ -143,21 +142,31 @@ class StormCellWarmerParkTest implements UnitTest {
 
         byte[] vehicle = classBytes("zombie/vehicles/BaseVehicle.class");
         assertTrue(
-                calls(vehicle, "update", "zombie/vehicles/BaseVehicle", "updateImportantAreas") >= 1,
+                calls(vehicle, "update", "zombie/vehicles/BaseVehicle", "updateImportantAreas")
+                        >= 1,
                 "BaseVehicle.update must reach updateImportantAreas");
         assertTrue(
-                calls(vehicle, "updateImportantAreas", "zombie/core/ImportantAreaManager", "updateOrAdd")
+                calls(
+                                vehicle,
+                                "updateImportantAreas",
+                                "zombie/core/ImportantAreaManager",
+                                "updateOrAdd")
                         >= 1,
                 "BaseVehicle.updateImportantAreas must book an important area");
 
         byte[] object = classBytes("zombie/iso/IsoObject.class");
         assertTrue(
-                calls(object, "removeFromWorld", "zombie/iso/IsoCell", "addToProcessIsoObjectRemove")
+                calls(
+                                object,
+                                "removeFromWorld",
+                                "zombie/iso/IsoCell",
+                                "addToProcessIsoObjectRemove")
                         >= 1,
                 "IsoObject.removeFromWorld is vanilla's only exit from the list");
         byte[] chunk = classBytes("zombie/iso/IsoChunk.class");
         assertTrue(
-                calls(chunk, "removeFromWorld", "zombie/iso/IsoObject", "removeFromWorldToMeta") >= 1,
+                calls(chunk, "removeFromWorld", "zombie/iso/IsoObject", "removeFromWorldToMeta")
+                        >= 1,
                 "IsoChunk.removeFromWorld is what reaches it on a destructive unload");
     }
 
@@ -355,7 +364,8 @@ class StormCellWarmerParkTest implements UnitTest {
         List<BaseVehicle> stash = new ArrayList<>();
         StormCellWarmer.parkVehicles(grid(chunk), stash);
         try {
-            assertEquals(-1L, StormVehicleSleep.enterUpdate(vehicle), "client JVM: vanilla, untimed");
+            assertEquals(
+                    -1L, StormVehicleSleep.enterUpdate(vehicle), "client JVM: vanilla, untimed");
         } finally {
             StormCellWarmer.releaseVehicles(stash);
         }
@@ -365,8 +375,7 @@ class StormCellWarmerParkTest implements UnitTest {
 
     @Test
     void warmRewarmAndEvictionAreWiredToTheHelpers() throws Exception {
-        byte[] warmer =
-                classBytes("io/pzstorm/storm/patch/performance/StormCellWarmer.class");
+        byte[] warmer = classBytes("io/pzstorm/storm/patch/performance/StormCellWarmer.class");
         String owner = "io/pzstorm/storm/patch/performance/StormCellWarmer";
         assertEquals(1, calls(warmer, "warm", owner, "drainProcessObjects"));
         assertEquals(1, calls(warmer, "warm", owner, "parkVehicles"));

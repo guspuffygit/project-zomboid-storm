@@ -33,7 +33,7 @@ public final class StormCellWarmingConfig {
 
     public static final boolean DEFAULT_ENABLED = false;
     public static final int DEFAULT_MAX_WARM_CELLS = 128;
-    public static final int MAX_MAX_WARM_CELLS = 1024;
+    public static final int MAX_MAX_WARM_CELLS = 2048;
 
     private static volatile boolean enabled = Boolean.getBoolean("storm.cells.keepWarm");
 

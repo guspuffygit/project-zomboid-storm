@@ -145,7 +145,10 @@ class ImportantAreasCapPatchTest implements UnitTest {
                         + TRIALS);
     }
 
-    /** At the default the cap is still 100 and the return is still null, but the victim is the oldest. */
+    /**
+     * At the default the cap is still 100 and the return is still null, but the victim is the
+     * oldest.
+     */
     @Test
     void patchedDefaultKeepsVanillasCapAndEvictsTheLeastRecentlyRefreshed() throws Exception {
         GameServer.server = true;
@@ -155,13 +158,16 @@ class ImportantAreasCapPatchTest implements UnitTest {
             fillAscending(patched, VANILLA_CAP);
             assertNull(patched.book(VANILLA_CAP, 0), "the 101st booking still gets nothing");
             assertEquals(VANILLA_CAP - 1, patched.areas.size());
-            assertEquals(0, evictedIndex(patched, VANILLA_CAP), "the oldest entry goes, every time");
+            assertEquals(
+                    0, evictedIndex(patched, VANILLA_CAP), "the oldest entry goes, every time");
         }
         assertEquals(TRIALS, ImportantAreasMetrics.evictions);
         assertEquals(VANILLA_CAP - 1, ImportantAreasMetrics.size);
     }
 
-    /** The oldest is not necessarily the earliest booked: a stale entry in the middle goes first. */
+    /**
+     * The oldest is not necessarily the earliest booked: a stale entry in the middle goes first.
+     */
     @Test
     void aStaleEntryInTheMiddleIsTheOneEvicted() throws Exception {
         GameServer.server = true;
@@ -304,6 +310,7 @@ class ImportantAreasCapPatchTest implements UnitTest {
         private final byte[] target;
         private final Object manager;
         private final Method updateOrAdd;
+
         @SuppressWarnings("unchecked")
         final LinkedList<ImportantArea> areas;
 
@@ -381,7 +388,8 @@ class ImportantAreasCapPatchTest implements UnitTest {
                                     String signature,
                                     Object value) {
                                 String renamed = from.equals(name) ? to : name;
-                                return super.visitField(access, renamed, descriptor, signature, value);
+                                return super.visitField(
+                                        access, renamed, descriptor, signature, value);
                             }
                         },
                         0);

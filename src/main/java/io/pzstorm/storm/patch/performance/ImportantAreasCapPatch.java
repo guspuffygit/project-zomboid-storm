@@ -9,8 +9,8 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Makes the engine's important-area cap a sandbox option and its eviction deterministic. See
- * {@link ImportantAreasPolicy} for the behaviour analysis; configured via {@code
+ * Makes the engine's important-area cap a sandbox option and its eviction deterministic. See {@link
+ * ImportantAreasPolicy} for the behaviour analysis; configured via {@code
  * Storm.ImportantAreasMaximum}, which defaults to vanilla's 100.
  *
  * <p>Targets {@code ImportantAreaManager.updateOrAdd(int, int)}, the one method both engine bookers
@@ -65,6 +65,8 @@ public class ImportantAreasCapPatch extends StormClassTransformer {
                                 locator)
                         .on(
                                 ElementMatchers.named(METHOD)
-                                        .and(ElementMatchers.takesArguments(int.class, int.class))));
+                                        .and(
+                                                ElementMatchers.takesArguments(
+                                                        int.class, int.class))));
     }
 }

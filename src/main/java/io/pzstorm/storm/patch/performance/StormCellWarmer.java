@@ -52,10 +52,10 @@ import zombie.vehicles.BaseVehicle;
  * neither is gated on ServerCell relevance: the cell-global {@code IsoCell.processIsoObject} list
  * (stoves, generators, washers, compost, traps: anything that registered through {@code
  * IsoCell.addToProcessIsoObject} and is ticked by {@code IsoCell.update} every tick) and the warm
- * cell's vehicles, whose {@code BaseVehicle.update()} is skipped through {@code
- * StormVehicleSleep} while parked. Vanilla only ever takes those objects off their lists through
- * the destructive {@code IsoChunk.removeFromWorld()} that warming deliberately skips, so without
- * this a lit stove or an idling car in a warm cell kept ticking and kept calling {@code
+ * cell's vehicles, whose {@code BaseVehicle.update()} is skipped through {@code StormVehicleSleep}
+ * while parked. Vanilla only ever takes those objects off their lists through the destructive
+ * {@code IsoChunk.removeFromWorld()} that warming deliberately skips, so without this a lit stove
+ * or an idling car in a warm cell kept ticking and kept calling {@code
  * ImportantAreaManager.updateOrAdd}, which holds the engine's 100-entry list at its cap for good
  * once a busy map has filled it (the cap evicts a random entry and returns null, so nothing in a
  * warm cell ever left contention). Both stashes are restored on rewarm; on eviction the vanilla
@@ -650,8 +650,8 @@ public final class StormCellWarmer {
      *       serializes them under the ObjectIDs vanilla knows them by.
      *   <li>The parked {@code processIsoObject} entries stay off the list and the stash is dropped:
      *       {@code IsoChunk.removeFromWorld} is about to call {@code removeFromWorldToMeta} on
-     *       every object, which queues the same removal again (a no-op for an object that is not
-     *       on the list), and the chunk save reads the square lists, not the tick list. Parked
+     *       every object, which queues the same removal again (a no-op for an object that is not on
+     *       the list), and the chunk save reads the square lists, not the tick list. Parked
      *       vehicles are released so the identity set does not pin objects the unload discards.
      * </ul>
      *
@@ -916,16 +916,17 @@ public final class StormCellWarmer {
     /**
      * Takes every object on the cell-global {@code IsoCell.processIsoObject} list whose square sits
      * in one of {@code chunks} off that list, through vanilla's own deferred-removal API, and
-     * stashes it in {@code out} for {@link #restoreProcessObjects}. {@code IsoCell.ProcessIsoObject}
-     * applies the pending removals before it iterates, so a drained object ticks for the last time
-     * on the tick that warmed its cell and never again until rewarm. This is the same list a
-     * destructive unload empties through {@code IsoObject.removeFromWorld}, minus the destruction:
-     * the object itself stays on its square and in the chunk save exactly as it was.
+     * stashes it in {@code out} for {@link #restoreProcessObjects}. {@code
+     * IsoCell.ProcessIsoObject} applies the pending removals before it iterates, so a drained
+     * object ticks for the last time on the tick that warmed its cell and never again until rewarm.
+     * This is the same list a destructive unload empties through {@code IsoObject.removeFromWorld},
+     * minus the destruction: the object itself stays on its square and in the chunk save exactly as
+     * it was.
      *
      * <p>Walks the process list once (it holds every ticking static object on the server, a few
      * thousand at most) against an identity set of the cell's 64 chunks, rather than walking the
-     * cell's squares, because the list is the thing being edited and the membership question is
-     * per object. Objects already queued for removal are left to leave on their own. Package-private
+     * cell's squares, because the list is the thing being edited and the membership question is per
+     * object. Objects already queued for removal are left to leave on their own. Package-private
      * for tests.
      */
     static void drainProcessObjects(IsoCell isoCell, IsoChunk[][] chunks, List<IsoObject> out) {

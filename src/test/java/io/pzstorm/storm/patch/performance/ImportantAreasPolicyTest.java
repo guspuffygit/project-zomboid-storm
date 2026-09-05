@@ -42,8 +42,8 @@ class ImportantAreasPolicyTest implements UnitTest {
         assertEquals(100, ImportantAreasPolicy.clampMaximum(99));
         assertEquals(100, ImportantAreasPolicy.clampMaximum(Integer.MIN_VALUE));
         assertEquals(300, ImportantAreasPolicy.clampMaximum(300));
-        assertEquals(1024, ImportantAreasPolicy.clampMaximum(1024));
-        assertEquals(1024, ImportantAreasPolicy.clampMaximum(5000));
+        assertEquals(2048, ImportantAreasPolicy.clampMaximum(2048));
+        assertEquals(2048, ImportantAreasPolicy.clampMaximum(5000));
         assertEquals(250, ImportantAreasPolicy.setMaximum(250));
         assertEquals(250, ImportantAreasPolicy.getMaximum());
         assertEquals(100, ImportantAreasPolicy.setMaximum(0));
@@ -123,7 +123,9 @@ class ImportantAreasPolicyTest implements UnitTest {
         }
         // Cap pinned at the current size so every call below is a miss.
         for (int i = 0; i < 50; i++) {
-            assertNull(ImportantAreasPolicy.updateOrAdd(areas, (1_000 + i) * T, 0, areas.size(), 20_000L));
+            assertNull(
+                    ImportantAreasPolicy.updateOrAdd(
+                            areas, (1_000 + i) * T, 0, areas.size(), 20_000L));
         }
         assertEquals(50, ImportantAreasMetrics.evictions);
         assertEquals(1, ImportantAreasMetrics.warnings, "fifty misses in one instant, one line");

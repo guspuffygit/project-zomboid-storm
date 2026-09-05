@@ -85,7 +85,7 @@ option Storm.KeepCellsWarm
 {type = boolean, default = false, page = Storm, translation = Storm_KeepCellsWarm,}
 
 option Storm.MaxWarmCells
-{type = integer, min = 0, max = 1024, default = 128, page = Storm, translation = Storm_MaxWarmCells,}
+{type = integer, min = 0, max = 2048, default = 128, page = Storm, translation = Storm_MaxWarmCells,}
 
 option Storm.ImportantAreasMaximum
-{type = integer, min = 100, max = 1024, default = 100, page = Storm, translation = Storm_ImportantAreasMaximum,}
+{type = integer, min = 100, max = 2048, default = 100, page = Storm, translation = Storm_ImportantAreasMaximum,}
