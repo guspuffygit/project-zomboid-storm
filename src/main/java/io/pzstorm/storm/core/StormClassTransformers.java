@@ -14,6 +14,7 @@ import io.pzstorm.storm.patch.client.ModelManagerReloadWaitPatch;
 import io.pzstorm.storm.patch.client.PlayerDataRequestBackoffPatch;
 import io.pzstorm.storm.patch.client.VehicleChunkRehomePatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
+import io.pzstorm.storm.patch.client.VehiclePreviewSkinTransformsPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
 import io.pzstorm.storm.patch.client.VehicleSoundsClientCreatePatch;
 import io.pzstorm.storm.patch.client.VehicleTowConstraintSnapPatch;
@@ -567,6 +568,7 @@ public class StormClassTransformers {
             registerTransformer(new ModelManagerReloadWaitPatch());
             registerTransformer(new VehicleTowConstraintSnapPatch());
             registerTransformer(new VehicleChunkRehomePatch());
+            registerTransformer(new VehiclePreviewSkinTransformsPatch());
             registerTransformer(new VehicleSoundsClientCreatePatch());
             registerTransformer(new PacketLimitMetricsPatch());
             registerTransformer(new PlayerDataRequestBackoffPatch());
