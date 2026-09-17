@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -24,6 +25,7 @@ public final class LiveServerClientProcess implements AutoCloseable {
     private final Process process;
     private final BufferedWriter stdin;
     private final LinkedBlockingQueue<String> responses = new LinkedBlockingQueue<>();
+    private final CountDownLatch ready = new CountDownLatch(1);
     private final Thread stdoutReader;
     private final String tag;
 
@@ -44,8 +46,13 @@ public final class LiveServerClientProcess implements AutoCloseable {
                                 String line;
                                 while ((line = r.readLine()) != null) {
                                     System.out.println("[" + tag + "] " + line);
-                                    if (line.startsWith("CONNECTED")
+                                    if (line.equals("READY")) {
+                                        // Kept out of the response queue so callers that never
+                                        // await readiness still read their own command's reply.
+                                        ready.countDown();
+                                    } else if (line.startsWith("CONNECTED")
                                             || line.startsWith("SENT")
+                                            || line.startsWith("LOADED")
                                             || line.startsWith("ERROR")
                                             || line.startsWith("BYE")) {
                                         responses.offer(line);
@@ -115,6 +122,11 @@ public final class LiveServerClientProcess implements AutoCloseable {
         return String.join(":", parts);
     }
 
+    /** Waits until the child has initialized PZ's client natives and can accept commands. */
+    public boolean awaitReady(Duration timeout) throws InterruptedException {
+        return ready.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
     public long connect(
             String host,
             int port,
@@ -123,6 +135,24 @@ public final class LiveServerClientProcess implements AutoCloseable {
             String password,
             Duration timeout)
             throws Exception {
+        sendConnect(host, port, serverPassword, username, password, timeout, null);
+        return awaitConnected(timeout.plusSeconds(5));
+    }
+
+    /**
+     * Queues the connect without waiting for its reply, optionally deferred to an absolute instant.
+     * Many children handed the same {@code startAt} all dial RakNet at that instant, which is how
+     * the mass-join test gets a genuinely simultaneous join rather than a staggered one.
+     */
+    public void sendConnect(
+            String host,
+            int port,
+            String serverPassword,
+            String username,
+            String password,
+            Duration timeout,
+            Instant startAt)
+            throws IOException {
         String pwToken = serverPassword.isEmpty() ? "__EMPTY__" : serverPassword;
         send(
                 "connect "
@@ -136,12 +166,53 @@ public final class LiveServerClientProcess implements AutoCloseable {
                         + " "
                         + password
                         + " "
-                        + timeout.toSeconds());
-        String line = awaitResponse(timeout.plusSeconds(5));
+                        + timeout.toSeconds()
+                        + (startAt == null ? "" : " " + startAt.toEpochMilli()));
+    }
+
+    /** Returns the connected RakNet GUID, or throws with the child's error line. */
+    public long awaitConnected(Duration timeout) throws Exception {
+        String line = awaitResponse(timeout);
         if (line == null || !line.startsWith("CONNECTED")) {
             throw new IllegalStateException("[" + tag + "] connect failed: " + line);
         }
         return Long.parseLong(line.split("\\s+")[1]);
+    }
+
+    /** Queues the game-port TCP loading-phase download, deferred to an absolute instant. */
+    public void sendTcpLoad(
+            String host,
+            int gamePort,
+            long steamId,
+            int centerWx,
+            int centerWy,
+            int gridWidth,
+            Instant startAt)
+            throws IOException {
+        send(
+                "tcp-load "
+                        + host
+                        + " "
+                        + gamePort
+                        + " "
+                        + steamId
+                        + " "
+                        + centerWx
+                        + " "
+                        + centerWy
+                        + " "
+                        + gridWidth
+                        + " "
+                        + startAt.toEpochMilli());
+    }
+
+    /** Returns this client's loading-phase result, or throws with the child's error line. */
+    public StormTcpLoadingClient.Result awaitTcpLoad(Duration timeout) throws Exception {
+        String line = awaitResponse(timeout);
+        if (line == null || !line.startsWith("LOADED")) {
+            throw new IllegalStateException("[" + tag + "] tcp-load failed: " + line);
+        }
+        return StormTcpLoadingClient.Result.fromJson(line.substring("LOADED ".length()));
     }
 
     public void sendRawNetTimedActionBytes(byte actionByteId, long duration) throws Exception {

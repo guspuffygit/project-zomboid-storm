@@ -150,6 +150,7 @@ public final class LogReport {
             vmArgs.add(redactVmArg(arg));
         }
         lines.add("Global VM args: " + vmArgs);
+        lines.add("Global game args: " + config.globalGameArgs);
         lines.add("Saved servers: " + config.servers.size());
         return LogScrubber.scrub(String.join("\n", lines));
     }

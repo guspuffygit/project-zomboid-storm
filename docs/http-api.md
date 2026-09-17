@@ -39,6 +39,11 @@ UDP port spaces are independent, so both bind simultaneously). It starts on
 `-Dstorm.gameport.http.enabled=false`. Storm clients use it to move
 connection-phase data off RakNet's 1&nbsp;KB-packet UDP transfer machinery.
 
+The table below is the endpoint reference. For the design behind it — session
+binding, which join stages are diverted, the fail-soft rules, the chunk-diversion
+invariants and measured mass-join scaling — see
+[Game-Port TCP World Loading](game-port-tcp-loading.md).
+
 This surface is **internet-facing**: it uses a fully separate endpoint registry
 (`@GameHttpEndpoint`), so backend endpoints (`/eval`, `/reload`, client-mod
 files, …) can never leak onto it. Firewall note: port-forward rules are
@@ -48,12 +53,31 @@ forward TCP on the same port or clients silently fall back to UDP.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/storm/ping` | Plain-text Storm version. Client reachability/capability probe. |
-| POST | `/storm/handshake` | Marks the caller's RakNet connection as a Storm connection. Body `{"steamId": "...", "stormVersion": "..."}`; the claim binds only if a live UDP connection matches the steamId **and** the TCP source IP. Returns `{sessionToken, serverStormVersion}`; the token authenticates later requests via the `X-Storm-Session` header and expires with the RakNet connection. |
+| POST | `/storm/handshake` | Marks the caller's RakNet connection as a Storm connection. Body `{"steamId": "...", "stormVersion": "..."}`; the claim binds only if a live UDP connection matches the TCP source IP **and** the steamId — the one vanilla stamped at login (that connection must be logged in; two indistinguishable logged-in matches from one IP, possible only in nosteam mode, are refused), or before the LoginPacket the one RakNet reports for the peer (the match must then be the only pre-login connection from that IP). Returns `{sessionToken, serverStormVersion}`; the token authenticates later requests via the `X-Storm-Session` header and expires with the RakNet connection. |
+| GET | `/storm/game/request-data?id=…` | Authenticated, logged-in connection only (`LoginOnServer`). Serves one loading-phase bulk payload (`ZombieOutfitDescriptors`, `PlayerZombieDescriptors`, `RadioData`, `WorldMap`) as one octet-stream response instead of vanilla's 1&nbsp;KB `PartData` UDP packets with 200&nbsp;KB ACK windows. |
+| GET | `/storm/game/player-profiles` | Authenticated, logged-in connection only (`LoginOnServer`). All saved network-character profiles for the connection in one JSON response (vanilla: up to 4 sequential `LoadPlayerProfile` UDP round trips). |
+| POST | `/storm/game/chunks` | Authenticated, logged-in connection only (`LoginOnServer`). Loading-phase world-chunk download: body `{"requests":[{requestNumber,wx,wy,crc}]}` (max 20 per batch — vanilla's per-tick ccr size), binary response with one verdict per request: zlib chunk data, not-required (+`sameOnServer`), or retry (server still loading the cell). Gameplay-phase streaming stays on UDP. |
+| POST | `/storm/game/login-queue` | Authenticated, needs `LoginOnServer`. Replaces the `LoginQueueRequest` UDP packet: runs the vanilla `LoginQueue` admission on the main thread and returns the first reply (`ConnectionImmediate` / `PlaceInQueue` as `QueuePacket` client-format bytes, no packet header) or 204. Opens the connection's TCP outbox. |
+| GET | `/storm/game/login-queue?wait=ms` | Authenticated. Next pending queue message for the connection (200 bytes / 204 none / 410 outbox closed). `wait` is capped at 1 s. |
+| POST | `/storm/game/login-queue/done` | Authenticated, needs `LoginOnServer`. Body `{"loadingMillis": n}`. Replaces `LoginQueueDone`: runs the vanilla handler (slot release, next player) and closes the outbox; the 200 is the echo. |
+| POST | `/storm/game/login` | Authenticated (no capability: the connection has no role yet). Body is the vanilla `LoginPacket` bytes (no header, max 4 KB). Runs the vanilla login handler on the main thread and returns every packet it answered with as `[short id][int len][bytes]…` — `ConnectionDetails` is collapsed to one `FullData` frame. Idempotent per connection (409 once logged in), so the client retries a lost response safely. |
+| POST | `/storm/game/client-event` | Authenticated. Body `{"event": "...", "detail": "..."}` (max 2 KB; event ≤ 64 chars, detail ≤ 512, control characters stripped). Writes one warning to the server log with the connection id; 1 per 5 s per connection, 429 above that. Used by the client loading watchdog to report packets its loading drain discarded. |
+| POST | `/storm/game/checksum` | Authenticated, needs `LoginOnServer`. One round of the Lua/script/anim checksum exchange: body is a client-format `ChecksumPacket` (no header, max 64 KB), response is the server's reply packet in the same form. The vanilla handler runs on the main thread, so `checksumState`, AntiCheat and userlog side effects are unchanged. |
 
 Handlers register with `@GameHttpEndpoint(path = "...", method = ...)` — same
 signature rules as `@HttpEndpoint`, different registry. Client-side, the
 `storm-tcp-channel` watcher dials the handshake automatically once the UDP
-connection is up.
+connection is up, retrying rejections for up to two minutes because the server
+cannot bind the session until it has processed the client's LoginPacket;
+`RequestDataOverTcpPatch`, `PlayerProfileOverTcpPatch`, `LoginQueueOverTcpPatch`
+and `ChecksumOverTcpPatch` divert the loading-phase transfers when a session
+exists and fall back to the vanilla UDP paths on any failure. With all of them
+active, UDP carries only the RakNet connect/login handshake and gameplay-phase
+traffic (chunk streaming, entity sync). Server-to-client queue messages are
+captured at `PacketType.send` (`PacketTypeSendDivertPatch`, both JVMs) into a
+per-connection outbox; a UDP `LoginQueueRequest` from the same connection
+closes the outbox and replays anything pending, so a client that falls back
+mid-queue keeps its place.
 
 ## Developer Hot-Reload Endpoints
 

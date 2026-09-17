@@ -299,6 +299,11 @@ public final class GameLaunch {
             command.add("--");
         }
 
+        command.addAll(config.globalGameArgs);
+        if (profile != null) {
+            command.addAll(profile.extraGameArgs);
+        }
+
         if (profile != null && autoJoinFile == null) {
             command.add("+connect");
             command.add(profile.connectAddress());
@@ -428,20 +433,9 @@ public final class GameLaunch {
      * bootstrap dir outside any workshop item (local dev). Null when neither is known.
      */
     static Path workshopContentDir(LauncherConfig config, Path bootstrapDir) {
-        if (bootstrapDir != null && LauncherConfig.workshopItemIdOf(bootstrapDir) != null) {
-            for (Path cursor = bootstrapDir.toAbsolutePath().normalize();
-                    cursor != null;
-                    cursor = cursor.getParent()) {
-                Path name = cursor.getFileName();
-                Path parent = cursor.getParent();
-                if (name != null
-                        && name.toString().equals("108600")
-                        && parent != null
-                        && parent.getFileName() != null
-                        && parent.getFileName().toString().equals("content")) {
-                    return cursor;
-                }
-            }
+        Path ownItemContent = LauncherConfig.workshopAppDirOf(bootstrapDir);
+        if (ownItemContent != null) {
+            return ownItemContent;
         }
         Path acf = WorkshopStaleScan.findAppWorkshopAcf(config);
         return acf == null ? null : acf.getParent().resolve("content").resolve("108600");

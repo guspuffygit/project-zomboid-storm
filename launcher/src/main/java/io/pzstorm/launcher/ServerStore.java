@@ -144,6 +144,7 @@ public final class ServerStore {
         match.autoConnect = entry.autoConnect;
         match.updateWorkshopMods = entry.updateWorkshopMods;
         match.extraVmArgs = new ArrayList<>(entry.extraVmArgs);
+        match.extraGameArgs = new ArrayList<>(entry.extraGameArgs);
         if (match.name.isEmpty()) {
             match.name = entry.name;
         }

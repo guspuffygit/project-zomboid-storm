@@ -13,9 +13,17 @@ import java.time.Duration;
  * <p>Protocol over stdin/stdout (one line per command/event):
  *
  * <pre>
+ *   RSP: READY                  — emitted once, after client natives are initialized
+ *
  *   CLI: connect &lt;host&gt; &lt;port&gt; &lt;serverPassword&gt; &lt;username&gt; &lt;password&gt; &lt;timeoutSeconds&gt;
+ *        [startAtEpochMillis]
  *   RSP: CONNECTED &lt;guid&gt;      — on success
  *   RSP: ERROR &lt;message&gt;       — on failure
+ *
+ *   CLI: tcp-load &lt;host&gt; &lt;gamePort&gt; &lt;steamId&gt; &lt;centerWx&gt; &lt;centerWy&gt; &lt;gridWidth&gt;
+ *        &lt;startAtEpochMillis&gt;
+ *   RSP: LOADED &lt;json&gt;         — StormTcpLoadingClient.Result
+ *   RSP: ERROR &lt;message&gt;
  *
  *   CLI: send-action &lt;actionByteId&gt; &lt;durationMillis&gt;
  *   RSP: SENT
@@ -33,8 +41,13 @@ import java.time.Duration;
  *   RSP: BYE                    — before exiting
  * </pre>
  *
- * The parent test matches lines starting with {@code CONNECTED}, {@code SENT}, {@code ERROR},
- * {@code BYE}. Any other stdout/stderr (including PZ native output) is logged for diagnostics.
+ * The parent test matches lines starting with {@code READY}, {@code CONNECTED}, {@code SENT},
+ * {@code LOADED}, {@code ERROR}, {@code BYE}. Any other stdout/stderr (including PZ native output)
+ * is logged for diagnostics.
+ *
+ * <p>{@code startAtEpochMillis} is an absolute wall-clock instant the child sleeps until before
+ * acting. The parent cannot write to twenty children at the same moment, so it hands each one the
+ * same instant instead — that is what makes a simultaneous twenty-client join simultaneous.
  */
 public final class LiveServerClientMain {
 
@@ -45,6 +58,8 @@ public final class LiveServerClientMain {
         try (BufferedReader in =
                 new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
             LiveServerClient.initClientNativesOnce();
+            System.out.println("READY");
+            System.out.flush();
             String line;
             while ((line = in.readLine()) != null) {
                 line = line.trim();
@@ -64,6 +79,9 @@ public final class LiveServerClientMain {
                                 String username = parts[4];
                                 String password = parts[5];
                                 long timeoutSeconds = Long.parseLong(parts[6]);
+                                if (parts.length > 7) {
+                                    sleepUntil(Long.parseLong(parts[7]));
+                                }
                                 client = new LiveServerClient(username, password);
                                 client.connect(
                                         host,
@@ -116,6 +134,22 @@ public final class LiveServerClientMain {
                                 System.out.flush();
                                 break;
                             }
+                        case "tcp-load":
+                            {
+                                String host = parts[1];
+                                int gamePort = Integer.parseInt(parts[2]);
+                                long steamId = Long.parseLong(parts[3]);
+                                int centerWx = Integer.parseInt(parts[4]);
+                                int centerWy = Integer.parseInt(parts[5]);
+                                int gridWidth = Integer.parseInt(parts[6]);
+                                sleepUntil(Long.parseLong(parts[7]));
+                                StormTcpLoadingClient.Result result =
+                                        new StormTcpLoadingClient(host, gamePort, steamId)
+                                                .run(centerWx, centerWy, gridWidth);
+                                System.out.println("LOADED " + result.toJson());
+                                System.out.flush();
+                                break;
+                            }
                         case "quit":
                             System.out.println("BYE");
                             System.out.flush();
@@ -141,6 +175,13 @@ public final class LiveServerClientMain {
                 }
             }
             LiveServerClient.shutdownSharedEngine();
+        }
+    }
+
+    private static void sleepUntil(long epochMillis) throws InterruptedException {
+        long remaining = epochMillis - System.currentTimeMillis();
+        if (remaining > 0) {
+            Thread.sleep(remaining);
         }
     }
 }

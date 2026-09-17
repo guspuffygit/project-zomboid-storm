@@ -2,10 +2,15 @@ package io.pzstorm.storm.client;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.pzstorm.storm.logging.ZomboidLogger;
 import java.lang.reflect.Field;
+import java.net.http.HttpRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import zombie.GameWindow;
 import zombie.core.skinnedmodel.ModelManager;
 import zombie.core.skinnedmodel.population.OutfitManager;
@@ -59,6 +64,19 @@ public final class ClientLoadingWatchdog {
 
     private static final String TAG = "[StormLoadWatchdog] ";
 
+    /**
+     * Vanilla's {@code GameClient.gameLoadingDealWithNetData} logs this and discards the packet
+     * when a loading-phase handler throws; the join then waits forever for data that was already
+     * delivered once. The line is the only trace it leaves.
+     */
+    static final String POISON_MARKER = "Error with packet of type";
+
+    private static final int MAX_POISON_DETAIL = 512;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final AtomicInteger poisonedPackets = new AtomicInteger();
+    private static final AtomicReference<String> lastPoisonDetail = new AtomicReference<>();
+
     private static Thread watchdog;
 
     private ClientLoadingWatchdog() {}
@@ -71,7 +89,26 @@ public final class ClientLoadingWatchdog {
         watchdog = new Thread(ClientLoadingWatchdog::run, "StormLoadingWatchdog");
         watchdog.setDaemon(true);
         watchdog.start();
+        ZomboidLogger.addListener(ClientLoadingWatchdog::observeGameLog);
         LOGGER.info("Client loading watchdog armed");
+    }
+
+    /** Runs on the game thread that logged the line; only records, never logs. */
+    static void observeGameLog(zombie.debug.LogSeverity severity, String line) {
+        if (line == null || !line.contains(POISON_MARKER)) {
+            return;
+        }
+        Thread loader = GameLoadingState.loader;
+        if (loader == null || !loader.isAlive()) {
+            return;
+        }
+        int newline = line.indexOf('\n');
+        String firstLine = newline < 0 ? line : line.substring(0, newline);
+        lastPoisonDetail.set(
+                firstLine.length() > MAX_POISON_DETAIL
+                        ? firstLine.substring(0, MAX_POISON_DETAIL)
+                        : firstLine);
+        poisonedPackets.incrementAndGet();
     }
 
     private static void run() {
@@ -84,6 +121,7 @@ public final class ClientLoadingWatchdog {
         long lastDumpMs = 0L;
         boolean stalled = false;
         boolean warnedPollFailure = false;
+        int reportedPoison = 0;
         while (true) {
             try {
                 Thread loader = GameLoadingState.loader;
@@ -108,9 +146,25 @@ public final class ClientLoadingWatchdog {
                         lastChangeMs = now;
                         lastHeartbeatMs = 0L;
                         lastDumpMs = 0L;
+                        reportedPoison = 0;
+                        poisonedPackets.set(0);
+                        lastPoisonDetail.set(null);
                         emit("loading started (" + flagsLine() + ")");
                     }
                     StackTraceElement[] loaderStack = loader.getStackTrace();
+                    int poisoned = poisonedPackets.get();
+                    if (poisoned > reportedPoison) {
+                        reportedPoison = poisoned;
+                        String detail = String.valueOf(lastPoisonDetail.get());
+                        emit(
+                                "packet discarded by the loading drain (parse error), "
+                                        + poisoned
+                                        + " so far: "
+                                        + detail);
+                        lastDumpMs = now;
+                        dumpStall(loader, loaderStack, now - lastChangeMs, now - loadStartMs);
+                        reportToServer("loading-drain-discard", poisoned + ": " + detail);
+                    }
                     String current =
                             GameLoadingState.gameLoadingString
                                     + '|'
@@ -134,6 +188,8 @@ public final class ClientLoadingWatchdog {
                                         + GameLoadingState.gameLoadingString
                                         + "\", "
                                         + flagsLine()
+                                        + ", poisoned="
+                                        + poisoned
                                         + ", loaderAt="
                                         + topFrame(loaderStack));
                     }
@@ -330,6 +386,32 @@ public final class ClientLoadingWatchdog {
      * Storm's log for operators tailing storm/main.log, mirrored into the vanilla DebugLog because
      * that is the only client log the launcher's "Send Logs" bundle ships.
      */
+    /**
+     * Sends one line to the server's log over the game-port TCP channel so the operator sees the
+     * client's side of a dead join next to the reap line. Best effort; silent when there is no
+     * channel.
+     */
+    private static void reportToServer(String event, String detail) {
+        try {
+            HttpRequest.Builder builder =
+                    StormTcpChannel.authenticatedRequest("/storm/game/client-event");
+            if (builder == null) {
+                return;
+            }
+            String body = MAPPER.writeValueAsString(Map.of("event", event, "detail", detail));
+            StormTcpChannel.send(
+                    builder.header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(body))
+                            .build());
+        } catch (Throwable t) {
+            LOGGER.debug("Client event report failed: {}", t.toString());
+        }
+    }
+
+    static int poisonedPackets() {
+        return poisonedPackets.get();
+    }
+
     private static void emit(String message) {
         LOGGER.info(TAG + message);
         try {

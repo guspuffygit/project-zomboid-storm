@@ -56,6 +56,7 @@ class GameLaunchTest {
         config.jvmPath = tmp.resolve("jvm/bin/java").toString();
         config.bootstrapDir = bootstrapDir.toString();
         config.globalVmArgs.add("-Xmx16g");
+        config.globalGameArgs.add("-debuglog=ModelManager,Shader");
         return config;
     }
 
@@ -66,6 +67,7 @@ class GameLaunchTest {
         profile.port = 16261;
         profile.serverPassword = "sekrit";
         profile.extraVmArgs.add("-Dstorm.http.port=8089");
+        profile.extraGameArgs.add("-nosteam");
 
         GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), profile);
 
@@ -82,6 +84,10 @@ class GameLaunchTest {
         int mainIdx = cmd.indexOf("zombie.gameStates.MainScreenState");
         int connectIdx = cmd.indexOf("+connect");
         assertTrue(connectIdx > mainIdx, "+connect must be a program arg, not a JVM arg");
+        assertTrue(
+                cmd.indexOf("-debuglog=ModelManager,Shader") > mainIdx,
+                "global game args are program args: " + cmd);
+        assertTrue(cmd.indexOf("-nosteam") > mainIdx, "server game args are program args");
         assertEquals("play.example.org:16261", cmd.get(connectIdx + 1));
         assertEquals("sekrit", cmd.get(cmd.indexOf("+password") + 1));
 
@@ -102,6 +108,7 @@ class GameLaunchTest {
         assertFalse(jvmArgs.contains("-cp"), "classpath must not bury the JVM args");
         assertFalse(jvmArgs.contains("projectzomboid.jar"));
         assertFalse(jvmArgs.contains("+connect"), "program args are not JVM args");
+        assertFalse(jvmArgs.contains("-debuglog"), "game args are not JVM args");
     }
 
     @Test
@@ -224,6 +231,16 @@ class GameLaunchTest {
     @Test
     void workshopDirRidesInTheJoinHandoffFromTheStormItemLocation() throws IOException {
         Path content = tmp.resolve("lib/steamapps/workshop/content/108600");
+        assertWorkshopDirRidesInTheJoinHandoff(content);
+    }
+
+    @Test
+    void workshopDirFromTheStormItemLocationIgnoresSegmentCase() throws IOException {
+        Path content = tmp.resolve("lib/SteamApps/Workshop/Content/108600");
+        assertWorkshopDirRidesInTheJoinHandoff(content);
+    }
+
+    private void assertWorkshopDirRidesInTheJoinHandoff(Path content) throws IOException {
         Path itemBootstrap = content.resolve("3670772371/mods/storm/bootstrap");
         Files.createDirectories(itemBootstrap);
         Files.write(itemBootstrap.resolve("storm-bootstrap.jar"), new byte[] {0x50, 0x4b});
@@ -578,14 +595,23 @@ class GameLaunchTest {
         assertTrue(agentIdx >= 0 && agentIdx < sepIdx, "agent must precede --: " + cmd);
         assertTrue(cmd.indexOf("-Xmx16g") < sepIdx, "-Xmx must precede --");
         assertTrue(cmd.indexOf("+connect") > sepIdx, "+connect must follow --");
+        assertTrue(
+                cmd.indexOf("-debuglog=ModelManager,Shader") > sepIdx,
+                "game args must follow -- so the exe hands them to main(): " + cmd);
 
         // Auto-join mode (no +connect): -- still required so the JVM sees -agentpath.
         Path handoff = LauncherPaths.autoJoinFile();
         List<String> autoJoinCmd = GameLaunch.plan(config, profile, handoff).command;
         assertTrue(autoJoinCmd.contains("--"), "-- required even without program args");
+        assertTrue(
+                autoJoinCmd.indexOf("-debuglog=ModelManager,Shader")
+                        > autoJoinCmd.lastIndexOf("--"),
+                "game args still follow -- without +connect: " + autoJoinCmd);
+        config.globalGameArgs.clear();
+        List<String> bareCmd = GameLaunch.plan(config, profile, handoff).command;
         assertEquals(
-                autoJoinCmd.size() - 1,
-                autoJoinCmd.lastIndexOf("--"),
+                bareCmd.size() - 1,
+                bareCmd.lastIndexOf("--"),
                 "-- may sit at end of command when auto-join suppresses +connect");
     }
 

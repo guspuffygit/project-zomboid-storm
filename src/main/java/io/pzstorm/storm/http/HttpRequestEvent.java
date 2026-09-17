@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Wraps a single HTTP request served by Storm's shared HTTP server. Handlers annotated with {@link
@@ -81,6 +82,18 @@ public class HttpRequestEvent {
     public byte[] getRequestBody() throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
             return in.readAllBytes();
+        }
+    }
+
+    /**
+     * Reads the body up to {@code maxBytes}; returns {@code null} if the body is larger, without
+     * buffering the rest. Internet-facing handlers should use this so an oversized body cannot cost
+     * more than {@code maxBytes} of heap.
+     */
+    public @Nullable byte[] getRequestBody(int maxBytes) throws IOException {
+        try (InputStream in = exchange.getRequestBody()) {
+            byte[] body = in.readNBytes(maxBytes + 1);
+            return body.length > maxBytes ? null : body;
         }
     }
 

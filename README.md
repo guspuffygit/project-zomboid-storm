@@ -20,6 +20,7 @@ Storm rewrites a chunk of the dedicated server's bytecode at load time to:
 - **Lift hardcoded server limits** (configurable tick rate, parallel LOS pipeline, packet rate limit removed, raised zombie cull cap)
 - **Surface event hooks to Java mods** (packet receipt, chat, ~190 Lua event bridges)
 - **Extend the mod loader** with annotation-driven HTTP endpoints, server commands, and event handlers
+- **Move the multiplayer join off UDP** for Storm clients — login, queue, checksum, bulk payloads and the initial chunk download run over TCP on the game port ([details](docs/game-port-tcp-loading.md))
 
 See [What Storm Changes](docs/what-storm-changes.md) for the full list.
 
@@ -29,6 +30,7 @@ See [What Storm Changes](docs/what-storm-changes.md) for the full list.
 - [What Storm Changes](docs/what-storm-changes.md) — performance, behavioral overrides, bug fixes, mod-loader extensions
 - [Server Configuration](docs/server-configuration.md) — system properties and a production launcher example
 - [HTTP API](docs/http-api.md) — runtime tuning endpoints and developer hot-reload (Lua / Java)
+- [Game-Port TCP World Loading](docs/game-port-tcp-loading.md) — the multiplayer join moved off UDP: session model, diverted stages, fail-soft rules, measured mass-join scaling
 - [Prometheus Metrics](docs/metrics.md) — exposing metrics and adding new ones from mods
 - [Chunk Streaming Observability](docs/chunk-streaming-observability.md) — attributing a chunk-stream stall to one of five causes, and proving a fix worked
 - [Mod Author Guide](docs/mod-author-guide.md) — `ZomboidMod` entry point, annotation surfaces, Lua API, server commands

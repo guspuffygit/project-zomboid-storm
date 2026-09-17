@@ -8,8 +8,6 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
@@ -38,6 +36,7 @@ public final class SettingsDialog extends JDialog {
                     new SpinnerNumberModel(
                             8, GameMemory.MANUAL_MIN_GB, GameMemory.MANUAL_MAX_GB, 1));
     private final JTextArea globalVmArgs = new JTextArea(4, 36);
+    private final JTextArea globalGameArgs = new JTextArea(3, 36);
     private boolean accepted;
 
     private SettingsDialog(Window owner, LauncherConfig config) {
@@ -71,6 +70,10 @@ public final class SettingsDialog extends JDialog {
         memoryGb.setValue(GameMemory.clampManualGb(config.memoryGb));
         memoryGb.setEnabled(!config.autoMemory);
         globalVmArgs.setText(String.join("\n", config.globalVmArgs));
+        globalGameArgs.setText(String.join("\n", config.globalGameArgs));
+        globalGameArgs.setToolTipText(
+                "Passed to the game's main(), after the JVM args — e.g."
+                        + " -debuglog=ModelManager,Shader,Clothing");
 
         Path detectedGame = config.resolveGameDir();
         Path detectedJvm = config.resolveJvm(detectedGame);
@@ -106,6 +109,17 @@ public final class SettingsDialog extends JDialog {
                         dimLabel(
                                 "<html><i>One arg per line; an explicit -Xmx here overrides Game"
                                         + " memory. Empty path fields auto-detect.</i></html>"));
+        JScrollPane gameArgsScroll = new JScrollPane(globalGameArgs);
+        gameArgsScroll.setBorder(BorderFactory.createLineBorder(StormTheme.BORDER));
+        row = addRow(form, row, "Global game args", gameArgsScroll);
+        row =
+                addRow(
+                        form,
+                        row,
+                        null,
+                        dimLabel(
+                                "<html><i>One arg per line, passed to the game itself, e.g."
+                                        + " -debuglog=ModelManager,Shader,Clothing</i></html>"));
 
         StormButton ok = StormButton.primary("Save Settings");
         ok.addActionListener(
@@ -117,10 +131,8 @@ public final class SettingsDialog extends JDialog {
                     config.skipMenus = skipMenus.isSelected();
                     config.autoMemory = autoMemory.isSelected();
                     config.memoryGb = ((Number) memoryGb.getValue()).intValue();
-                    config.globalVmArgs = new ArrayList<>();
-                    Arrays.stream(globalVmArgs.getText().split("\\s+"))
-                            .filter(s -> !s.isEmpty())
-                            .forEach(config.globalVmArgs::add);
+                    config.globalVmArgs = ServerDialog.splitArgs(globalVmArgs.getText());
+                    config.globalGameArgs = ServerDialog.splitArgs(globalGameArgs.getText());
                     accepted = true;
                     dispose();
                 });

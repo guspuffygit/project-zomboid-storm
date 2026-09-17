@@ -1,6 +1,7 @@
 package io.pzstorm.storm.liveserver;
 
 import java.lang.reflect.Field;
+import java.net.ConnectException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -49,6 +50,13 @@ public final class LiveServerClient implements AutoCloseable {
 
     private static final int SHARED_MAX_CONNECTIONS = 8;
 
+    /**
+     * RakNet draws a client peer's bind port at random from a 10 000-wide range, so dozens of peers
+     * starting at once occasionally draw one that is already taken and fail startup. Each retry
+     * redraws.
+     */
+    private static final int MAX_ENGINE_BIND_ATTEMPTS = 8;
+
     private static boolean nativesInitialized = false;
     private static SharedEngine sharedEngine;
 
@@ -91,11 +99,27 @@ public final class LiveServerClient implements AutoCloseable {
     }
 
     private static synchronized SharedEngine ensureSharedEngine() throws Exception {
-        if (sharedEngine == null) {
-            GameClient.client = true;
-            sharedEngine = new SharedEngine(SHARED_MAX_CONNECTIONS);
+        if (sharedEngine != null) {
+            return sharedEngine;
         }
-        return sharedEngine;
+        GameClient.client = true;
+        ConnectException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_ENGINE_BIND_ATTEMPTS; attempt++) {
+            try {
+                sharedEngine = new SharedEngine(SHARED_MAX_CONNECTIONS);
+                return sharedEngine;
+            } catch (ConnectException e) {
+                lastFailure = e;
+                System.out.println(
+                        "[client] RakNet peer startup attempt "
+                                + attempt
+                                + " failed ("
+                                + e.getMessage()
+                                + "), redrawing the bind port");
+                Thread.sleep(100L * attempt);
+            }
+        }
+        throw lastFailure;
     }
 
     /**
@@ -390,8 +414,16 @@ public final class LiveServerClient implements AutoCloseable {
             return null;
         }
 
+        /**
+         * Probe a free UDP port instead of pinning one, so concurrent peers in separate JVMs do not
+         * report the same {@code port}. RakNet picks the actual client bind port itself.
+         */
         private static int pickUnusedPort() {
-            return 34500;
+            try (java.net.DatagramSocket probe = new java.net.DatagramSocket(0)) {
+                return probe.getLocalPort();
+            } catch (java.net.SocketException e) {
+                throw new IllegalStateException("no free UDP port for the test RakNet peer", e);
+            }
         }
     }
 }

@@ -21,7 +21,7 @@ workshop updates.
    every start and writes edits straight back, so the in-game server browser
    and the launcher always show the same servers, characters, and passwords.
    One profile per server + character, most recently played character first.
-   Launcher-only extras (auto-connect, workshop pre-update, extra JVM args)
+   Launcher-only extras (auto-connect, workshop pre-update, extra JVM and game args)
    stay in `launcher.json`, joined by `host:port:username`; a pre-existing
    `launcher.json` entry carrying credentials is migrated into the game
    database on first start and the json copy of the passwords is dropped. The
@@ -171,7 +171,9 @@ workshop updates.
    launch — a size the machine cannot back fails at startup with a clear
    allocation error instead of a native OOM hours into a session; an explicit
    user `-Xms` suppresses that pair),
-   any user JVM args, and — unless the
+   any user JVM args, then the program args: any user game args (*Global
+   game args* in Settings plus the server's *Extra game args*, e.g.
+   `-debuglog=ModelManager,Shader,Clothing`) and — unless the
    auto-join handoff is armed — the vanilla `+connect host:port`
    (`+password <serverPassword>`) args, then spawns the JVM with the game
    directory as working directory. On linux/mac the launcher exports the same
@@ -252,6 +254,14 @@ Design points:
   detection) through the `--staged-from` origin, not its own location —
   otherwise a launcher staged from the dev or staging item would quietly
   pre-update prod.
+- **"Inside the item" is decided by path segments, case-insensitively.**
+  `LauncherConfig.workshopItemIdOf` walks the own-jar path for
+  `content/108600/<id>` and compares each segment with `equalsIgnoreCase`.
+  Windows accepts any spelling of `Content` or `SteamApps` in a Launch Options
+  or shortcut path, and a case-sensitive match there silently skipped staging
+  — and with it every self-update — for launchers started that way (1.2.7).
+  The first launcher.log line of every run prints the own-jar path and the
+  staging decision, so a stuck version is visible in the log.
 - **Repo/dist builds never stage and never restart** — an explicit custom
   install is not fought; those keep the join-time update flow only.
 - **Failure degrades to today's behavior.** If staging is impossible

@@ -8,6 +8,7 @@ import java.awt.Insets;
 import java.awt.Window;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
@@ -34,6 +35,7 @@ public final class ServerDialog extends JDialog {
     private final JCheckBox updateWorkshopMods =
             new JCheckBox("Update Steam workshop mods before launch");
     private final JTextField extraVmArgs = new JTextField(24);
+    private final JTextField extraGameArgs = new JTextField(24);
     private boolean accepted;
 
     private ServerDialog(Window owner, ServerProfile profile) {
@@ -51,6 +53,10 @@ public final class ServerDialog extends JDialog {
         autoConnect.setSelected(profile.autoConnect);
         updateWorkshopMods.setSelected(profile.updateWorkshopMods);
         extraVmArgs.setText(String.join(" ", profile.extraVmArgs));
+        extraGameArgs.setText(String.join(" ", profile.extraGameArgs));
+        extraGameArgs.setToolTipText(
+                "Passed to the game's main(), after the JVM args — e.g."
+                        + " -debuglog=ModelManager,Shader,Clothing");
 
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(StormTheme.BG);
@@ -65,6 +71,7 @@ public final class ServerDialog extends JDialog {
         row = addRow(form, row, null, savePassword);
         row = addRow(form, row, null, autoConnect);
         row = addRow(form, row, "Extra JVM args", extraVmArgs);
+        row = addRow(form, row, "Extra game args", extraGameArgs);
         row = addRow(form, row, null, updateWorkshopMods);
         JLabel note =
                 new JLabel(
@@ -88,6 +95,13 @@ public final class ServerDialog extends JDialog {
         setContentPane(form);
         pack();
         setLocationRelativeTo(owner);
+    }
+
+    /** Whitespace-separated args from a text field or text area, blanks dropped. */
+    static List<String> splitArgs(String text) {
+        List<String> args = new ArrayList<>();
+        Arrays.stream(text.trim().split("\\s+")).filter(s -> !s.isEmpty()).forEach(args::add);
+        return args;
     }
 
     static int addRow(JPanel form, int row, String label, JComponent field) {
@@ -134,10 +148,8 @@ public final class ServerDialog extends JDialog {
                 savePassword.isSelected() ? new String(accountPassword.getPassword()) : "";
         profile.autoConnect = autoConnect.isSelected();
         profile.updateWorkshopMods = updateWorkshopMods.isSelected();
-        profile.extraVmArgs = new ArrayList<>();
-        Arrays.stream(extraVmArgs.getText().trim().split("\\s+"))
-                .filter(s -> !s.isEmpty())
-                .forEach(profile.extraVmArgs::add);
+        profile.extraVmArgs = splitArgs(extraVmArgs.getText());
+        profile.extraGameArgs = splitArgs(extraGameArgs.getText());
         accepted = true;
         dispose();
     }

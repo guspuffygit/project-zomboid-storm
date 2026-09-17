@@ -122,13 +122,22 @@ public final class LauncherStage {
      * minus self-update.
      */
     static void handOffIfInsideWorkshopItem(Context ctx) {
+        Path ownJar = WorkshopUpdate.ownJar();
+        Log.info(
+                "Launcher "
+                        + LauncherInfo.version()
+                        + " running from "
+                        + (ownJar == null ? "classes (no jar on disk)" : ownJar)
+                        + (ctx.staged() ? " — staged from " + ctx.stagedFrom : ""));
         if (ctx.staged()) {
             return;
         }
-        Path ownJar = WorkshopUpdate.ownJar();
-        if (ownJar == null || LauncherConfig.workshopItemIdOf(ownJar) == null) {
+        String itemId = ownJar == null ? null : LauncherConfig.workshopItemIdOf(ownJar);
+        if (itemId == null) {
+            Log.info("Not inside a workshop item — running in place, no self-update.");
             return;
         }
+        Log.info("Inside workshop item " + itemId + " — staging.");
         try {
             Path staged = stage(ownJar);
             spawn(handOffCommand(staged, ownJar, ctx));

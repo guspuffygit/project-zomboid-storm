@@ -4,7 +4,7 @@ Client-side Java policy (decided 2026-07-30; replaces the old absolute ban). Cli
 
 Discipline still applies. Prefer the least invasive mechanism, in this order: server-side change → client Lua under media/lua/client/ → Storm-core client Java on existing surfaces (LuaEventManagerPatch's bridge delivers every Lua event to @SubscribeEvent handlers; LuaCompiler.loadstring + LuaManager.caller.pcall runs Lua from Java — see io.pzstorm.storm.client.LauncherAutoJoin for the pattern) → new client bytecode patch. A new client patch needs a reason the cheaper tiers can't cover, must fail soft (a broken patch logs and degrades; it never takes the client down), and adds re-validation work on every game update — say so in the PR/commit.
 
-Existing client-side patches: MainScreenStatePatch, UIWorldMapPatch, LuaEventManagerPatch, TISLogoStatePatch, PacketReceivedPatch, ChatManagerPatch, LuaExposerDumpPatch, LuaManagerPatch, DebugLogPatch, ThreadPatch.
+Existing client-side patches: MainScreenStatePatch, UIWorldMapPatch, LuaEventManagerPatch, TISLogoStatePatch, PacketReceivedPatch, ChatManagerPatch, LuaExposerDumpPatch, LuaManagerPatch, DebugLogPatch, ThreadPatch, AdvancedAnimatorMissingFolderPatch, ActionManagerPatch (isDone/isRejected), RequestDataOverTcpPatch, PlayerProfileOverTcpPatch, ChunkRequestOverTcpPatch, WorldStreamerChunkTcpPatch, LoginQueueOverTcpPatch, LoadingQueueStateTcpDrainPatch, ChecksumOverTcpPatch, GameClientStartClientRetryPatch, PacketTypeSendDivertPatch (both JVMs).
 
 Transformer gating (server-only patches). Gate ZomboidMod.getClassTransformers() on StormEnv.isStormServer(), not GameServer.server. GameServer.server is false at collectTransformers() time and silently drops every patch. See docs/mod-author-guide.md for the full pattern.
 
@@ -18,6 +18,6 @@ installStorm fails with "Permission denied" on agentlib.dll / storm.jar while a 
 
 Versions and Steam Workshop IDs come from gradle.properties. Maven coordinates: com.sentientsimulations:project-zomboid-storm:<pzVersion>_<stormVersion>.
 
-Reference. Architecture (bootstrap chain, event system, mod loading, mod entry point): docs/mod-author-guide.md. JVM flags, sandbox options: docs/server-configuration.md. What Storm patches in PZ (behavior, perf, bug fixes): docs/what-storm-changes.md. HTTP endpoints: docs/http-api.md. Prometheus metrics (adding new ones): docs/metrics.md. Installation paths (Workshop, dedicated server, local dev): docs/installation.md. Storm Launcher (pre-game UI, client mod sync, launcher/ subproject — no PZ classes allowed in it): docs/launcher.md.
+Reference. Architecture (bootstrap chain, event system, mod loading, mod entry point): docs/mod-author-guide.md. JVM flags, sandbox options: docs/server-configuration.md. What Storm patches in PZ (behavior, perf, bug fixes): docs/what-storm-changes.md. HTTP endpoints: docs/http-api.md. The multiplayer join over TCP (session model, diverted stages, fail-soft rules, chunk-diversion invariants, PZ-update re-validation list): docs/game-port-tcp-loading.md. Prometheus metrics (adding new ones): docs/metrics.md. Installation paths (Workshop, dedicated server, local dev): docs/installation.md. Storm Launcher (pre-game UI, client mod sync, launcher/ subproject — no PZ classes allowed in it): docs/launcher.md.
 
 Metadata. To disable metadata analytics, add -DDISABLE_ANALYTICS=true.

@@ -93,6 +93,9 @@ public final class StormPerformanceSandboxApplier {
     /** Set on the first legitimately-early {@link #applyServerFps()} skip at boot. */
     private static boolean serverFpsSkippedOnce;
 
+    /** Set once {@link #applyMaxPlayersOverride()} has reported the pinning launch flag. */
+    private static boolean loggedForcedMaxPlayers;
+
     private StormPerformanceSandboxApplier() {}
 
     @SubscribeEvent
@@ -203,11 +206,19 @@ public final class StormPerformanceSandboxApplier {
      * real server JVM — {@code StormMaxPlayersConfig} must stay free of {@code zombie.*}
      * references, because unit tests call the setter in a bare JVM where {@code
      * ServerOptions.&lt;clinit&gt;} fails and stays poisoned for later tests in the same JVM.
+     *
+     * <p>No-ops while {@code -Dstorm.maxPlayers} pins the ceiling — the flag already applies from
+     * JVM start, including to vanilla's boot-time Steam push, so there is nothing to store and
+     * nothing to re-push.
      */
     public static void applyMaxPlayersOverride() {
         Boolean enabled = readBooleanOption(OPT_OVERRIDE_MAX_PLAYERS);
         Integer maxPlayers = readIntOption(OPT_MAX_PLAYERS);
         if (enabled == null || maxPlayers == null) {
+            return;
+        }
+        if (StormMaxPlayersConfig.isForcedByProperty()) {
+            logForcedMaxPlayers(enabled, maxPlayers);
             return;
         }
         boolean wasEnabled = StormMaxPlayersConfig.isOverrideEnabled();
@@ -217,6 +228,28 @@ public final class StormPerformanceSandboxApplier {
         if (effectiveChanged) {
             pushEffectiveMaxPlayers(enabled, clamped);
         }
+    }
+
+    /**
+     * Says once per run that the launch flag owns the player ceiling, then stays quiet — this runs
+     * on every admin sandbox push, and an operator who pinned the value does not need the reminder
+     * each time.
+     */
+    private static void logForcedMaxPlayers(boolean sandboxEnabled, int sandboxMaxPlayers) {
+        if (loggedForcedMaxPlayers) {
+            return;
+        }
+        loggedForcedMaxPlayers = true;
+        LOGGER.info(
+                "Storm: max player count pinned at {} by -D{} — ignoring sandbox {}={} / {}={}"
+                        + " and the .ini MaxPlayers. Restart without the flag to hand the ceiling"
+                        + " back to the sandbox.",
+                StormMaxPlayersConfig.getForcedMaxPlayers(),
+                StormMaxPlayersConfig.FORCED_PROPERTY,
+                OPT_OVERRIDE_MAX_PLAYERS,
+                sandboxEnabled,
+                OPT_MAX_PLAYERS,
+                sandboxMaxPlayers);
     }
 
     /**

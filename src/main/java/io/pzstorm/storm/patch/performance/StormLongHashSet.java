@@ -67,6 +67,46 @@ final class StormLongHashSet {
         }
     }
 
+    /**
+     * Returns {@code true} if the key was present. Backward-shift deletion: each key after the
+     * freed slot in its probe run moves up into the hole when the hole lies on its own probe path,
+     * so no tombstones are left and {@link #contains} stays a plain probe to the first empty slot.
+     */
+    boolean remove(long key) {
+        if (key == 0L) {
+            boolean had = hasZero;
+            hasZero = false;
+            return had;
+        }
+        int mask = keys.length - 1;
+        int hole = mix(key) & mask;
+        while (keys[hole] != key) {
+            if (keys[hole] == 0L) {
+                return false;
+            }
+            hole = (hole + 1) & mask;
+        }
+        int i = hole;
+        while (true) {
+            i = (i + 1) & mask;
+            long cur = keys[i];
+            if (cur == 0L) {
+                break;
+            }
+            // cur may fill the hole only if the hole sits cyclically between cur's home slot and
+            // the slot cur occupies now. Otherwise the hole is before cur's home, and cur moved
+            // there would sit where a probe for it never starts.
+            int home = mix(cur) & mask;
+            if (((i - home) & mask) >= ((i - hole) & mask)) {
+                keys[hole] = cur;
+                hole = i;
+            }
+        }
+        keys[hole] = 0L;
+        size--;
+        return true;
+    }
+
     void clear() {
         Arrays.fill(keys, 0L);
         size = 0;

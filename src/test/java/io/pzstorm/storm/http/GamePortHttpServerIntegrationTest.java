@@ -30,6 +30,13 @@ class GamePortHttpServerIntegrationTest implements IntegrationTest {
         StormEventDispatcher.registerEventHandler(StormBuiltinEndpoints.class);
         StormEventDispatcher.registerEventHandler(GamePortBuiltinEndpoints.class);
         StormEventDispatcher.registerEventHandler(GamePortHandshakeEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortRequestDataEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortPlayerProfileEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortChunkEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortLoginQueueEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortChecksumEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortLoginEndpoints.class);
+        StormEventDispatcher.registerEventHandler(GamePortClientEventEndpoints.class);
         StormEventDispatcher.registerEventHandler(GameTypedBodyEchoEndpoints.class);
         StormHttpServer.start(0);
         GamePortHttpServer.start(new InetSocketAddress(0));
@@ -137,6 +144,123 @@ class GamePortHttpServerIntegrationTest implements IntegrationTest {
     }
 
     @Test
+    void requestDataWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                get(
+                        GamePortHttpServer.getPort(),
+                        "/storm/game/request-data?id=ZombieOutfitDescriptors");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void requestDataWithBogusTokenIsUnauthorized() throws Exception {
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(
+                                URI.create(
+                                        "http://localhost:"
+                                                + GamePortHttpServer.getPort()
+                                                + "/storm/game/request-data?id=RadioData"))
+                        .timeout(TIMEOUT)
+                        .header("X-Storm-Session", "deadbeefdeadbeefdeadbeefdeadbeef")
+                        .GET()
+                        .build();
+
+        Assertions.assertEquals(
+                401, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+
+    @Test
+    void playerProfilesWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                get(GamePortHttpServer.getPort(), "/storm/game/player-profiles");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void chunkBatchWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postJson(
+                        GamePortHttpServer.getPort(),
+                        "/storm/game/chunks",
+                        "{\"requests\":[{\"requestNumber\":1,\"wx\":100,\"wy\":100,\"crc\":0}]}");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void loginQueueRequestWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postBytes(GamePortHttpServer.getPort(), "/storm/game/login-queue", new byte[0]);
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void loginQueuePollWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                get(GamePortHttpServer.getPort(), "/storm/game/login-queue?wait=0");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void loginQueueDoneWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postJson(
+                        GamePortHttpServer.getPort(),
+                        "/storm/game/login-queue/done",
+                        "{\"loadingMillis\":1234}");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void checksumWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postBytes(
+                        GamePortHttpServer.getPort(),
+                        "/storm/game/checksum",
+                        new byte[] {0, 1, 0, 0, 0, 0, 0, 0});
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void loginQueueEndpointsAreNotServedOnBackendPort() {
+        Assertions.assertEquals(
+                404, statusOf(StormHttpServer.getPort(), "/storm/game/login-queue"));
+    }
+
+    @Test
+    void loginWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postBytes(GamePortHttpServer.getPort(), "/storm/game/login", new byte[16]);
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void clientEventWithoutSessionIsUnauthorized() throws Exception {
+        HttpResponse<String> response =
+                postJson(
+                        GamePortHttpServer.getPort(),
+                        "/storm/game/client-event",
+                        "{\"event\":\"x\",\"detail\":\"y\"}");
+
+        Assertions.assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    void loginAndClientEventAreNotServedOnBackendPort() {
+        Assertions.assertEquals(404, statusOf(StormHttpServer.getPort(), "/storm/game/login"));
+        Assertions.assertEquals(
+                404, statusOf(StormHttpServer.getPort(), "/storm/game/client-event"));
+    }
+
+    @Test
     void startIsIdempotent() {
         int port = GamePortHttpServer.getPort();
         GamePortHttpServer.start(new InetSocketAddress(0));
@@ -159,6 +283,17 @@ class GamePortHttpServerIntegrationTest implements IntegrationTest {
                         .uri(URI.create("http://localhost:" + port + path))
                         .timeout(TIMEOUT)
                         .GET()
+                        .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> postBytes(int port, String path, byte[] body) throws Exception {
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + path))
+                        .timeout(TIMEOUT)
+                        .header("Content-Type", "application/octet-stream")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                         .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }

@@ -371,6 +371,19 @@ public final class StormPerformanceSandboxMetrics {
                                     + " override.")
                     .register(StormPrometheus.registry());
 
+    private static final Gauge MAX_PLAYERS_FORCED =
+            Gauge.builder()
+                    .name("storm_max_players_forced")
+                    .help(
+                            "Player-count ceiling pinned by the -Dstorm.maxPlayers launch flag,"
+                                    + " which overrides both the .ini MaxPlayers and the"
+                                    + " Storm.OverrideMaxPlayers / Storm.MaxPlayers sandbox pair."
+                                    + " Non-zero means this value is the ceiling in effect and"
+                                    + " storm_max_players_override_enabled /"
+                                    + " storm_max_players_override are inert (admin sandbox pushes"
+                                    + " are ignored). 0 = flag not set (default).")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge LOGIN_QUEUE_MAX_CONCURRENT_LOADERS =
             Gauge.builder()
                     .name("storm_login_queue_max_concurrent_loaders")
@@ -448,6 +461,7 @@ public final class StormPerformanceSandboxMetrics {
         VEHICLE_SOUND_RELEVANCE_FAST_PATH.set(StormVehicleSoundRelevance.DEFAULT_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE_ENABLED.set(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED ? 1 : 0);
         MAX_PLAYERS_OVERRIDE.set(StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
+        MAX_PLAYERS_FORCED.set(StormMaxPlayersConfig.getForcedMaxPlayers());
         LOGIN_QUEUE_MAX_CONCURRENT_LOADERS.set(
                 LoginQueueEarlyRelease.DEFAULT_MAX_CONCURRENT_LOADERS);
         CELL_WARMING_ENABLED.set(StormCellWarmingConfig.DEFAULT_ENABLED ? 1 : 0);
@@ -566,6 +580,10 @@ public final class StormPerformanceSandboxMetrics {
 
     public static void setMaxPlayersOverride(int maxPlayers) {
         MAX_PLAYERS_OVERRIDE.set(maxPlayers);
+    }
+
+    public static void setMaxPlayersForced(int maxPlayers) {
+        MAX_PLAYERS_FORCED.set(maxPlayers);
     }
 
     public static void setLoginQueueMaxConcurrentLoaders(int loaders) {

@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.Nullable;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.raknet.UdpEngine;
+import zombie.core.znet.SteamUtils;
 import zombie.network.GameServer;
 
 /**
@@ -17,12 +18,19 @@ import zombie.network.GameServer;
  * game-port TCP channel and completed the {@code POST /storm/handshake}. A marked connection can
  * receive connection-phase data over TCP instead of UDP.
  *
- * <p>Binding model (v1): the handshake claims a steamId, and the claim is accepted only if a live
- * {@link UdpConnection} exists with that steamId whose UDP source IP equals the TCP socket's source
- * IP. That defeats off-path hijack (an attacker cannot bind a session to a connection they don't
- * share an IP with); an on-path/same-NAT attacker gains only the connection-phase data any
- * legitimately connecting client is served. If credential-bearing traffic ever moves onto the TCP
- * channel, upgrade the binding to a server-issued challenge echoed over the UDP connection first.
+ * <p>Binding model: the handshake claims a steamId, and the claim is accepted only if a live {@link
+ * UdpConnection} exists whose UDP source IP equals the TCP socket's source IP and whose steamId
+ * matches. After the LoginPacket that steamId is the one vanilla stamped on the connection ({@link
+ * #handshake}); before it, only connections that have not sent a LoginPacket qualify, the steamId
+ * is checked against RakNet's own view of the peer ({@code UdpEngine.getClientSteamID}, the same
+ * source vanilla stamps from) and the match must be unique for that IP ({@link
+ * #handshakePreLogin}). That defeats off-path hijack (an attacker cannot bind a session to a
+ * connection they don't share an IP with). A same-NAT attacker who also knows the victim's steamId
+ * can bind the victim's pre-login connection and post a LoginPacket on it, which logs the victim's
+ * RakNet connection in under the attacker's own credentials and gains the attacker nothing beyond
+ * what a same-NAT UDP injection already could. Since {@code POST /storm/game/login} carries the
+ * vanilla LoginPacket (username + password, cleartext exactly as vanilla sends it over UDP), the
+ * TCP channel does not widen the credential exposure either.
  *
  * <p>Sessions are validated lazily: a token is only honored while its RakNet connection is still
  * alive ({@link UdpEngine#getActiveConnection(long)}), so a dropped player invalidates the TCP
@@ -57,6 +65,11 @@ public final class StormTcpSessionRegistry {
         if (match == null) {
             return null;
         }
+        return bind(match, steamId, clientStormVersion, tcpSourceIp);
+    }
+
+    private static Session bind(
+            UdpConnection match, long steamId, String clientStormVersion, String tcpSourceIp) {
         long guid = match.getConnectedGUID();
 
         byte[] raw = new byte[16];
@@ -82,6 +95,57 @@ public final class StormTcpSessionRegistry {
                 tcpSourceIp,
                 clientStormVersion);
         return session;
+    }
+
+    /**
+     * Bind a handshake to a connection that has not yet sent its LoginPacket. Server main thread
+     * only: it reads the peer address and steamId through RakNet natives. Returns {@code null}
+     * unless exactly one pre-login connection from {@code tcpSourceIp} matches; in Steam mode the
+     * claimed steamId must also equal RakNet's steamId for that peer, in nosteam mode the session's
+     * steamId is recorded as 0 (vanilla never stamps one). An earlier binding on the same GUID does
+     * not exclude a connection: RakNet keeps the GUID across a reconnect, so the stale session must
+     * be replaced rather than honored.
+     *
+     * <p>Vanilla reaps a connection that has not logged in within 5 s of connecting ({@code
+     * UdpConnection.isConnectionAttemptTimeout}); a successful binding re-stamps that clock so the
+     * client's immediate login post is not raced by the reap. The extension is bounded to one more
+     * 5 s window, so a client that handshakes and never logs in is still dropped.
+     */
+    public static @Nullable Session handshakePreLogin(
+            long claimedSteamId, String clientStormVersion, String tcpSourceIp) {
+        UdpEngine engine = GameServer.udpEngine;
+        if (engine == null) {
+            return null;
+        }
+        boolean steam = SteamUtils.isSteamModeEnabled();
+        UdpConnection match = null;
+        for (int i = 0; i < engine.connections.size(); i++) {
+            UdpConnection connection = engine.connections.get(i);
+            if (connection == null || connection.getUserName() != null) {
+                continue;
+            }
+            long guid = connection.getConnectedGUID();
+            java.net.InetSocketAddress address = connection.getInetSocketAddress();
+            if (address == null || !tcpSourceIp.equals(address.getHostString())) {
+                continue;
+            }
+            if (steam && engine.getClientSteamID(guid) != claimedSteamId) {
+                continue;
+            }
+            if (match != null) {
+                LOGGER.info(
+                        "Pre-login Storm handshake from {} matches more than one connection;"
+                                + " refusing",
+                        tcpSourceIp);
+                return null;
+            }
+            match = connection;
+        }
+        if (match == null) {
+            return null;
+        }
+        match.connectionTimestamp = System.currentTimeMillis();
+        return bind(match, steam ? claimedSteamId : 0L, clientStormVersion, tcpSourceIp);
     }
 
     /**
@@ -124,7 +188,12 @@ public final class StormTcpSessionRegistry {
             return null;
         }
         UdpConnection connection = engine.getActiveConnection(session.guid());
-        if (connection == null || connection.getSteamId() != session.steamId()) {
+        if (connection == null) {
+            return null;
+        }
+        // 0 is the pre-login value; vanilla stamps the real steamId in LoginPacket.processServer.
+        long steamId = connection.getSteamId();
+        if (steamId != 0L && steamId != session.steamId()) {
             return null;
         }
         return connection;
@@ -159,6 +228,7 @@ public final class StormTcpSessionRegistry {
         // Index-based iteration: the list is mutated on the server main thread while this runs
         // on an HTTP pool thread (same pattern as StormBuiltinEndpoints).
         java.util.List<UdpConnection> connections = engine.connections;
+        UdpConnection match = null;
         for (int i = 0; i < connections.size(); i++) {
             UdpConnection connection;
             try {
@@ -166,13 +236,34 @@ public final class StormTcpSessionRegistry {
             } catch (IndexOutOfBoundsException e) {
                 break;
             }
-            if (connection == null) {
+            if (connection == null
+                    || connection.getUserName() == null
+                    || connection.getSteamId() != steamId
+                    || !ip.equals(connection.getIP())) {
                 continue;
             }
-            if (connection.getSteamId() == steamId && ip.equals(connection.getIP())) {
-                return connection;
+            if (match != null) {
+                // Nosteam: steamId is 0 on every connection, so two logged-in players behind one
+                // NAT are indistinguishable here. Prefer the one nobody has bound yet.
+                Session bound = BY_GUID.get(match.getConnectedGUID());
+                boolean matchBound = bound != null && liveConnection(bound) != null;
+                Session candidateBound = BY_GUID.get(connection.getConnectedGUID());
+                boolean thisBound =
+                        candidateBound != null && liveConnection(candidateBound) != null;
+                if (matchBound == thisBound) {
+                    LOGGER.info(
+                            "Storm handshake from {} matches more than one logged-in connection;"
+                                    + " refusing",
+                            ip);
+                    return null;
+                }
+                if (matchBound) {
+                    match = connection;
+                }
+                continue;
             }
+            match = connection;
         }
-        return null;
+        return match;
     }
 }

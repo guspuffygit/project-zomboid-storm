@@ -128,6 +128,63 @@ public class StormLauncher {
                         .getDeclaredMethod("registerEventHandler", Class.class)
                         .invoke(null, gamePortHandshakeEndpoints);
 
+                Class<?> gamePortRequestDataEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortRequestDataEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortRequestDataEndpoints);
+
+                Class<?> gamePortPlayerProfileEndpoints =
+                        classLoader.loadClass(
+                                "io.pzstorm.storm.http.GamePortPlayerProfileEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortPlayerProfileEndpoints);
+
+                Class<?> gamePortChunkEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortChunkEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortChunkEndpoints);
+
+                Class<?> gamePortLoginQueueEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortLoginQueueEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortLoginQueueEndpoints);
+
+                Class<?> gamePortChecksumEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortChecksumEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortChecksumEndpoints);
+
+                Class<?> gamePortLoginEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortLoginEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortLoginEndpoints);
+
+                Class<?> gamePortClientEventEndpoints =
+                        classLoader.loadClass("io.pzstorm.storm.http.GamePortClientEventEndpoints");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, gamePortClientEventEndpoints);
+
+                // Reply cache for LoginPacket-over-TCP retries; swept every game minute.
+                Class<?> tcpLogin =
+                        classLoader.loadClass("io.pzstorm.storm.connection.StormTcpLogin");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, tcpLogin);
+
+                // Outbox for login-queue messages of TCP joiners; closes on UDP fallback / done.
+                Class<?> loginQueueMailbox =
+                        classLoader.loadClass("io.pzstorm.storm.connection.StormLoginQueueMailbox");
+                eventDispatcher
+                        .getDeclaredMethod("registerEventHandler", Class.class)
+                        .invoke(null, loginQueueMailbox);
+
                 Class<?> rolePositionPin =
                         classLoader.loadClass("io.pzstorm.storm.connection.RolePositionPin");
                 eventDispatcher
@@ -219,6 +276,18 @@ public class StormLauncher {
                 } catch (Throwable t) {
                     // a broken TCP channel just means UDP-only; never take the client down
                     LOGGER.error("Failed to start Storm TCP channel", t);
+                }
+
+                try {
+                    // main-thread drain for the LoginPacket-over-TCP reply
+                    Class<?> loginOverTcp =
+                            classLoader.loadClass("io.pzstorm.storm.client.StormLoginOverTcp");
+                    eventDispatcher
+                            .getDeclaredMethod("registerEventHandler", Class.class)
+                            .invoke(null, loginOverTcp);
+                } catch (Throwable t) {
+                    // without the drain the held Login is released over UDP by the watcher
+                    LOGGER.error("Failed to register login-over-TCP drain", t);
                 }
             }
 

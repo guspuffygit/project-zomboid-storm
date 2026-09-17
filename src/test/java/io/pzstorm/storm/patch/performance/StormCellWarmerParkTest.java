@@ -13,8 +13,13 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
@@ -185,7 +190,7 @@ class StormCellWarmerParkTest implements UnitTest {
         Ticker noSquare = tickerOn(cell, null);
 
         List<IsoObject> stash = new ArrayList<>();
-        StormCellWarmer.drainProcessObjects(cell, grid(inA, inB), stash);
+        drain(cell, grid(inA, inB), stash);
 
         assertEquals(List.of(a1, a2, b), stash, "only the cell's own objects, in list order");
         assertTrue(cell.getProcessIsoObjectRemove().containsAll(stash));
@@ -211,7 +216,7 @@ class StormCellWarmerParkTest implements UnitTest {
         cell.addToProcessIsoObjectRemove(leaving);
 
         List<IsoObject> stash = new ArrayList<>();
-        StormCellWarmer.drainProcessObjects(cell, grid(chunk), stash);
+        drain(cell, grid(chunk), stash);
 
         assertEquals(List.of(staying), stash, "a pending vanilla removal is not ours to restore");
         assertTrue(cell.getProcessIsoObjectRemove().contains(leaving));
@@ -221,11 +226,59 @@ class StormCellWarmerParkTest implements UnitTest {
     void drainWithNoCellOrNoChunksOrEmptyListIsANoOp() throws Exception {
         IsoCell cell = bareCell();
         List<IsoObject> stash = new ArrayList<>();
-        StormCellWarmer.drainProcessObjects(null, grid(bareChunk(1, 1)), stash);
-        StormCellWarmer.drainProcessObjects(cell, new IsoChunk[8][8], stash);
-        StormCellWarmer.drainProcessObjects(cell, grid(bareChunk(1, 1)), stash);
+        drain(null, grid(bareChunk(1, 1)), stash);
+        drain(cell, new IsoChunk[8][8], stash);
+        drain(cell, grid(bareChunk(1, 1)), stash);
         assertTrue(stash.isEmpty());
         assertTrue(cell.getProcessIsoObjectRemove().isEmpty());
+    }
+
+    /**
+     * Two cells warmed in the same tick drain in one pass over the list, each into its own stash,
+     * in list order, with strangers left ticking.
+     */
+    @Test
+    void oneWalkDrainsEveryCellWarmedThisTickIntoItsOwnStash() throws Exception {
+        CountingList process = new CountingList();
+        IsoCell cell = bareCell(process);
+        IsoChunk a = bareChunk(8, 8);
+        IsoChunk b = bareChunk(16, 8);
+        IsoChunk far = bareChunk(80, 80);
+        Ticker a1 = tickerOn(cell, squareOn(a));
+        Ticker b1 = tickerOn(cell, squareOn(b));
+        Ticker outside = tickerOn(cell, squareOn(far));
+        Ticker a2 = tickerOn(cell, squareOn(a));
+        Ticker b2 = tickerOn(cell, squareOn(b));
+        List<IsoObject> stashA = new ArrayList<>();
+        List<IsoObject> stashB = new ArrayList<>();
+        Map<IsoChunk, List<IsoObject>> byChunk = new IdentityHashMap<>();
+        byChunk.put(a, stashA);
+        byChunk.put(b, stashB);
+
+        process.gets = 0;
+        StormCellWarmer.drainProcessObjects(cell, byChunk);
+
+        assertEquals(5, process.gets, "one pass over the list serves both cells");
+        assertEquals(List.of(a1, a2), stashA);
+        assertEquals(List.of(b1, b2), stashB);
+        processIsoObject(cell);
+        assertEquals(0, a1.ticks + a2.ticks + b1.ticks + b2.ticks);
+        assertEquals(1, outside.ticks);
+    }
+
+    /**
+     * The batched walk against the per-cell drain it replaced, copied verbatim below and run one
+     * cell after another on the same layout: the same stash per cell and the same queued removals,
+     * over random layouts with several cells, strangers, square-less objects and objects already
+     * leaving.
+     */
+    @Test
+    void batchedDrainMatchesThePerCellDrainItReplaced() throws Exception {
+        Random random = new Random(1337);
+        for (int round = 0; round < 300; round++) {
+            long seed = random.nextLong();
+            assertEquals(drainLayout(seed, false), drainLayout(seed, true), "layout seed " + seed);
+        }
     }
 
     @Test
@@ -235,7 +288,7 @@ class StormCellWarmerParkTest implements UnitTest {
         Ticker a = tickerOn(cell, squareOn(chunk));
         Ticker b = tickerOn(cell, squareOn(chunk));
         List<IsoObject> stash = new ArrayList<>();
-        StormCellWarmer.drainProcessObjects(cell, grid(chunk), stash);
+        drain(cell, grid(chunk), stash);
         processIsoObject(cell);
         assertEquals(0, a.ticks);
         assertTrue(cell.getProcessIsoObjects().isEmpty());
@@ -264,7 +317,7 @@ class StormCellWarmerParkTest implements UnitTest {
         Ticker chunkGone = tickerOn(cell, squareOn(chunk));
         Ticker intact = tickerOn(cell, squareOn(chunk));
         List<IsoObject> stash = new ArrayList<>();
-        StormCellWarmer.drainProcessObjects(cell, grid(chunk), stash);
+        drain(cell, grid(chunk), stash);
         processIsoObject(cell);
 
         squareGone.square = null;
@@ -377,12 +430,28 @@ class StormCellWarmerParkTest implements UnitTest {
     void warmRewarmAndEvictionAreWiredToTheHelpers() throws Exception {
         byte[] warmer = classBytes("io/pzstorm/storm/patch/performance/StormCellWarmer.class");
         String owner = "io/pzstorm/storm/patch/performance/StormCellWarmer";
-        assertEquals(1, calls(warmer, "warm", owner, "drainProcessObjects"));
-        assertEquals(1, calls(warmer, "warm", owner, "parkVehicles"));
+        assertEquals(
+                0,
+                calls(warmer, "warm", owner, "drainProcessObjects"),
+                "warm() queues the cell; the list is walked once per tick, after the loop");
+        assertEquals(1, calls(warmer, "drainWarmedThisTick", owner, "drainProcessObjects"));
         assertEquals(
                 1,
+                calls(warmer, "drainWarmedThisTick", owner, "restoreProcessObjects"),
+                "a walk that threw puts every stash back, so no cell is left half-parked");
+        assertEquals(1, calls(warmer, "warm", owner, "parkVehicles"));
+        assertEquals(
+                0,
                 calls(warmer, "warm", owner, "restoreProcessObjects"),
-                "the rollback path restores what a failed warm drained");
+                "warm() drains nothing itself, so its rollback has nothing to restore");
+        List<String> postUpdate = callSequence(warmer, "runPostUpdate");
+        int drain = postUpdate.indexOf(owner + ".drainWarmedThisTick");
+        int evict = postUpdate.indexOf(owner + ".evictOverBudget");
+        assertTrue(drain >= 0 && evict >= 0);
+        assertTrue(drain < evict, "cells warmed this tick are drained before eviction");
+        assertTrue(
+                postUpdate.lastIndexOf(owner + ".drainWarmedThisTick") > evict,
+                "and again from finally, for a loop that threw");
         assertEquals(1, calls(warmer, "warm", owner, "releaseVehicles"));
         assertEquals(1, calls(warmer, "reconnectAndRestore", owner, "restoreProcessObjects"));
         assertEquals(1, calls(warmer, "reconnectAndRestore", owner, "releaseVehicles"));
@@ -396,7 +465,146 @@ class StormCellWarmerParkTest implements UnitTest {
         assertEquals(1, calls(sleep, "enterUpdate", owner, "isWarmedVehicle"));
     }
 
+    /**
+     * {@code isWarm} answers from the primitive key set, so the set has to change wherever the map
+     * does: the one put in {@code warm}, the one remove in {@code rewarm} and the one iterator
+     * remove in {@code evictOverBudget}, each paired with its set call.
+     */
+    @Test
+    void warmKeySetChangesWhereverTheWarmMapDoes() throws Exception {
+        byte[] warmer = classBytes("io/pzstorm/storm/patch/performance/StormCellWarmer.class");
+        String keys = "io/pzstorm/storm/patch/performance/StormLongHashSet";
+        assertEquals(2, calls(warmer, "isWarm", keys, "contains"), "both overloads");
+        assertEquals(0, calls(warmer, "isWarm", "java/util/Map", "containsKey"));
+        assertEquals(1, calls(warmer, "warm", "java/util/Map", "put"));
+        assertEquals(1, calls(warmer, "warm", keys, "add"));
+        assertEquals(1, calls(warmer, "rewarm", "java/util/Map", "remove"));
+        assertEquals(1, calls(warmer, "rewarm", keys, "remove"));
+        assertEquals(1, calls(warmer, "evictOverBudget", "java/util/Iterator", "remove"));
+        assertEquals(1, calls(warmer, "evictOverBudget", keys, "remove"));
+    }
+
     // ------------------------------------------------------------- fixtures
+
+    /** The process list with its reads counted, to see how many times a drain walks it. */
+    static final class CountingList extends ArrayList<IsoObject> {
+        int gets;
+
+        @Override
+        public IsoObject get(int index) {
+            gets++;
+            return super.get(index);
+        }
+    }
+
+    /** One cell's drain through the batched walk: every chunk of its grid maps to the one stash. */
+    private static void drain(IsoCell cell, IsoChunk[][] chunks, List<IsoObject> stash) {
+        StormCellWarmer.drainProcessObjects(cell, stashByChunk(chunks, stash));
+    }
+
+    private static Map<IsoChunk, List<IsoObject>> stashByChunk(
+            IsoChunk[][] chunks, List<IsoObject> stash) {
+        Map<IsoChunk, List<IsoObject>> byChunk = new IdentityHashMap<>();
+        for (IsoChunk[] column : chunks) {
+            for (IsoChunk chunk : column) {
+                if (chunk != null) {
+                    byChunk.put(chunk, stash);
+                }
+            }
+        }
+        return byChunk;
+    }
+
+    /**
+     * Builds the layout {@code seed} describes and drains it, either every cell in one batched walk
+     * or cell by cell through {@link #perCellDrainAsItWas}. Returns each cell's stash as indices
+     * into the layout, then the indices queued for removal.
+     */
+    private static List<List<Integer>> drainLayout(long seed, boolean batched) throws Exception {
+        Random r = new Random(seed);
+        IsoCell cell = bareCell();
+        int cells = 1 + r.nextInt(4);
+        List<IsoChunk[][]> grids = new ArrayList<>();
+        List<IsoChunk> chunks = new ArrayList<>();
+        for (int c = 0; c < cells; c++) {
+            IsoChunk first = bareChunk(c * 8, 0);
+            IsoChunk second = bareChunk(c * 8 + 1, 0);
+            grids.add(grid(first, second));
+            chunks.add(first);
+            chunks.add(second);
+        }
+        chunks.add(bareChunk(99, 99)); // no warmed cell owns this one
+        List<IsoObject> objects = new ArrayList<>();
+        int count = r.nextInt(40);
+        for (int i = 0; i < count; i++) {
+            int pick = r.nextInt(chunks.size() + 1);
+            Ticker t = tickerOn(cell, pick == chunks.size() ? null : squareOn(chunks.get(pick)));
+            objects.add(t);
+            if (r.nextInt(6) == 0) {
+                cell.addToProcessIsoObjectRemove(t);
+            }
+        }
+        List<List<IsoObject>> stashes = new ArrayList<>();
+        Map<IsoChunk, List<IsoObject>> byChunk = new IdentityHashMap<>();
+        for (int c = 0; c < cells; c++) {
+            List<IsoObject> stash = new ArrayList<>();
+            stashes.add(stash);
+            if (batched) {
+                byChunk.putAll(stashByChunk(grids.get(c), stash));
+            } else {
+                perCellDrainAsItWas(cell, grids.get(c), stash);
+            }
+        }
+        if (batched) {
+            StormCellWarmer.drainProcessObjects(cell, byChunk);
+        }
+        List<List<Integer>> result = new ArrayList<>();
+        for (List<IsoObject> stash : stashes) {
+            result.add(stash.stream().map(objects::indexOf).toList());
+        }
+        Set<IsoObject> pending = cell.getProcessIsoObjectRemove();
+        result.add(objects.stream().filter(pending::contains).map(objects::indexOf).toList());
+        return result;
+    }
+
+    /** {@code StormCellWarmer.drainProcessObjects} as it was before the batched walk, verbatim. */
+    private static void perCellDrainAsItWas(
+            IsoCell isoCell, IsoChunk[][] chunks, List<IsoObject> out) {
+        if (isoCell == null) {
+            return;
+        }
+        ArrayList<IsoObject> process = isoCell.getProcessIsoObjects();
+        if (process == null || process.isEmpty()) {
+            return;
+        }
+        Set<IsoChunk> cellChunks = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (IsoChunk[] column : chunks) {
+            for (IsoChunk chunk : column) {
+                if (chunk != null) {
+                    cellChunks.add(chunk);
+                }
+            }
+        }
+        if (cellChunks.isEmpty()) {
+            return;
+        }
+        Set<IsoObject> pending = isoCell.getProcessIsoObjectRemove();
+        for (int i = 0, n = process.size(); i < n; i++) {
+            IsoObject obj = process.get(i);
+            if (obj == null) {
+                continue;
+            }
+            IsoGridSquare sq = obj.getSquare();
+            if (sq == null || !cellChunks.contains(sq.getChunk())) {
+                continue;
+            }
+            if (pending != null && pending.contains(obj)) {
+                continue;
+            }
+            isoCell.addToProcessIsoObjectRemove(obj);
+            out.add(obj);
+        }
+    }
 
     /** A ticking static object: the role a stove, generator or washer plays on the list. */
     static final class Ticker extends IsoObject {
@@ -424,8 +632,12 @@ class StormCellWarmerParkTest implements UnitTest {
     }
 
     private static IsoCell bareCell() throws Exception {
+        return bareCell(new ArrayList<>());
+    }
+
+    private static IsoCell bareCell(ArrayList<IsoObject> processList) throws Exception {
         IsoCell cell = bare(IsoCell.class);
-        set(cell, IsoCell.class, "processIsoObject", new ArrayList<IsoObject>());
+        set(cell, IsoCell.class, "processIsoObject", processList);
         set(cell, IsoCell.class, "processIsoObjectSet", new HashSet<IsoObject>());
         set(cell, IsoCell.class, "processIsoObjectRemove", new HashSet<IsoObject>());
         return cell;
@@ -479,6 +691,39 @@ class StormCellWarmerParkTest implements UnitTest {
             assertNotNull(is, resource + " must be on the test classpath");
             return is.readAllBytes();
         }
+    }
+
+    /** Every {@code owner.name} invoked inside {@code method}, in bytecode order. */
+    private static List<String> callSequence(byte[] classBytes, String method) {
+        List<String> sequence = new ArrayList<>();
+        new ClassReader(classBytes)
+                .accept(
+                        new ClassVisitor(Opcodes.ASM9) {
+                            @Override
+                            public MethodVisitor visitMethod(
+                                    int access,
+                                    String mName,
+                                    String descriptor,
+                                    String signature,
+                                    String[] exceptions) {
+                                if (!method.equals(mName)) {
+                                    return null;
+                                }
+                                return new MethodVisitor(Opcodes.ASM9) {
+                                    @Override
+                                    public void visitMethodInsn(
+                                            int opcode,
+                                            String mOwner,
+                                            String calledName,
+                                            String mDesc,
+                                            boolean isInterface) {
+                                        sequence.add(mOwner + "." + calledName);
+                                    }
+                                };
+                            }
+                        },
+                        0);
+        return sequence;
     }
 
     /** Invocations of {@code owner.name} inside {@code method}, any invoke opcode. */

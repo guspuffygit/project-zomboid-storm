@@ -160,13 +160,6 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
         }
 
         /**
-         * Reads the player ceiling the cap derives from. Applies the {@code
-         * Storm.OverrideMaxPlayers} sandbox pair first: at {@code UdpEngine} construction time
-         * sandbox vars are loaded but the {@code OnServerStarted} applier has not run yet, and a
-         * save with the override enabled should get its connection headroom sized from the
-         * override, not the {@code .ini} value.
-         */
-        /**
          * Length of {@code GameServer.SlotToConnection}, the hard bound the cap must respect —
          * {@code GameServer.disconnect} scans that array up to {@code getMaxConnections()}, so a
          * cap above its length throws on every disconnect (42.20.3 shrank it from 512 to 255).
@@ -184,6 +177,14 @@ public class GameServerConnectionCapPatch extends StormClassTransformer {
             }
         }
 
+        /**
+         * Reads the player ceiling the cap derives from. Applies the {@code
+         * Storm.OverrideMaxPlayers} sandbox pair first: at {@code UdpEngine} construction time
+         * sandbox vars are loaded but the {@code OnServerStarted} applier has not run yet, and a
+         * save with the override enabled should get its connection headroom sized from the
+         * override, not the {@code .ini} value. {@code -Dstorm.maxPlayers} needs no such priming —
+         * the patched {@code getMaxPlayers()} returns the pinned value from JVM start.
+         */
         private static int readMaxPlayers() {
             try {
                 StormPerformanceSandboxApplier.applyMaxPlayersOverride();

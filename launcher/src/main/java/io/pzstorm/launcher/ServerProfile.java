@@ -53,6 +53,11 @@ public final class ServerProfile {
 
     public List<String> extraVmArgs = new ArrayList<>();
 
+    /**
+     * Extra game (program) args for this server only; see {@link LauncherConfig#globalGameArgs}.
+     */
+    public List<String> extraGameArgs = new ArrayList<>();
+
     public String connectAddress() {
         return host + ":" + port;
     }
@@ -66,6 +71,7 @@ public final class ServerProfile {
         map.put("autoConnect", autoConnect);
         map.put("updateWorkshopMods", updateWorkshopMods);
         map.put("extraVmArgs", new ArrayList<Object>(extraVmArgs));
+        map.put("extraGameArgs", new ArrayList<Object>(extraGameArgs));
         map.put("inGameDb", inGameDb);
         return map;
     }
@@ -79,15 +85,22 @@ public final class ServerProfile {
         p.autoConnect = bool(map.get("autoConnect"), false);
         p.updateWorkshopMods = bool(map.get("updateWorkshopMods"), true);
         p.inGameDb = bool(map.get("inGameDb"), false);
-        Object args = map.get("extraVmArgs");
-        if (args instanceof List) {
-            for (Object arg : (List<?>) args) {
-                if (arg != null && !String.valueOf(arg).isEmpty()) {
-                    p.extraVmArgs.add(String.valueOf(arg));
+        p.extraVmArgs = strings(map.get("extraVmArgs"));
+        p.extraGameArgs = strings(map.get("extraGameArgs"));
+        return p;
+    }
+
+    /** Non-empty string entries of a json list; anything else yields an empty list. */
+    static List<String> strings(Object value) {
+        List<String> out = new ArrayList<>();
+        if (value instanceof List) {
+            for (Object entry : (List<?>) value) {
+                if (entry != null && !String.valueOf(entry).isEmpty()) {
+                    out.add(String.valueOf(entry));
                 }
             }
         }
-        return p;
+        return out;
     }
 
     static String str(Object value, String fallback) {

@@ -50,6 +50,36 @@ class StormLongHashSetTest implements UnitTest {
     }
 
     @Test
+    void removeMatchesReferenceSetUnderRandomizedWorkload() {
+        Random random = new Random(7);
+        for (int round = 0; round < 20; round++) {
+            StormLongHashSet set = new StormLongHashSet();
+            HashSet<Long> reference = new HashSet<>();
+            for (int i = 0; i < 20000; i++) {
+                // A dense coordinate range keeps probe runs long, so removals land mid-run and
+                // across the table's wrap, where clearing the slot alone would hide later keys.
+                long key = coordKey(random.nextInt(60) - 30, random.nextInt(60) - 30);
+                if (random.nextInt(3) == 0) {
+                    assertEquals(reference.remove(key), set.remove(key), "remove " + key);
+                } else {
+                    assertEquals(reference.add(key), set.add(key), "add " + key);
+                }
+                assertEquals(reference.size(), set.size());
+            }
+            for (int wx = -32; wx <= 32; wx++) {
+                for (int wy = -32; wy <= 32; wy++) {
+                    long key = coordKey(wx, wy);
+                    assertEquals(reference.contains(key), set.contains(key), "contains " + key);
+                }
+            }
+            for (Long key : reference) {
+                assertTrue(set.remove(key));
+            }
+            assertEquals(0, set.size());
+        }
+    }
+
+    @Test
     void zeroKeyIsAValidMember() {
         StormLongHashSet set = new StormLongHashSet();
         assertFalse(set.contains(coordKey(0, 0)));
@@ -59,5 +89,13 @@ class StormLongHashSetTest implements UnitTest {
         assertFalse(set.add(coordKey(0, 0)));
         set.clear();
         assertFalse(set.contains(coordKey(0, 0)));
+
+        assertFalse(set.remove(0L));
+        set.add(0L);
+        set.add(coordKey(1, 0));
+        assertTrue(set.remove(0L));
+        assertFalse(set.contains(0L));
+        assertTrue(set.contains(coordKey(1, 0)));
+        assertEquals(1, set.size());
     }
 }

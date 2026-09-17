@@ -20,6 +20,7 @@ class LauncherConfigTest {
         LauncherConfig config = new LauncherConfig();
         config.gameDir = "E:\\SteamLibrary\\steamapps\\common\\ProjectZomboid";
         config.globalVmArgs.add("-Xmx16g");
+        config.globalGameArgs.add("-debuglog=ModelManager,Shader,Clothing");
         ServerProfile profile = new ServerProfile();
         profile.name = "ATF";
         profile.host = "play.example.org";
@@ -30,6 +31,7 @@ class LauncherConfigTest {
         profile.autoConnect = true;
         profile.inGameDb = true;
         profile.extraVmArgs.add("-DstormType=local");
+        profile.extraGameArgs.add("-nosteam");
         config.servers.add(profile);
 
         Path file = tmp.resolve("cfg/launcher.json");
@@ -39,6 +41,7 @@ class LauncherConfigTest {
         LauncherConfig loaded = LauncherConfig.load(file);
         assertEquals(config.gameDir, loaded.gameDir);
         assertEquals(config.globalVmArgs, loaded.globalVmArgs);
+        assertEquals(config.globalGameArgs, loaded.globalGameArgs);
         assertEquals(1, loaded.servers.size());
         ServerProfile p = loaded.servers.get(0);
         assertEquals("ATF", p.name);
@@ -49,6 +52,7 @@ class LauncherConfigTest {
         assertTrue(p.updateWorkshopMods);
         assertTrue(p.inGameDb);
         assertEquals(java.util.List.of("-DstormType=local"), p.extraVmArgs);
+        assertEquals(java.util.List.of("-nosteam"), p.extraGameArgs);
         // passwords live in the game's saved-server database, never in launcher.json
         assertEquals("", p.serverPassword);
         assertEquals("", p.accountPassword);
@@ -278,6 +282,20 @@ class LauncherConfigTest {
                                 "3670772371/mods/storm/launcher/storm-launcher.jar")));
         assertNull(LauncherConfig.workshopItemIdOf(Path.of("/opt/storm/bootstrap")));
         assertNull(LauncherConfig.workshopItemIdOf(null));
+        assertNull(
+                LauncherConfig.workshopItemIdOf(
+                        Path.of("/mnt/e/SteamLibrary/steamapps/workshop/content/108600")));
+    }
+
+    @Test
+    void workshopItemIdOfIgnoresSegmentCase() {
+        Path content = Path.of("/E:/SteamLibrary/SteamApps/Workshop/Content/108600");
+        Path spelledByHand = content.resolve("3670772371/mods/storm/launcher/storm-launcher.jar");
+        assertEquals("3670772371", LauncherConfig.workshopItemIdOf(spelledByHand));
+        assertEquals(
+                content.toAbsolutePath().normalize(),
+                LauncherConfig.workshopAppDirOf(spelledByHand));
+        assertNull(LauncherConfig.workshopAppDirOf(Path.of("/opt/storm/bootstrap")));
     }
 
     @Test

@@ -30,8 +30,13 @@ import zombie.network.GameClient;
  * #POLL_INTERVAL_MILLIS}ms costs nothing. Everything here fails soft — a server without Storm, with
  * the game-port server disabled, or with TCP unforwarded leaves the client on plain UDP.
  *
- * <p>Handshake attempts are capped per connection; on disconnect the session clears and the watcher
- * arms again for the next connection.
+ * <p>The server binds the handshake either to the connection whose LoginPacket it already processed
+ * or, before that, to the one pre-login RakNet connection from this IP (and steamId, in Steam
+ * mode). A rejection (403) still happens when RakNet has not surfaced the connection on the server
+ * yet, so it is retried until {@link #REJECTED_WINDOW_MILLIS} after the first attempt; an
+ * unreachable listener (no Storm, TCP unforwarded) is capped at {@link #MAX_UNREACHABLE_ATTEMPTS}
+ * and remembered per host:port so {@link StormLoginOverTcp} stops holding the Login for it. On
+ * disconnect the session clears and the watcher arms again for the next connection.
  */
 public final class StormTcpChannel {
 
@@ -39,17 +44,57 @@ public final class StormTcpChannel {
     public static final String SESSION_HEADER = "X-Storm-Session";
 
     private static final int POLL_INTERVAL_MILLIS = 250;
-    private static final int MAX_HANDSHAKE_ATTEMPTS = 5;
+    private static final int HANDSHAKE_RETRY_MILLIS = 500;
+    private static final int MAX_UNREACHABLE_ATTEMPTS = 5;
+    private static final long REJECTED_WINDOW_MILLIS = 120_000;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
     public record Session(String baseUrl, String token, String serverStormVersion) {}
 
+    enum Outcome {
+        ESTABLISHED,
+        REJECTED,
+        UNREACHABLE
+    }
+
+    /**
+     * Per-connection retry budget. Rejections are retried on a wall clock, since they normally mean
+     * "server has not processed the login yet"; unreachable results are counted, since they mean
+     * the server has no listener at all.
+     */
+    static final class Budget {
+        private final int maxUnreachable;
+        private final long rejectedWindowMillis;
+        private int unreachable;
+        private long firstAttemptAt = -1;
+        @Nullable String lastFailure;
+
+        Budget(int maxUnreachable, long rejectedWindowMillis) {
+            this.maxUnreachable = maxUnreachable;
+            this.rejectedWindowMillis = rejectedWindowMillis;
+        }
+
+        /** Record one failed attempt; returns true when the watcher should stop trying. */
+        boolean exhausted(Outcome outcome, String failure, long nowMillis) {
+            lastFailure = failure;
+            if (firstAttemptAt < 0) {
+                firstAttemptAt = nowMillis;
+            }
+            return switch (outcome) {
+                case ESTABLISHED -> false;
+                case UNREACHABLE -> ++unreachable >= maxUnreachable;
+                case REJECTED -> nowMillis - firstAttemptAt >= rejectedWindowMillis;
+            };
+        }
+    }
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static volatile @Nullable Session session;
     private static volatile @Nullable HttpClient httpClient;
-    private static @Nullable Thread watcher;
+    private static volatile @Nullable Thread watcher;
+    private static volatile @Nullable String unavailableServer;
 
     private StormTcpChannel() {}
 
@@ -72,6 +117,19 @@ public final class StormTcpChannel {
 
     public static boolean isEstablished() {
         return session != null;
+    }
+
+    /**
+     * True while a handshake to the current game host may still succeed: the watcher is running and
+     * this host:port has not exhausted its unreachable budget on this connection or an earlier one.
+     */
+    public static boolean mayEstablish() {
+        if (watcher == null) {
+            return false;
+        }
+        String host = GameClient.ip;
+        int port = GameClient.port;
+        return host != null && !(host + ":" + port).equals(unavailableServer);
     }
 
     /**
@@ -99,27 +157,45 @@ public final class StormTcpChannel {
             return;
         }
         boolean wasConnected = false;
-        int attempts = 0;
+        Budget budget = newBudget();
+        boolean gaveUp = false;
+        long nextAttemptAt = 0;
         while (true) {
             try {
                 boolean connected = GameClient.connection != null;
                 if (connected && !wasConnected) {
-                    attempts = 0;
+                    budget = newBudget();
+                    gaveUp = false;
+                    nextAttemptAt = 0;
                 }
                 if (!connected) {
                     if (session != null) {
                         LOGGER.info("Storm TCP channel closed (game connection dropped)");
                     }
                     session = null;
-                }
-                if (connected && session == null && attempts < MAX_HANDSHAKE_ATTEMPTS) {
-                    attempts++;
-                    if (!attemptHandshake() && attempts == MAX_HANDSHAKE_ATTEMPTS) {
-                        LOGGER.info(
-                                "Storm TCP channel unavailable for this server (after {}"
-                                        + " attempts); staying on UDP",
-                                attempts);
+                    if (wasConnected) {
+                        StormLoginOverTcp.reset();
                     }
+                }
+                long now = System.currentTimeMillis();
+                if (connected && session == null && !gaveUp && now >= nextAttemptAt) {
+                    Attempt attempt = attemptHandshake();
+                    nextAttemptAt = now + HANDSHAKE_RETRY_MILLIS;
+                    if (attempt.outcome() == Outcome.ESTABLISHED) {
+                        StormLoginOverTcp.onSessionEstablished();
+                    } else if (budget.exhausted(attempt.outcome(), attempt.detail(), now)) {
+                        gaveUp = true;
+                        if (attempt.outcome() == Outcome.UNREACHABLE) {
+                            unavailableServer = GameClient.ip + ":" + GameClient.port;
+                        }
+                        LOGGER.info(
+                                "Storm TCP channel unavailable for this server; staying on UDP"
+                                        + " (last failure: {})",
+                                budget.lastFailure);
+                    }
+                }
+                if (connected) {
+                    StormLoginOverTcp.tick(now);
                 }
                 wasConnected = connected;
             } catch (Throwable t) {
@@ -174,11 +250,17 @@ public final class StormTcpChannel {
         }
     }
 
-    private static boolean attemptHandshake() {
+    private static Budget newBudget() {
+        return new Budget(MAX_UNREACHABLE_ATTEMPTS, REJECTED_WINDOW_MILLIS);
+    }
+
+    record Attempt(Outcome outcome, String detail) {}
+
+    private static Attempt attemptHandshake() {
         String host = GameClient.ip;
         int port = GameClient.port;
         if (host == null || host.isBlank() || port <= 0) {
-            return false;
+            return new Attempt(Outcome.UNREACHABLE, "no game host/port yet");
         }
         String baseUrl = "http://" + host + ":" + port;
         try {
@@ -197,12 +279,9 @@ public final class StormTcpChannel {
             HttpResponse<String> response =
                     client().send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                LOGGER.debug(
-                        "Storm TCP handshake to {} rejected: {} {}",
-                        baseUrl,
-                        response.statusCode(),
-                        response.body());
-                return false;
+                String detail = response.statusCode() + " " + response.body();
+                LOGGER.debug("Storm TCP handshake to {} rejected: {}", baseUrl, detail);
+                return new Attempt(Outcome.REJECTED, detail);
             }
             JsonNode json = MAPPER.readTree(response.body());
             Session established =
@@ -210,15 +289,16 @@ public final class StormTcpChannel {
                             baseUrl,
                             json.get("sessionToken").asText(),
                             json.path("serverStormVersion").asText("unknown"));
+            unavailableServer = null;
             session = established;
             LOGGER.info(
                     "Storm TCP channel established to {} (server Storm {})",
                     baseUrl,
                     established.serverStormVersion());
-            return true;
+            return new Attempt(Outcome.ESTABLISHED, "");
         } catch (Exception e) {
             LOGGER.debug("Storm TCP handshake to {} failed: {}", baseUrl, e.toString());
-            return false;
+            return new Attempt(Outcome.UNREACHABLE, e.toString());
         }
     }
 

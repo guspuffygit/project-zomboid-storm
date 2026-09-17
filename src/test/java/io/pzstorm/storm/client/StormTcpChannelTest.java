@@ -1,9 +1,12 @@
 package io.pzstorm.storm.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.pzstorm.storm.client.StormTcpChannel.Budget;
+import io.pzstorm.storm.client.StormTcpChannel.Outcome;
 import java.lang.reflect.Field;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,6 +57,35 @@ class StormTcpChannelTest {
         } finally {
             rand.set(RandStandard.INSTANCE, previous);
         }
+    }
+
+    /**
+     * The server rejects the handshake until it has processed the client's LoginPacket, which lands
+     * after {@code GameClient.connection} goes non-null. A fixed attempt count burned out before
+     * login could possibly complete; rejections must ride a wall clock instead.
+     */
+    @Test
+    void rejectionsRetryUntilTheWindowElapses() {
+        Budget budget = new Budget(5, 1_000);
+        for (int i = 0; i < 50; i++) {
+            assertFalse(budget.exhausted(Outcome.REJECTED, "403", i * 10));
+        }
+        assertTrue(budget.exhausted(Outcome.REJECTED, "403", 1_000));
+    }
+
+    @Test
+    void unreachableListenerGivesUpAfterTheAttemptCap() {
+        Budget budget = new Budget(3, 1_000);
+        assertFalse(budget.exhausted(Outcome.UNREACHABLE, "refused", 0));
+        assertFalse(budget.exhausted(Outcome.UNREACHABLE, "refused", 1));
+        assertTrue(budget.exhausted(Outcome.UNREACHABLE, "refused", 2));
+    }
+
+    @Test
+    void lastFailureIsKeptForTheGiveUpLog() {
+        Budget budget = new Budget(1, 1_000);
+        budget.exhausted(Outcome.UNREACHABLE, "connection refused", 0);
+        assertEquals("connection refused", budget.lastFailure);
     }
 
     private static Field randField() {

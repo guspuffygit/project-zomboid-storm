@@ -85,6 +85,18 @@ public final class StormCellWarmer {
     // StormCellWarmingConfig.maxWarmCells().
     private static final Map<Long, WarmCell> WARM_CELLS = new LinkedHashMap<>();
 
+    // The keys of WARM_CELLS again, as primitives, so isWarm never touches the map. runPostUpdate
+    // asks isWarm about every loaded cell on every tick, and through the map each answer read a
+    // node and a boxed Long key from wherever they sit on the heap. Packed (wx,wy) keys also fold
+    // to wx ^ wy in Long.hashCode, so nearby cells share bins and those bins treeify. Changed at
+    // exactly the three places WARM_CELLS is: warm, rewarm and evictOverBudget.
+    private static final StormLongHashSet WARM_KEYS = new StormLongHashSet();
+
+    // Cells warm() took during this tick's runPostUpdate loop. Their processIsoObject entries come
+    // off that server-wide list in one walk after the loop (drainWarmedThisTick), so the walk costs
+    // the same whether one cell warmed this tick or several.
+    private static final List<WarmCell> WARMED_THIS_TICK = new ArrayList<>();
+
     // Identity-backed set of every animal currently inside a warmed cell. Maintained alongside
     // WARM_CELLS by drainChunk / restoreAnimals so MovingObjectSchedulerBucketAddAdvice can
     // skip a warm animal at the bucket-add chokepoint without iterating WARM_CELLS each frame.
@@ -226,11 +238,11 @@ public final class StormCellWarmer {
     }
 
     public static boolean isWarm(int wx, int wy) {
-        return WARM_CELLS.containsKey(key(wx, wy));
+        return WARM_KEYS.contains(key(wx, wy));
     }
 
     public static boolean isWarm(ServerMap.ServerCell cell) {
-        return WARM_CELLS.containsKey(key(cell.wx, cell.wy));
+        return WARM_KEYS.contains(key(cell.wx, cell.wy));
     }
 
     public static int warmCount() {
@@ -299,6 +311,9 @@ public final class StormCellWarmer {
      * body while {@link #isActive()}. With warming switched off (drain mode) the first branch still
      * rewarms cells that became relevant, the second never warms, and the eviction pass retires
      * whatever is left.
+     *
+     * <p>The ticking objects of cells warmed during the loop come off {@code processIsoObject}
+     * together once it ends ({@link #drainWarmedThisTick}), before the eviction pass.
      */
     public static void runPostUpdate(ServerMap serverMap) {
         bindServerCellInternals();
@@ -367,6 +382,7 @@ public final class StormCellWarmer {
                     cell.update();
                 }
             }
+            drainWarmedThisTick();
             pathfindPaused = evictOverBudget(serverMap, pathfindPaused);
             if (draining && WARM_CELLS.isEmpty()) {
                 StormLogger.LOGGER.info(
@@ -378,6 +394,8 @@ public final class StormCellWarmer {
         } catch (Throwable t) {
             StormLogger.LOGGER.error("StormCellWarmer.runPostUpdate failed", t);
         } finally {
+            // A no-op unless the loop threw after warming a cell; see drainWarmedThisTick.
+            drainWarmedThisTick();
             if (pathfindPaused) {
                 ServerLOS.instance.resume();
             }
@@ -444,7 +462,8 @@ public final class StormCellWarmer {
      * Detach a cell's chunks from world-system bindings and stash dynamic state. Keeps the cell
      * itself addressable: {@code cellMap[idx]}, {@code loadedCells}, and {@code cell.isLoaded =
      * true} are unchanged. Returns {@code false} if the cell isn't eligible — caller must fall
-     * through to vanilla destructive unload.
+     * through to vanilla destructive unload. Only for the {@link #runPostUpdate} loop: the cell's
+     * {@code processIsoObject} entries are drained after that loop, not here.
      */
     public static boolean warm(ServerMap.ServerCell cell) {
         String reason = ineligibleReason(cell);
@@ -480,7 +499,6 @@ public final class StormCellWarmer {
                     disconnectedY = y;
                 }
             }
-            drainProcessObjects(isoCell, cell.chunks, processObjects);
             parkVehicles(cell.chunks, vehicles);
         } catch (Throwable t) {
             StormLogger.LOGGER.error(
@@ -505,7 +523,6 @@ public final class StormCellWarmer {
                         }
                     }
                 }
-                restoreProcessObjects(isoCell, processObjects);
                 releaseVehicles(vehicles);
                 restoreAnimals(animals);
                 restoreDeadBodies(deadBodies);
@@ -519,11 +536,14 @@ public final class StormCellWarmer {
             return false;
         }
 
-        WARM_CELLS.put(
-                key(cell.wx, cell.wy),
-                new WarmCell(cell, now, animals, deadBodies, processObjects, vehicles));
+        long cellKey = key(cell.wx, cell.wy);
+        WarmCell warmCell = new WarmCell(cell, now, animals, deadBodies, processObjects, vehicles);
+        WARM_CELLS.put(cellKey, warmCell);
+        WARM_KEYS.add(cellKey);
+        // Its ticking objects come off processIsoObject after the loop, in one walk with every
+        // other cell warmed this tick (drainWarmedThisTick).
+        WARMED_THIS_TICK.add(warmCell);
         StormCellWarmingMetrics.incCellsWarmed();
-        StormCellWarmingMetrics.recordProcessObjectsDrained(processObjects.size());
         StormCellWarmingMetrics.recordVehiclesParked(vehicles.size());
         StormCellWarmingMetrics.setWarmCount(WARM_CELLS.size());
         StormCellWarmingMetrics.recordWarmOpNanos(System.nanoTime() - now);
@@ -567,6 +587,7 @@ public final class StormCellWarmer {
         // move it to the tail of the insertion-ordered map, making the one cell that can't rewarm
         // look permanently freshest and pushing healthy cells out of the warm budget ahead of it.
         WARM_CELLS.remove(cellKey);
+        WARM_KEYS.remove(cellKey);
 
         try {
             for (int cx = 0; cx < 8; cx++) {
@@ -757,6 +778,7 @@ public final class StormCellWarmer {
             }
             WarmCell oldest = it.next();
             it.remove();
+            WARM_KEYS.remove(key(oldest.cell.wx, oldest.cell.wy));
             evictions++;
             ServerMap.ServerCell cell = oldest.cell;
             try {
@@ -915,37 +937,27 @@ public final class StormCellWarmer {
 
     /**
      * Takes every object on the cell-global {@code IsoCell.processIsoObject} list whose square sits
-     * in one of {@code chunks} off that list, through vanilla's own deferred-removal API, and
-     * stashes it in {@code out} for {@link #restoreProcessObjects}. {@code
-     * IsoCell.ProcessIsoObject} applies the pending removals before it iterates, so a drained
-     * object ticks for the last time on the tick that warmed its cell and never again until rewarm.
-     * This is the same list a destructive unload empties through {@code IsoObject.removeFromWorld},
-     * minus the destruction: the object itself stays on its square and in the chunk save exactly as
-     * it was.
+     * in one of the chunks of {@code stashByChunk} off that list, through vanilla's own
+     * deferred-removal API, and appends it to that chunk's stash for {@link
+     * #restoreProcessObjects}. {@code IsoCell.ProcessIsoObject} applies the pending removals before
+     * it iterates, so a drained object ticks for the last time on the tick that warmed its cell and
+     * never again until rewarm. This is the same list a destructive unload empties through {@code
+     * IsoObject.removeFromWorld}, minus the destruction: the object itself stays on its square and
+     * in the chunk save exactly as it was.
      *
-     * <p>Walks the process list once (it holds every ticking static object on the server, a few
-     * thousand at most) against an identity set of the cell's 64 chunks, rather than walking the
-     * cell's squares, because the list is the thing being edited and the membership question is per
-     * object. Objects already queued for removal are left to leave on their own. Package-private
+     * <p>Walks the process list once (it holds every ticking static object on the server) against
+     * an identity map from each chunk to its cell's stash, rather than walking the cells' squares,
+     * because the list is the thing being edited and the membership question is per object. One
+     * walk serves every cell warmed in the same tick. Objects already queued for removal are left
+     * to leave on their own. {@code stashByChunk} must compare chunks by identity. Package-private
      * for tests.
      */
-    static void drainProcessObjects(IsoCell isoCell, IsoChunk[][] chunks, List<IsoObject> out) {
-        if (isoCell == null) {
+    static void drainProcessObjects(IsoCell isoCell, Map<IsoChunk, List<IsoObject>> stashByChunk) {
+        if (isoCell == null || stashByChunk.isEmpty()) {
             return;
         }
         ArrayList<IsoObject> process = isoCell.getProcessIsoObjects();
         if (process == null || process.isEmpty()) {
-            return;
-        }
-        Set<IsoChunk> cellChunks = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (IsoChunk[] column : chunks) {
-            for (IsoChunk chunk : column) {
-                if (chunk != null) {
-                    cellChunks.add(chunk);
-                }
-            }
-        }
-        if (cellChunks.isEmpty()) {
             return;
         }
         Set<IsoObject> pending = isoCell.getProcessIsoObjectRemove();
@@ -955,14 +967,65 @@ public final class StormCellWarmer {
                 continue;
             }
             IsoGridSquare sq = obj.getSquare();
-            if (sq == null || !cellChunks.contains(sq.getChunk())) {
+            if (sq == null) {
+                continue;
+            }
+            List<IsoObject> stash = stashByChunk.get(sq.getChunk());
+            if (stash == null) {
                 continue;
             }
             if (pending != null && pending.contains(obj)) {
                 continue;
             }
             isoCell.addToProcessIsoObjectRemove(obj);
-            out.add(obj);
+            stash.add(obj);
+        }
+    }
+
+    /**
+     * Drains the {@code processIsoObject} entries of every cell {@link #warm} took this tick, in a
+     * single walk (see {@link #drainProcessObjects}). {@code IsoCell.update} has already run for
+     * this tick and applies the queued removals at the start of the next, so each object still
+     * ticks for the last time on the tick its cell warmed. Called after the {@link #runPostUpdate}
+     * loop, and again from its {@code finally} so a throw mid-loop cannot leave a cell waiting for
+     * a later tick, where a rewarm could restore its stash before the walk had filled it. A throw
+     * mid-walk puts every stash back ({@link #restoreProcessObjects}), so the cells stay warm with
+     * all of their objects ticking, as they did before warming parked them, rather than some parked
+     * and some not. Always empties the list.
+     */
+    private static void drainWarmedThisTick() {
+        if (WARMED_THIS_TICK.isEmpty()) {
+            return;
+        }
+        IsoCell isoCell = IsoWorld.instance == null ? null : IsoWorld.instance.currentCell;
+        try {
+            Map<IsoChunk, List<IsoObject>> stashByChunk = new IdentityHashMap<>();
+            for (int i = 0; i < WARMED_THIS_TICK.size(); i++) {
+                WarmCell warm = WARMED_THIS_TICK.get(i);
+                for (IsoChunk[] column : warm.cell.chunks) {
+                    for (IsoChunk chunk : column) {
+                        if (chunk != null) {
+                            stashByChunk.put(chunk, warm.processObjects);
+                        }
+                    }
+                }
+            }
+            drainProcessObjects(isoCell, stashByChunk);
+            for (int i = 0; i < WARMED_THIS_TICK.size(); i++) {
+                StormCellWarmingMetrics.recordProcessObjectsDrained(
+                        WARMED_THIS_TICK.get(i).processObjects.size());
+            }
+        } catch (Throwable t) {
+            StormLogger.LOGGER.error(
+                    "StormCellWarmer failed to drain the ticking objects of {} warmed cell(s);"
+                            + " putting back what was parked, so they all tick",
+                    WARMED_THIS_TICK.size(),
+                    t);
+            for (int i = 0; i < WARMED_THIS_TICK.size(); i++) {
+                restoreProcessObjects(isoCell, WARMED_THIS_TICK.get(i).processObjects);
+            }
+        } finally {
+            WARMED_THIS_TICK.clear();
         }
     }
 

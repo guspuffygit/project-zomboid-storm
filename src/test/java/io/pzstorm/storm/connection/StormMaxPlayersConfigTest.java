@@ -12,9 +12,16 @@ class StormMaxPlayersConfigTest implements UnitTest {
 
     @AfterEach
     void restoreDefaults() {
+        System.clearProperty(StormMaxPlayersConfig.FORCED_PROPERTY);
+        StormMaxPlayersConfig.reloadForcedProperty();
         StormMaxPlayersConfig.setOverride(
                 StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED,
                 StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
+    }
+
+    private static int pin(String value) {
+        System.setProperty(StormMaxPlayersConfig.FORCED_PROPERTY, value);
+        return StormMaxPlayersConfig.reloadForcedProperty();
     }
 
     @Test
@@ -48,5 +55,36 @@ class StormMaxPlayersConfigTest implements UnitTest {
         assertFalse(StormMaxPlayersConfig.DEFAULT_OVERRIDE_ENABLED);
         assertEquals(100, StormMaxPlayersConfig.DEFAULT_MAX_PLAYERS);
         assertEquals(64, StormMaxPlayersConfig.overrideOrVanilla(64));
+        assertFalse(StormMaxPlayersConfig.isForcedByProperty());
+        assertEquals(0, StormMaxPlayersConfig.getForcedMaxPlayers());
+    }
+
+    @Test
+    void launchFlagBeatsTheIniValue() {
+        assertEquals(180, pin("180"));
+        assertTrue(StormMaxPlayersConfig.isForcedByProperty());
+        assertEquals(180, StormMaxPlayersConfig.overrideOrVanilla(37));
+    }
+
+    @Test
+    void launchFlagBeatsAnEnabledSandboxOverride() {
+        StormMaxPlayersConfig.setOverride(true, 250);
+        pin("180");
+        assertEquals(180, StormMaxPlayersConfig.overrideOrVanilla(37));
+    }
+
+    @Test
+    void launchFlagIsClampedToTheDeclaredRange() {
+        assertEquals(StormMaxPlayersConfig.MAX_MAX_PLAYERS, pin("9999"));
+        assertEquals(StormMaxPlayersConfig.MIN_MAX_PLAYERS, pin("0"));
+        assertEquals(
+                StormMaxPlayersConfig.MIN_MAX_PLAYERS, StormMaxPlayersConfig.overrideOrVanilla(37));
+    }
+
+    @Test
+    void unparsableLaunchFlagLeavesTheIniValueInControl() {
+        assertEquals(0, pin("plenty"));
+        assertFalse(StormMaxPlayersConfig.isForcedByProperty());
+        assertEquals(37, StormMaxPlayersConfig.overrideOrVanilla(37));
     }
 }

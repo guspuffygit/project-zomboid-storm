@@ -76,6 +76,7 @@ class ServerStoreTest {
         extras.autoConnect = false; // creds are complete, so the DB default would be true
         extras.updateWorkshopMods = false;
         extras.extraVmArgs.add("-Dmarker=hand-tuned");
+        extras.extraGameArgs.add("-debuglog=Shader");
         extras.inGameDb = true;
         config.servers.add(extras);
 
@@ -90,6 +91,7 @@ class ServerStoreTest {
         assertFalse(p.autoConnect);
         assertFalse(p.updateWorkshopMods);
         assertEquals(List.of("-Dmarker=hand-tuned"), p.extraVmArgs);
+        assertEquals(List.of("-debuglog=Shader"), p.extraGameArgs);
         assertTrue(p.inGameDb);
     }
 

@@ -199,7 +199,11 @@ dependencies {
 }
 
 test {
-	useJUnitPlatform()
+	// perf-tagged tests boot a server plus twenty child JVMs and run for minutes; they are
+	// on-demand only, via the tcpLoadTest task
+	useJUnitPlatform {
+		excludeTags 'perf'
+	}
 	systemProperty 'storm.testing', 'true'
 	// without this the StormEnv.isStormServer() block in StormClassTransformers never runs,
 	// so AllPatchesIntegrationTest silently skips every server-only patch
@@ -250,6 +254,53 @@ tasks.register('clientPatchTest', Test) {
 
 	testLogging {
 		events "skipped", "failed"
+		showExceptions = true
+		showCauses = true
+		showStackTraces = true
+		exceptionFormat = "full"
+	}
+
+	doFirst {
+		def serverDir = getLocalProperty('serverPath').get()
+		systemProperty 'storm.server.path', serverDir
+		def ldLibPath = [
+			"${serverDir}/natives",
+			"${serverDir}/linux64",
+			"${serverDir}/jre64/lib/amd64",
+			System.getenv('LD_LIBRARY_PATH') ?: ''
+		].findAll { it }.join(':')
+		environment 'LD_LIBRARY_PATH', ldLibPath
+	}
+}
+
+// Mass-join performance test for the game-port TCP loading path. Not wired into check — it boots a
+// dedicated server, spawns twenty client JVMs and runs for minutes. Run it directly:
+//   ./gradlew tcpLoadTest
+//   ./gradlew tcpLoadTest -Dstorm.perftest.clients=40 -Dstorm.perftest.budgetSeconds=300
+tasks.register('tcpLoadTest', Test) {
+	useJUnitPlatform {
+		includeTags 'perf'
+	}
+	systemProperty 'storm.testing', 'true'
+	systemProperty 'storm.server', 'true'
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	outputs.upToDateWhen { false }
+
+	[
+		'storm.perftest.clients',
+		'storm.perftest.gridWidth',
+		'storm.perftest.budgetSeconds'
+	].each { key ->
+		if (System.getProperty(key) != null) {
+			systemProperty key, System.getProperty(key)
+		}
+	}
+
+	testLogging {
+		events "passed", "skipped", "failed", "standardOut", "standardError"
+		showStandardStreams = true
 		showExceptions = true
 		showCauses = true
 		showStackTraces = true
