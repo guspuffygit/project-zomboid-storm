@@ -14,9 +14,9 @@ import net.bytebuddy.pool.TypePool;
  * <ul>
  *   <li>{@code updateMain} exit — dispatch TCP-staged chunk requests only after the method
  *       published them to {@code sentRequests}; earlier delivery would match nothing and stall.
- *   <li>{@code receiveChunkPart} / {@code receiveNotRequired} — wrap in {@code
- *       StormChunksOverTcp.RECEIVE_LOCK}, because Storm's TCP worker delivers through these
- *       vanilla-UdpEngine-thread-only methods and they mutate a non-thread-safe list.
+ *   <li>{@code receiveChunkPart} / {@code receiveNotRequired} / {@code receiveChunkNotReady} — wrap
+ *       in {@code StormChunksOverTcp.RECEIVE_LOCK}, because Storm's TCP worker delivers through
+ *       these vanilla-UdpEngine-thread-only methods and they mutate a non-thread-safe list.
  * </ul>
  *
  * <p>Fail-soft: without a TCP session the staged queue is always empty, the dispatch is a no-op,
@@ -45,6 +45,9 @@ public class WorldStreamerChunkTcpPatch extends StormClassTransformer {
                         Advice.to(typePool.describe(PKG + "ReceiveLockAdvice").resolve(), locator)
                                 .on(
                                         ElementMatchers.named("receiveChunkPart")
-                                                .or(ElementMatchers.named("receiveNotRequired"))));
+                                                .or(ElementMatchers.named("receiveNotRequired"))
+                                                .or(
+                                                        ElementMatchers.named(
+                                                                "receiveChunkNotReady"))));
     }
 }

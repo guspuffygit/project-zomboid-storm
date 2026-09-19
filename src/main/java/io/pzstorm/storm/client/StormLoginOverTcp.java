@@ -78,12 +78,19 @@ public final class StormLoginOverTcp {
         LOGGER.info("Holding LoginPacket for the Storm TCP channel");
     }
 
-    /** Channel watcher thread, right after the handshake succeeded. */
+    /**
+     * Channel watcher thread, every poll while a session exists. Posts a held Login once; a no-op
+     * when nothing is held, a post is running, or the outcome is waiting for the main thread.
+     */
     public static void onSessionEstablished() {
         UdpConnection connection;
         byte[] payload;
         synchronized (StormLoginOverTcp.class) {
-            if (heldPayload == null || posting || pendingFrames != null || fallbackRequested) {
+            if (heldPayload == null
+                    || posting
+                    || pendingFrames != null
+                    || fallbackRequested
+                    || malformedReply) {
                 return;
             }
             connection = heldConnection;

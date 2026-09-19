@@ -181,9 +181,8 @@ public final class StormTcpChannel {
                 if (connected && session == null && !gaveUp && now >= nextAttemptAt) {
                     Attempt attempt = attemptHandshake();
                     nextAttemptAt = now + HANDSHAKE_RETRY_MILLIS;
-                    if (attempt.outcome() == Outcome.ESTABLISHED) {
-                        StormLoginOverTcp.onSessionEstablished();
-                    } else if (budget.exhausted(attempt.outcome(), attempt.detail(), now)) {
+                    if (attempt.outcome() != Outcome.ESTABLISHED
+                            && budget.exhausted(attempt.outcome(), attempt.detail(), now)) {
                         gaveUp = true;
                         if (attempt.outcome() == Outcome.UNREACHABLE) {
                             unavailableServer = GameClient.ip + ":" + GameClient.port;
@@ -195,7 +194,7 @@ public final class StormTcpChannel {
                     }
                 }
                 if (connected) {
-                    StormLoginOverTcp.tick(now);
+                    pollLogin(now);
                 }
                 wasConnected = connected;
             } catch (Throwable t) {
@@ -209,6 +208,21 @@ public final class StormTcpChannel {
                 return;
             }
         }
+    }
+
+    /**
+     * The watcher's per-poll login step. The post is offered on every poll while a session exists,
+     * not only on the poll that established it: in Steam mode vanilla sets {@code
+     * GameClient.connection} on {@code ID_CONNECTION_REQUEST_ACCEPTED} but sends the Login later,
+     * from the Steam "Connected" callback, so the handshake can finish first. A Login held after
+     * that would otherwise have nobody left to post it and sit until the 8 s release, past the
+     * server's 5 s pre-login reap.
+     */
+    static void pollLogin(long nowMillis) {
+        if (session != null) {
+            StormLoginOverTcp.onSessionEstablished();
+        }
+        StormLoginOverTcp.tick(nowMillis);
     }
 
     /**

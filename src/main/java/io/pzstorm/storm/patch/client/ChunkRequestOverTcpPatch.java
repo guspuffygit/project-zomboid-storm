@@ -16,8 +16,9 @@ import net.bytebuddy.pool.TypePool;
  * <p>Why a client bytecode patch: the request send lives inside {@code WorldStreamer.updateMain} on
  * the client main thread with no Lua involvement and no existing Storm surface. Fail-soft: the
  * advice helper declines (vanilla body runs, plain UDP) unless a healthy TCP session exists, and
- * any transport failure stops diversion for the session — in-flight requests then recover through
- * vanilla's own 8-second re-request timeout over UDP.
+ * any transport failure stops diversion for the session. Vanilla 42.20.4 has no per-request
+ * re-request timer, so {@code StormChunksOverTcp} re-issues the unanswered requests over UDP
+ * itself.
  *
  * <p>Companion patch: {@link WorldStreamerChunkTcpPatch} (dispatch ordering + receive locking).
  */
