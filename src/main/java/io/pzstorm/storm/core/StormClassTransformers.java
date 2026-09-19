@@ -261,6 +261,7 @@ import io.pzstorm.storm.patch.performance.ObjectRenderEffectsUpdateStaticPatch;
 import io.pzstorm.storm.patch.performance.PacketLimitMetricsPatch;
 import io.pzstorm.storm.patch.performance.PacketValidatorUpdatePatch;
 import io.pzstorm.storm.patch.performance.PacketsCacheLimitBypassPatch;
+import io.pzstorm.storm.patch.performance.PathfindChunkTaskDrainPatch;
 import io.pzstorm.storm.patch.performance.PathfindNativeRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.PerformanceProbeGatePatch;
 import io.pzstorm.storm.patch.performance.PlayerDownloadServerRemoveOlderPatch;
@@ -694,6 +695,7 @@ public class StormClassTransformers {
             registerTransformer(new PolygonalMap2RemoveChunkPatch());
             registerTransformer(new PathfindNativeRemoveChunkPatch());
             registerTransformer(new ChunkUpdateTaskBufferSizingPatch());
+            registerTransformer(new PathfindChunkTaskDrainPatch());
             registerTransformer(new ZombiePopManRemoveChunkPatch());
             registerTransformer(new AnimalPopManRemoveChunkPatch());
             registerTransformer(new IsoChunkAddVehiclesPatch());
