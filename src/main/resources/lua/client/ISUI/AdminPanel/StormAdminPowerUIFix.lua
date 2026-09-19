@@ -42,6 +42,29 @@ function ISAdminPowerUI:onTicked(index, selected, arg1, arg2, tickBox)
 end
 
 function ISAdminPowerUI:updateAdminPower()
+    -- ExtraInfo for OTHER players also fires RefreshCheats. Compare the small
+    -- option state before rebuilding widgets; role revocation still updates now.
+    local state = {}
+    local unchanged = self.stormPowerState ~= nil
+    for i, option in ipairs(ISAdminPowerUI.OptionList) do
+        option.player = self.player
+        local allowed = isDebugEnabled() or self.player:getRole():hasCapability(option.capability)
+        local value = allowed and option:getValue() and true or false
+        state[i] = { option = option, allowed = allowed, value = value }
+        local previous = self.stormPowerState and self.stormPowerState[i]
+        if
+            not previous
+            or previous.option ~= option
+            or previous.allowed ~= allowed
+            or previous.value ~= value
+        then
+            unchanged = false
+        end
+    end
+    if unchanged and #state == #self.stormPowerState then
+        return
+    end
+    self.stormPowerState = state
     ORIGINAL_UPDATE_ADMIN_POWER(self)
     local pending = self.stormPendingTicks
     if not pending then
@@ -61,12 +84,14 @@ end
 
 function ISAdminPowerUI:onClick(button)
     self.stormPendingTicks = nil
+    self.stormPowerState = nil
     return ORIGINAL_ON_CLICK(self, button)
 end
 
 function ISAdminPowerUI.OnOpenPanel()
     if ISAdminPowerUI.instance then
         ISAdminPowerUI.instance.stormPendingTicks = nil
+        ISAdminPowerUI.instance.stormPowerState = nil
     end
     return ORIGINAL_ON_OPEN_PANEL()
 end
