@@ -245,6 +245,7 @@ tasks.register('clientPatchTest', Test) {
 	// register the -Dstorm.experimental.clientperf patches so they get weave-validated too
 	systemProperty 'storm.experimental.clientperf', 'true'
 	systemProperty 'storm.popman.java', 'true'
+	systemProperty 'storm.bullet.java', 'true'
 	jvmArgs '--enable-native-access=ALL-UNNAMED'
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
@@ -934,7 +935,343 @@ tasks.register('runProjectZomboidServer', Exec) {
 		if (popmanJava) {
 			cmd.add("-Dstorm.popman.java=${popmanJava}".toString())
 		}
+		// bulletJava=true in local.properties runs the pure-Java PZBullet port
+		def bulletJava = getLocalProperty('bulletJava').getOrNull()
+		if (bulletJava) {
+			cmd.add("-Dstorm.bullet.java=${bulletJava}".toString())
+		}
 		cmd.addAll(['--', '-servername', 'storm2'])
 		commandLine cmd
+	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bullet differential harness (docs/re-bullet/harness.md). The bulletHarness source set holds
+// stand-ins for the three game classes the physics library binds to (zombie.core.physics.Bullet,
+// zombie.debug.DebugLog, SkeletonBone) and compiles against the JDK-only trace package, never the
+// game jar, so the real native library can be driven in a plain Linux JVM (Docker / dev box).
+// ---------------------------------------------------------------------------------------------
+sourceSets {
+	bulletHarness {
+		java.srcDirs = ['src/bulletHarness/java']
+		compileClasspath = files(sourceSets.main.output.classesDirs)
+		runtimeClasspath = output + compileClasspath
+	}
+}
+
+tasks.named('compileBulletHarnessJava') {
+	dependsOn tasks.named('compileJava')
+}
+
+def bulletHarnessJar = tasks.register('bulletHarnessJar', Jar) {
+	description = 'Self-contained jar (trace package + native harness stubs) for running the physics library outside the game.'
+	archiveFileName = 'bullet-harness.jar'
+	destinationDirectory = layout.buildDirectory.dir('bullet-harness')
+	from(sourceSets.main.output.classesDirs) {
+		include 'io/pzstorm/storm/bullet/trace/**'
+	}
+	from(sourceSets.bulletHarness.output)
+	manifest {
+		attributes 'Main-Class': 'io.pzstorm.storm.bullet.trace.harness.NativeHarnessMain'
+	}
+}
+
+def bulletLibDir = providers.gradleProperty('bulletLibDir').orElse("${System.getProperty('user.home')}/projects/re-bullet")
+def bulletLibName = { String which ->
+	switch (which ?: 'nogl') {
+		case 'nogl': return 'libPZBulletNoOpenGL64.so'
+		case 'gl': return 'libPZBullet64.so'
+		default: throw new GradleException("-Plib must be nogl or gl, got ${which}")
+	}
+}
+def bulletDockerImage = providers.gradleProperty('bulletDockerImage').orElse('eclipse-temurin:25-jdk-noble')
+def bulletTraceDir = layout.buildDirectory.dir('bullet-traces')
+
+// Runs NativeHarnessMain in a linux/amd64 container. Every host path argument is mounted at the
+// same absolute path, so traces and reports can live anywhere (default build/bullet-traces).
+def bulletDockerCommand = { List<String> toolArgs, List<File> files ->
+	def jar = bulletHarnessJar.get().archiveFile.get().asFile
+	def libDir = file(bulletLibDir.get())
+	def lib = new File(libDir, bulletLibName(findProperty('lib') as String))
+	if (!lib.isFile()) {
+		throw new GradleException("native library not found: ${lib} (set -PbulletLibDir)")
+	}
+	def mounts = new LinkedHashSet<String>()
+	mounts.add(projectDir.absolutePath)
+	files.each { f ->
+		def dir = (f.isDirectory() ? f : f.absoluteFile.parentFile).absolutePath
+		if (!dir.startsWith(projectDir.absolutePath)) {
+			mounts.add(dir)
+		}
+	}
+	def cmd = [
+		'docker',
+		'run',
+		'--rm',
+		'--platform',
+		'linux/amd64'
+	]
+	mounts.each {
+		cmd += [
+			'-v',
+			"${it}:${it}".toString()
+		]
+	}
+	cmd += [
+		'-v',
+		"${libDir.absolutePath}:/bulletlib:ro".toString(),
+		'-v',
+		"${jar.parentFile.absolutePath}:/harness:ro".toString(),
+		'-w',
+		projectDir.absolutePath
+	]
+	cmd += [
+		bulletDockerImage.get(),
+		'java',
+		'--enable-native-access=ALL-UNNAMED',
+		'-cp',
+		'/harness/bullet-harness.jar',
+		'io.pzstorm.storm.bullet.trace.harness.NativeHarnessMain',
+		'--lib',
+		"/bulletlib/${lib.name}".toString()
+	]
+	cmd += toolArgs
+	return cmd.collect { it.toString() }
+}
+
+def bulletPath = { String prop, String dflt ->
+	def v = findProperty(prop) ?: dflt
+	if (v == null) {
+		throw new GradleException("-P${prop}=<path> is required")
+	}
+	return file(v)
+}
+
+tasks.register('bulletNativeScenario', Exec) {
+	group = 'bullet harness'
+	description = 'Runs a synthetic scenario against the native library in Docker and records it: -Pscenario=basic-drive -Pseed=1 [-Pout=...] [-Plib=nogl|gl]'
+	dependsOn bulletHarnessJar
+	outputs.upToDateWhen { false }
+	doFirst {
+		def scenario = findProperty('scenario') ?: 'basic-drive'
+		def seed = findProperty('seed') ?: '1'
+		def out = bulletPath('out', bulletTraceDir.get().file("${scenario}-${seed}.pzbt.gz").asFile.path)
+		out.parentFile.mkdirs()
+		commandLine bulletDockerCommand([
+			'scenario',
+			'--name',
+			scenario,
+			'--seed',
+			seed,
+			'--out',
+			out.absolutePath
+		], [out])
+	}
+}
+
+tasks.register('bulletNativeReplay', Exec) {
+	group = 'bullet harness'
+	description = 'Replays a trace on the native library in Docker and compares bit-exactly: -Ptrace=... [-Pout=result.pzbt.gz] [-Preport=...] [-Plib=nogl|gl] [-PmaxDiv=50]'
+	dependsOn bulletHarnessJar
+	outputs.upToDateWhen { false }
+	ignoreExitValue = true
+	doFirst {
+		def trace = bulletPath('trace', null)
+		def args = [
+			'replay',
+			'--trace',
+			trace.absolutePath,
+			'--max-div',
+			(findProperty('maxDiv') ?: '50').toString()
+		]
+		def files = [trace]
+		if (findProperty('out')) {
+			def out = bulletPath('out', null)
+			out.parentFile.mkdirs()
+			args += ['--out', out.absolutePath]
+			files += out
+		}
+		if (findProperty('report')) {
+			def report = bulletPath('report', null)
+			report.parentFile.mkdirs()
+			args += [
+				'--report',
+				report.absolutePath
+			]
+			files += report
+		}
+		commandLine bulletDockerCommand(args, files)
+	}
+	doLast {
+		def status = executionResult.get().exitValue
+		if (status == 1) {
+			logger.lifecycle('bulletNativeReplay: DIVERGED (see report above)')
+		} else if (status != 0) {
+			throw new GradleException("native replay failed with exit status ${status}")
+		}
+	}
+}
+
+tasks.register('bulletNativeTool', Exec) {
+	group = 'bullet harness'
+	description = 'Any TraceTool command on the native library in Docker: -Pargs="info build/bullet-traces/x.pzbt.gz" [-Plib=nogl|gl]'
+	dependsOn bulletHarnessJar
+	outputs.upToDateWhen { false }
+	doFirst {
+		def toolArgs = (findProperty('args') ?: 'list-scenarios').toString().split(/\s+/).toList()
+		def files = toolArgs.findAll {
+			!it.startsWith('--') && (it.contains('/') || it.endsWith('.gz') || it.endsWith('.pzbt'))
+		}.collect {
+			file(it)
+		}
+		commandLine bulletDockerCommand(toolArgs.collect { a ->
+			files.find { f ->
+				a == f.path || file(a) == f
+			} ? file(a).absolutePath : a
+		}, files)
+	}
+}
+
+tasks.register('bulletTraceDiff', JavaExec) {
+	group = 'bullet harness'
+	description = 'Bit-exact comparison of two traces: -Pa=... -Pb=... [-Preport=...]'
+	dependsOn bulletHarnessJar
+	classpath = files(bulletHarnessJar.get().archiveFile)
+	mainClass = 'io.pzstorm.storm.bullet.trace.TraceTool'
+	ignoreExitValue = true
+	doFirst {
+		def a = bulletPath('a', null)
+		def b = bulletPath('b', null)
+		def toolArgs = [
+			'diff',
+			a.absolutePath,
+			b.absolutePath,
+			'--max-div',
+			(findProperty('maxDiv') ?: '50').toString()
+		]
+		if (findProperty('report')) {
+			toolArgs += [
+				'--report',
+				bulletPath('report', null).absolutePath
+			]
+		}
+		args toolArgs
+	}
+}
+
+tasks.register('bulletJavaReplay', JavaExec) {
+	group = 'bullet harness'
+	description = 'Replays a trace against the Java port (io.pzstorm.storm.bullet.StormBullet): -Ptrace=... [-Pout=...] [-Preport=...] [-Ploose=nativeLog] [-Pglibc=2.35|2.39]'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'io.pzstorm.storm.bullet.trace.TraceTool'
+	ignoreExitValue = true
+	doFirst {
+		// the glibc whose libm the trace was recorded against; default is host auto-detection
+		if (findProperty('glibc')) {
+			systemProperty 'storm.bullet.glibc', findProperty('glibc').toString()
+		}
+		def toolArgs = [
+			'replay',
+			'--trace',
+			bulletPath('trace', null).absolutePath,
+			'--backend',
+			'java',
+			'--max-div',
+			(findProperty('maxDiv') ?: '50').toString()
+		]
+		['out', 'report'].each { p ->
+			if (findProperty(p)) {
+				toolArgs += [
+					"--${p}".toString(),
+					bulletPath(p, null).absolutePath
+				]
+			}
+		}
+		if (findProperty('loose')) {
+			toolArgs += [
+				'--loose',
+				findProperty('loose').toString()
+			]
+		}
+		args toolArgs
+	}
+}
+
+// Dev box (Ubuntu 22.04, glibc 2.35, java 25) second native target. Only the scratch directory is
+// written; the library is used in place from the game install.
+def bulletDevboxHost = providers.gradleProperty('bulletDevboxHost').orElse('wcouch@192.168.1.33')
+def bulletDevboxScratch = providers.gradleProperty('bulletDevboxScratch').orElse('/mnt/wsl/PHYSICALDRIVE3p2/extraspace/bullet-diff/harness')
+def bulletDevboxLibDir = providers.gradleProperty('bulletDevboxLibDir').orElse('/mnt/wsl/PHYSICALDRIVE3p2/extraspace/pz-installations/ProjectZomboid-42.20.4-linux-server/linux64')
+
+tasks.register('bulletDevboxRun') {
+	group = 'bullet harness'
+	description = 'Runs a TraceTool command on the dev box natively: -Pargs="replay --trace {in} --out {out}" -Pin=local-trace [-Pout=local-result] [-Preport=local-report] [-Plib=nogl|gl]'
+	dependsOn bulletHarnessJar
+	outputs.upToDateWhen { false }
+	doLast {
+		def host = bulletDevboxHost.get()
+		def scratch = bulletDevboxScratch.get()
+		def run = { List<String> c ->
+			def r = providers.exec {
+				commandLine c
+				ignoreExitValue = true
+			}
+			def o = r.standardOutput.asText.get()
+			def e = r.standardError.asText.get()
+			if (o) println o
+			if (e) println e
+			return r.result.get().exitValue
+		}
+		def must = { List<String> c ->
+			def s = run(c)
+			if (s != 0) throw new GradleException("failed (${s}): ${c.join(' ')}")
+		}
+		def jar = bulletHarnessJar.get().archiveFile.get().asFile
+		must([
+			'ssh',
+			host,
+			"mkdir -p ${scratch}".toString()
+		])
+		must([
+			'scp',
+			'-q',
+			jar.absolutePath,
+			"${host}:${scratch}/bullet-harness.jar".toString()
+		])
+		def toolArgs = (findProperty('args') ?: 'list-scenarios').toString()
+		if (findProperty('in')) {
+			def input = file(findProperty('in'))
+			must([
+				'scp',
+				'-q',
+				input.absolutePath,
+				"${host}:${scratch}/${input.name}".toString()
+			])
+			toolArgs = toolArgs.replace('{in}', "${scratch}/${input.name}".toString())
+		}
+		def out = findProperty('out') ? file(findProperty('out')) : null
+		def report = findProperty('report') ? file(findProperty('report')) : null
+		if (out) toolArgs = toolArgs.replace('{out}', "${scratch}/${out.name}".toString())
+		if (report) toolArgs = toolArgs.replace('{report}', "${scratch}/${report.name}".toString())
+		def lib = "${bulletDevboxLibDir.get()}/${bulletLibName(findProperty('lib') as String)}"
+		def status = run([
+			'ssh',
+			host,
+			"cd ${scratch} && java --enable-native-access=ALL-UNNAMED -cp bullet-harness.jar io.pzstorm.storm.bullet.trace.harness.NativeHarnessMain --lib ${lib} ${toolArgs}".toString()
+		])
+		[out, report].findAll { it != null }.each { f ->
+			f.parentFile.mkdirs()
+			must([
+				'scp',
+				'-q',
+				"${host}:${scratch}/${f.name}".toString(),
+				f.absolutePath
+			])
+		}
+		if (status == 1) {
+			logger.lifecycle('bulletDevboxRun: DIVERGED')
+		} else if (status != 0) {
+			throw new GradleException("dev box run failed with exit status ${status}")
+		}
 	}
 }

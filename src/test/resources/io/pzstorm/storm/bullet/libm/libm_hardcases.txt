@@ -1,0 +1,136 @@
+# Hard cases for libm_refgen.c: "<func> <hex bits x> [<hex bits y>]" (floats: 32-bit patterns).
+# Emitted as raw R records into libm-ref-<version>.txt.gz. Sources:
+#  - inputs where replacing one Math.fma site in GlibcMath with a*b+c changes the result
+#    (mutation hunt over the seeded input generator, see docs/re-bullet/libm.md)
+#  - powf inputs where glibc 2.39 __powf_fma and __powf_sse2 differ (direct-call hunt, 2e9 inputs)
+cos d2a4b3f902dc1180
+cos 3fca9a7655b9c58a
+cos bf782743625380c1
+sincos 7706302f328310f9
+sin bfeb6004c66547c3
+sin 40024a41f9dc6fc6
+sin c2f8fa684309e631
+cos 7ae9e848ec6d4855
+cos 6a613fa2a0f53356
+cos 44c7756ffda84669
+sincos bfeb5fffded3b0f5
+sincos c458e2b7949b852f
+sincos 40a940091b210ed7
+sin c2a6e296c384497d
+sin 7d2c9746e571a5ac
+sin f6f96f8c9b1609f2
+cos ecf69a9d9b435ded
+cos 4079a1839af22fd4
+cos 401350aabf19e3d0
+sincos c2e75e78ebe53b3c
+sincos ffefffffff90d218
+sincos 64d8a7084c89e616
+sin f8e49f58eb5b595a
+sin 4334ba1c7112aa7a
+sin 688a12f0bdba2828
+cos 4e8e35b87c83c190
+cos bffb0dfc55d4e55a
+cos c11f1548e7c0e919
+sincos c8b3992ca6881f44
+sincos 42a900e8278812ab
+sincos 3ff8576503f54bc2
+sin bfeb5ffffec186d2
+sin 7a7b105e057995e1
+sin c017d5fcf6cfcfb4
+sin 50d69eba3b93ee89
+cos c147305012970d91
+cos c1c1d86c617aa77c
+cos 6adfcdaa9bb4b54e
+sincos 4320312cb46f684a
+sincos bfebfb4384f8668b
+sincos 3fc787d58d60a4b5
+asin bfeefffffffffc7a
+asin bfee8015f5f81185
+acos 3fee80000fd87af0
+acos 3fed800000a8c8ee
+asin bfc77f32529f889d
+asin bfccd12917336104
+asin bfed800032cac8d1
+acos bfe94c57f31baaf3
+acos bfcffffffffd900e
+acos 3fe25ac5495e27bf
+asin bfb8b5c12289313f
+asin 3fbffffffffffc80
+asin 3fbffffffffff21f
+asin bfef0000127c5fc5
+asin 3fef639f3c74190f
+asin bfef002de9a45019
+acos bfbffffffe23b5fb
+acos bfbffffffff4a73e
+atan2 3f811bd3953fd7e5 3f9f2d0837b34066
+atan2 c0822191dc490498 40f5bcabedfc2e9f
+atan2 bf25f71b990610e2 41e2d12f6a686bce
+atan2 3ffc8b1cd02404fc 3ffb991aa50d5336
+atan2 4084b0eec580d476 c03545b1a2d2d94b
+atan2 40ea58c978ec34e0 40e38bf84254bb10
+atan2 3f8828e6bfb64333 3fca5f736080fd9a
+atan2 22f77005f85eb 22745ee788bdb1
+atan2 bf50ec2a47a5f5b1 3fbcad8d16b699d9
+atan2 bf7be61deb80144b 3fbb08795f16fcae
+atan2 c4e7fbf81acdf 1bb599ca44f37e
+atan2 727ad29fdf578 1ee68493c866db
+atan2 3f0907b56952f41a 3f0907b55c715192
+atan2 2e3727d365b3f1 199acf31dfa14a
+atan2 bc651b6fd11382fc 3c651b6fd11382a2
+atan2 c0de8e4e6f65a71c c0de8e4e6f650848
+atan2 c0709f60d8271fbc c03f909ed9cd572b
+atan2 80350d391ed108fe 802c040ff2116f27
+atan2 40b1836d1eb99e75 c0c208a2a510b04f
+atan2 c006851524db2a26 c037c04cabecb01d
+atan2 3f339a81ca9eb087 bf4c1dfdf6967be9
+pow 3f92da0b96afc580 c0655aaaaaaaaac4
+pow bc3b5653c12a97d4 c02a000000000000
+pow 5614d91c4d173999 4005ffcfd1682ec7
+pow 54e154cb006d04d2 bfb6133303ed0aaa
+pow 3f7f06b74b9226d2 4043c468532b1e6e
+pow 3e541778de00279e c008000000000000
+pow 3ff00daa049c85b3 40e6a9a389fb9196
+pow 3fefd2f59063c8f1 c0fe456cb676fc89
+pow 3f69f88f8ac40552 c05c78e38e38e3a3
+pow 3ff0000000001dbb c2c494a7fcc90392
+pow 3fa90ede8d7a029a 4030360f72886093
+pow 3ea327ee3a6be3ad bfe29790e72a0691
+pow 4087500000000000 c04f400000000000
+pow 3fba9b5ca1d72d59 bfcc485f9c199c44
+pow 35b1ca601a583d1a 3efd1e5f22fae5ef
+sin fc30865191e34018
+sin 534755a6f849e5a0
+cos c19921fafb60bbbe
+sincos 3f85fc9fcd63a9b3
+sincos d17f5f8ee0d4adde
+sin 54479bc603f9ab42
+sin c3d608c4c01cab3b
+sin 6783df75c2244e5b
+cos 40df31a44b0cf777
+cos bfeb600720681f27
+sincos bfeb600708e6c4be
+sincos e0765fcc0561d8b5
+asin 3fbb2602069f9fcc
+asin bfef61c32ba39666
+acos 3fef5512b4450f94
+acos 3fef000498f2f3e5
+asin bfee800000193540
+acos 3feefffffea9ce92
+atan2 c0b8dfec9a146421 40fafed6da9c2670
+atan2 407cd3f4b2fce25f c0806e18b2368ea1
+pow 3feeeefae1917ab1 c0d1598058504739
+pow 3fefd8a866eadc40 c0f867606f682607
+pow eac4d720d24bb bfe8900b3b5d0ff0
+pow 40d158de0c2ee361 3fd54450aae8e38e
+powf 3f878697 44972feb
+powf 3f830027 43fafa6e
+powf 3e424be4 c1a90225
+powf 3f842002 43f6b48a
+powf 3f87129a 4490de60
+powf 3e4964c7 c1dd42cd
+powf 3f7aa313 452bb617
+powf 3f7a3efb c3f67472
+powf 3f784502 440fa123
+powf 3f991e8e c24ba0b8
+powf 3f84d294 44950dbb
+powf 3f79b210 c5294d97

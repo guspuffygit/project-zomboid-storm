@@ -4,6 +4,8 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import io.pzstorm.storm.event.core.PacketEventDispatcher;
 import io.pzstorm.storm.mod.ZomboidMod;
+import io.pzstorm.storm.patch.bullet.BulletNativePatch;
+import io.pzstorm.storm.patch.bullet.PhysicsDebugRendererNativePatch;
 import io.pzstorm.storm.patch.client.ChecksumOverTcpPatch;
 import io.pzstorm.storm.patch.client.ChunkRequestOverTcpPatch;
 import io.pzstorm.storm.patch.client.CombatManagerBallisticsNullGuardPatch;
@@ -556,6 +558,22 @@ public class StormClassTransformers {
             if (StormEnv.isStormServer()) {
                 registerTransformer(new PopManSaveAdoptFixPatch());
             }
+        }
+        // Off by default: the Java port of PZBullet (vehicles, ragdolls, ballistics, world
+        // collision). With it on, every Bullet native is Java and the library is never loaded.
+        if (Boolean.getBoolean("storm.bullet.java")) {
+            registerTransformer(new BulletNativePatch());
+            registerTransformer(new PhysicsDebugRendererNativePatch());
+        }
+        // Off by default: -Dstorm.bullet.record=<path> records every Bullet JNI call and
+        // upcall to a trace for the Java-port differential harness (docs/re-bullet/harness.md).
+        // Client and server; fail-soft (a patch that cannot be built leaves Bullet untouched).
+        // Records the native library only, so it stands down when the Java port is on.
+        if (System.getProperty(io.pzstorm.storm.patch.bullet.BulletRecorder.PROPERTY) != null
+                && !Boolean.getBoolean("storm.bullet.java")) {
+            registerTransformer(new io.pzstorm.storm.patch.bullet.BulletRecordPatch());
+            registerTransformer(io.pzstorm.storm.patch.bullet.BulletUpcallLogPatch.debugLog());
+            registerTransformer(io.pzstorm.storm.patch.bullet.BulletUpcallLogPatch.skeletonBone());
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerStartPMChatPatch());

@@ -14,12 +14,12 @@ import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 
 /** Shared assertions for the {@link NativeFacadePatch} family, run against real game bytes. */
-final class NativeFacadeWeave {
+public final class NativeFacadeWeave {
 
     private NativeFacadeWeave() {}
 
     /** The patch list must be exactly the natives this game version declares. */
-    static void assertCoversDeclaredNatives(String targetResource, String[] natives)
+    public static void assertCoversDeclaredNatives(String targetResource, String[] natives)
             throws Exception {
         Set<String> declared = nativeNames(readClassBytes(targetResource));
         assertEquals(
@@ -28,8 +28,8 @@ final class NativeFacadeWeave {
                 "the patch must cover exactly the natives this game version declares");
     }
 
-    /** No native survives, and each {@code n_*} INVOKESTATICs its same-named facade method. */
-    static void assertEveryNativeForwards(
+    /** No native survives, and each patched native INVOKESTATICs its same-named facade method. */
+    public static void assertEveryNativeForwards(
             NativeFacadePatch patch, String targetResource, String facadeInternalName)
             throws Exception {
         assertFacadeSignaturesDoNotNameTarget(targetResource, facadeInternalName);
@@ -38,6 +38,7 @@ final class NativeFacadeWeave {
                 nativeNames(transformed).isEmpty(),
                 "no method may remain native after the patch: " + nativeNames(transformed));
 
+        Set<String> patched = Set.of(patch.natives());
         Set<String> forwarding = new TreeSet<>();
         new ClassReader(transformed)
                 .accept(
@@ -45,7 +46,7 @@ final class NativeFacadeWeave {
                             @Override
                             public MethodVisitor visitMethod(
                                     int access, String name, String desc, String sig, String[] ex) {
-                                if (!name.startsWith("n_")) {
+                                if (!patched.contains(name)) {
                                     return super.visitMethod(access, name, desc, sig, ex);
                                 }
                                 return new MethodVisitor(
@@ -73,7 +74,7 @@ final class NativeFacadeWeave {
         assertEquals(
                 new TreeSet<>(Set.of(patch.natives())),
                 forwarding,
-                "each n_* must call its same-named facade counterpart");
+                "each patched native must call its same-named facade counterpart");
     }
 
     /**
@@ -82,7 +83,7 @@ final class NativeFacadeWeave {
      * {@link ClassCircularityError} at boot that no in-test weave can reproduce, because the test
      * classpath has the target loaded already. Use {@code @This Object} and cast inside.
      */
-    static void assertFacadeSignaturesDoNotNameTarget(
+    public static void assertFacadeSignaturesDoNotNameTarget(
             String targetResource, String facadeInternalName) throws Exception {
         String targetRef = "L" + targetResource.replace(".class", "") + ";";
         Set<String> offenders = new TreeSet<>();
@@ -106,7 +107,7 @@ final class NativeFacadeWeave {
                         + offenders);
     }
 
-    static byte[] readClassBytes(String resourcePath) throws Exception {
+    public static byte[] readClassBytes(String resourcePath) throws Exception {
         try (InputStream is =
                 NativeFacadeWeave.class.getClassLoader().getResourceAsStream(resourcePath)) {
             assertNotNull(is, resourcePath + " must be on the test classpath");
@@ -114,7 +115,7 @@ final class NativeFacadeWeave {
         }
     }
 
-    static Set<String> nativeNames(byte[] classBytes) {
+    public static Set<String> nativeNames(byte[] classBytes) {
         Set<String> names = new HashSet<>();
         new ClassReader(classBytes)
                 .accept(
