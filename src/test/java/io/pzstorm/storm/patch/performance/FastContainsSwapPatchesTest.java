@@ -91,6 +91,72 @@ class FastContainsSwapPatchesTest implements UnitTest {
                 "visibility must be retained by the modifier adjustment");
     }
 
+    @Test
+    void worldRegionToMetaGridCtorSwapsWorldRegionsAndDropsFinal() throws Exception {
+        byte[] raw = readClass("zombie/iso/areas/isoregion/metagrid/WorldRegionToMetaGrid");
+        byte[] transformed = new WorldRegionToMetaGridFastContainsPatch().transform(raw);
+        assertNotNull(transformed);
+
+        assertCopyOfOnlyInConstructors(raw, transformed, 1);
+        assertCopyOfWritesField(transformed, "worldRegions");
+
+        Map<String, Integer> before = fieldAccessFlags(raw);
+        Map<String, Integer> after = fieldAccessFlags(transformed);
+        assertTrue(
+                (before.get("worldRegions") & Opcodes.ACC_FINAL) != 0,
+                "worldRegions should be final in vanilla WorldRegionToMetaGrid");
+        assertEquals(
+                before.get("worldRegions") & ~Opcodes.ACC_FINAL,
+                after.get("worldRegions"),
+                "worldRegions should lose exactly the final flag");
+        assertEquals(
+                before.get("allWorldRegions"),
+                after.get("allWorldRegions"),
+                "allWorldRegions is not swapped and must keep its modifiers");
+
+        // The vanilla field initializer already writes both fields once, so a write alone proves
+        // nothing: the advice must add exactly one more write to worldRegions and none to
+        // allWorldRegions.
+        assertEquals(
+                constructorPutfields(raw, "worldRegions") + 1,
+                constructorPutfields(transformed, "worldRegions"),
+                "the advice must write the copy back into worldRegions");
+        assertEquals(
+                constructorPutfields(raw, "allWorldRegions"),
+                constructorPutfields(transformed, "allWorldRegions"),
+                "the advice must not write allWorldRegions");
+    }
+
+    private static int constructorPutfields(byte[] classBytes, String fieldName) {
+        int[] count = new int[1];
+        new ClassReader(classBytes)
+                .accept(
+                        new ClassVisitor(Opcodes.ASM9) {
+                            @Override
+                            public MethodVisitor visitMethod(
+                                    int access,
+                                    String name,
+                                    String descriptor,
+                                    String signature,
+                                    String[] exceptions) {
+                                if (!"<init>".equals(name)) {
+                                    return null;
+                                }
+                                return new MethodVisitor(Opcodes.ASM9) {
+                                    @Override
+                                    public void visitFieldInsn(
+                                            int opcode, String owner, String fname, String fdesc) {
+                                        if (opcode == Opcodes.PUTFIELD && fieldName.equals(fname)) {
+                                            count[0]++;
+                                        }
+                                    }
+                                };
+                            }
+                        },
+                        ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+        return count[0];
+    }
+
     /**
      * Every constructor must gain exactly {@code perCtor} copyOf calls; every non-constructor
      * method must have none (before and after).

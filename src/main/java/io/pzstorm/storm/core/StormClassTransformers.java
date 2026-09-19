@@ -319,6 +319,7 @@ import io.pzstorm.storm.patch.performance.WarManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.WeatherFxScanSkipPatch;
 import io.pzstorm.storm.patch.performance.WorldMapServerWriteSavefilePatch;
 import io.pzstorm.storm.patch.performance.WorldMapVisitedServerUpdatePatch;
+import io.pzstorm.storm.patch.performance.WorldRegionToMetaGridFastContainsPatch;
 import io.pzstorm.storm.patch.performance.WorldSimulationUpdatePatch;
 import io.pzstorm.storm.patch.performance.WorldSoundServerChunkIndexPatch;
 import io.pzstorm.storm.patch.performance.WornItemsMutationEpochPatch;
@@ -594,6 +595,7 @@ public class StormClassTransformers {
             registerTransformer(new LoadingQueueStateTcpDrainPatch());
             registerTransformer(new ChecksumOverTcpPatch());
             registerTransformer(new GameClientStartClientRetryPatch());
+            registerTransformer(new WorldRegionToMetaGridFastContainsPatch());
         }
 
         // Both JVMs: the server captures login-queue / checksum replies for TCP joiners, the
