@@ -1,6 +1,8 @@
 package io.pzstorm.launcher.ui;
 
 import io.pzstorm.launcher.Log;
+import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Desktop;
 import java.awt.Dimension;
@@ -22,10 +24,11 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 /**
- * Sponsored card for the bottom of the detail pane: After The Fall (PvPvE), with a Discord invite
- * link and a one-click "Play on ATF" profile setup (the window owns the profile flow; see the
- * constructor). Deliberately no live player count: polling the server would send the user's IP to a
- * third party they never chose, so the card goes on the network only when a link is clicked.
+ * Sponsor block for the bottom of the detail pane. The head sponsor, After The Fall (PvPvE), gets
+ * the card: a Discord invite link and a one-click "Play on ATF" profile setup (the window owns the
+ * profile flow; see the constructor). Supporting sponsors share one small text line under the card.
+ * Deliberately no live player count: polling the server would send the user's IP to a third party
+ * they never chose, so the block goes on the network only when a link is clicked.
  */
 public final class SponsorPanel extends JPanel {
 
@@ -39,6 +42,9 @@ public final class SponsorPanel extends JPanel {
      */
     private static final int LOGO_SIZE = 56;
 
+    private static final String SUPPORTING_SPONSOR = "Undead Relent";
+    private static final String SUPPORTING_SPONSOR_URL = "https://discord.gg/Nhy2eQg8KD";
+
     private final JLabel playersLabel = new JLabel("PvPvE server");
 
     /**
@@ -46,17 +52,21 @@ public final class SponsorPanel extends JPanel {
      *     bookkeeping and the join flow, so the card only reports the click.
      */
     public SponsorPanel(Runnable playOnAtf) {
-        setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
-        setBackground(StormTheme.ROW_ALT);
-        setBorder(
+        setLayout(new BorderLayout(0, 5));
+        setOpaque(false);
+
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.X_AXIS));
+        card.setBackground(StormTheme.ROW_ALT);
+        card.setBorder(
                 BorderFactory.createCompoundBorder(
                         BorderFactory.createLineBorder(StormTheme.BORDER),
                         BorderFactory.createEmptyBorder(10, 12, 10, 12)));
 
-        JLabel kicker = new JLabel("STORM LAUNCHER SPONSORED BY");
+        JLabel kicker = new JLabel("STORM LAUNCHER HEAD SPONSOR");
         kicker.setFont(StormTheme.displayFont(Font.BOLD, 13f));
         // cool steel-blue: complements the theme's warm gold links instead of competing with them
-        kicker.setForeground(new java.awt.Color(132, 178, 196));
+        kicker.setForeground(new Color(132, 178, 196));
 
         JLabel name = new JLabel("After The Fall");
         name.setFont(StormTheme.displayFont(Font.BOLD, 16f));
@@ -83,24 +93,52 @@ public final class SponsorPanel extends JPanel {
 
         LogoBadge logo = new LogoBadge();
         logo.setAlignmentY(CENTER_ALIGNMENT);
-        add(logo);
-        add(Box.createHorizontalStrut(12));
+        card.add(logo);
+        card.add(Box.createHorizontalStrut(12));
         text.setAlignmentY(CENTER_ALIGNMENT);
-        add(text);
-        add(Box.createHorizontalGlue());
+        card.add(text);
+        card.add(Box.createHorizontalGlue());
+        add(card, BorderLayout.CENTER);
+
+        JLabel supportingKicker = new JLabel("ALSO SUPPORTED BY");
+        supportingKicker.setFont(StormTheme.displayFont(Font.BOLD, 10f));
+        supportingKicker.setForeground(StormTheme.TEXT_DIM);
+
+        JLabel supportingName = new JLabel(SUPPORTING_SPONSOR);
+        supportingName.setFont(StormTheme.displayFont(Font.BOLD, 13f));
+        supportingName.setToolTipText("Join the " + SUPPORTING_SPONSOR + " Discord");
+        makeClickable(
+                supportingName,
+                StormTheme.HEADER_TEXT,
+                StormTheme.ACCENT_HOVER,
+                () -> openLink(SUPPORTING_SPONSOR_URL));
+
+        JPanel supporting = new JPanel();
+        supporting.setLayout(new BoxLayout(supporting, BoxLayout.X_AXIS));
+        supporting.setOpaque(false);
+        supporting.setBorder(BorderFactory.createEmptyBorder(2, 13, 0, 0));
+        supporting.add(supportingKicker);
+        supporting.add(Box.createHorizontalStrut(8));
+        supporting.add(supportingName);
+        add(supporting, BorderLayout.SOUTH);
     }
 
     @Override
     public Dimension getMaximumSize() {
         // BoxLayout stretches to maximum size; stretch across the pane but never grow taller,
-        // so the glue above keeps this card pinned to the bottom.
+        // so the glue above keeps this block pinned to the bottom.
         return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
     }
 
     private static JLabel link(String text, Runnable action) {
         JLabel label = new JLabel(text);
         label.setFont(StormTheme.font(Font.BOLD, 12f));
-        label.setForeground(StormTheme.ACCENT);
+        makeClickable(label, StormTheme.ACCENT, StormTheme.ACCENT_HOVER, action);
+        return label;
+    }
+
+    private static void makeClickable(JLabel label, Color idle, Color hover, Runnable action) {
+        label.setForeground(idle);
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         label.addMouseListener(
                 new MouseAdapter() {
@@ -111,15 +149,14 @@ public final class SponsorPanel extends JPanel {
 
                     @Override
                     public void mouseEntered(MouseEvent e) {
-                        label.setForeground(StormTheme.ACCENT_HOVER);
+                        label.setForeground(hover);
                     }
 
                     @Override
                     public void mouseExited(MouseEvent e) {
-                        label.setForeground(StormTheme.ACCENT);
+                        label.setForeground(idle);
                     }
                 });
-        return label;
     }
 
     private static void openLink(String url) {
