@@ -477,11 +477,9 @@ public class StormClassTransformers {
             }
         }
         if (StormEnv.isStormServer()) {
-            if (!"false".equalsIgnoreCase(System.getProperty("storm.server.loadOptimizations"))) {
-                registerTransformer(new ScriptParserCommentsPatch());
-                registerTransformer(new BuildingRoomIdLookupPatch());
-                registerTransformer(new VehicleZoneDedupPatch());
-            }
+            registerTransformer(new ScriptParserCommentsPatch());
+            registerTransformer(new BuildingRoomIdLookupPatch());
+            registerTransformer(new VehicleZoneDedupPatch());
             registerTransformer(new IsoGeneratorElectricityPatch());
             registerTransformer(new NetTimedActionParsePatch());
             registerTransformer(new IsoAnimalUpdateTimingPatch());

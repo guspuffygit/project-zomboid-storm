@@ -7,7 +7,7 @@ JVM unless noted, and is always-on unless it points at a tunable flag in
 [Server Configuration](server-configuration.md).
 
 ## Performance
-- **Server script and meta-grid loading** — scans simple block comments in one pass, retaining vanilla's handling of nested/malformed/overlapping delimiters. Room-ID validation uses a per-call first-index map while keeping the native checks and diagnostics. Vehicle zones are deduplicated in linear expected time, preserving the first zone, list identity/order, diagnostics, and vanilla's x/y/w/h-only comparison. Server-only; restart with `-Dstorm.server.loadOptimizations=false` to disable.
+- **Server script and meta-grid loading** — scans simple block comments in one pass, retaining vanilla's handling of nested/malformed/overlapping delimiters. Room-ID validation uses a per-call first-index map while keeping the native checks and diagnostics. Vehicle zones are deduplicated in linear expected time, preserving the first zone, list identity/order, diagnostics, and vanilla's x/y/w/h-only comparison. Server-only, always on.
   Build 42.21 already stores the meta-cell header and caches header filenames. Those paths and the per-chunk map-priority/intensity rules remain native.
 
 - **Parallel server-LOS pipeline** — `ServerLOS` fans out across `1..16` worker threads (`Storm.ServerLosThreads` sandbox option); per-square LOS state, lighting arrays, and scratch vectors are made thread-safe and per-worker. Each worker owns a slot in the resized `LosUtil.cachedresults[]` so the vanilla per-square cache is reused instead of reallocated; concurrent `IsoRoom.onSee` dispatch is serialized through a single reentrant lock so room-discovery side effects stay deterministic.

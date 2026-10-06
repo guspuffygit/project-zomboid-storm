@@ -16,7 +16,6 @@ script). All flags are opt-in unless noted.
 
 | Flag | Purpose |
 |------|---------|
-| `-Dstorm.server.loadOptimizations=false` | Disable the server-only comment-parser, room-ID lookup and vehicle-zone deduplication optimizations at startup. Enabled by default; no client changes required. |
 | `-Dstorm.server=true` | **Required.** Tells the bootstrap agent it is running on the dedicated-server JVM so it targets `GameServer`. Storm is a server-only framework — this is always set. |
 | `-DstormType=local` | Load Storm from `~/Zomboid/Workshop/storm` instead of the Steam workshop path. Local development only. |
 | `-DDISABLE_ANALYTICS=true` | Opt out of Storm's startup analytics: a one-time snapshot posted to the Storm developers on `OnServerStarted` (Storm/PZ version, server `PublicName`, OS/CPU/RAM, Storm settings, and the `Mods` / `WorkshopItems` lines). **On by default**; the startup log states `Storm startup analytics: enabled …` or `… disabled via -DDISABLE_ANALYTICS` either way. See [Startup analytics & privacy notice](#startup-analytics--privacy-notice). |
