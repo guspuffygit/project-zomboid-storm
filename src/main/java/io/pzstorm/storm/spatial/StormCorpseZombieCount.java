@@ -20,7 +20,10 @@ import zombie.iso.IsoMovingObject;
  * snapshot for the chunks covering the box (plus one chunk of snapshot-drift slack) and applies the
  * exact live filter per candidate: the zombie's {@code movingSq} — the square whose {@code
  * movingObjects} list vanilla's {@code getZombieCount()} would have counted it in — must be at
- * level {@code z}, inside the box, and in the caller's building.
+ * level {@code z}, inside the box, and in the caller's building. The chunk cursor keeps the same
+ * candidate order as the collected-list path, but stops pulling candidates at {@code
+ * maxCorpseCount}; a dense crowd no longer has to be copied and cleared in full before the live
+ * checks begin.
  *
  * <p>Exactness: the only consumer-visible quantity is {@code min(count, maxCorpseCount)} — {@code
  * getSicknessFromCorpsesRate} returns 0 below 6 and clamps at {@code maxCorpseCount}, and vanilla
@@ -42,7 +45,7 @@ public final class StormCorpseZombieCount {
     /** Extra chunks queried around the box to absorb snapshot-to-query position drift. */
     private static final int SLACK_CHUNKS = 1;
 
-    private static final StormObjectList CANDIDATES = new StormObjectList(64);
+    private static final StormChunkIndex.Cursor CURSOR = StormSpatialIndex.newCursor();
 
     private static boolean failed;
 
@@ -102,16 +105,17 @@ public final class StormCorpseZombieCount {
             }
             int x = wx * 8;
             int y = wy * 8;
-            CANDIDATES.clear();
-            StormSpatialIndex.collectChunkRect(
+            CURSOR.beginChunkRect(
                     StormChunkIndex.chunkOf(x - BOX_RADIUS) - SLACK_CHUNKS,
                     StormChunkIndex.chunkOf(y - BOX_RADIUS) - SLACK_CHUNKS,
                     StormChunkIndex.chunkOf(x + BOX_RADIUS) + SLACK_CHUNKS,
                     StormChunkIndex.chunkOf(y + BOX_RADIUS) + SLACK_CHUNKS,
-                    StormChunkIndex.MASK_ZOMBIE,
-                    CANDIDATES);
-            for (int i = 0; i < CANDIDATES.size() && count < max; i++) {
-                IsoMovingObject zombie = (IsoMovingObject) CANDIDATES.get(i);
+                    StormChunkIndex.MASK_ZOMBIE);
+            while (count < max) {
+                IsoMovingObject zombie = (IsoMovingObject) CURSOR.next();
+                if (zombie == null) {
+                    break;
+                }
                 IsoGridSquare sq = zombie.getMovingSquare();
                 if (sq == null || sq.getZ() != z) {
                     continue;
@@ -129,11 +133,12 @@ public final class StormCorpseZombieCount {
                 }
                 count++;
             }
-            CANDIDATES.clear();
             return count;
         } catch (Throwable t) {
             fail(t);
             return count;
+        } finally {
+            CURSOR.end();
         }
     }
 
