@@ -14,9 +14,9 @@ import org.lwjgl.opengl.GL32;
  * frame at or below {@code F} complete, because GL processes commands in order.
  *
  * <p>Invariant: a slot's fence is waited on before it is recycled, so any frame older than {@code
- * frame - R} is complete and needs no fence. A wait that times out is logged once and then treated
- * as complete, because a GPU that has not finished a frame after a full second is hung and
- * repeating the wait on every batch would only turn that hang into a chain of stalls.
+ * frame - R} is complete and needs no fence. A timed-out or failed wait never advances the
+ * watermark: it throws so {@link PersistentVboSupport} disables the ring and synchronizes existing
+ * persistent buffers with its {@code glFinish} fallback before they are reused.
  *
  * <p>Single-threaded by construction; every caller is on the render thread.
  */
@@ -62,7 +62,7 @@ public final class FrameFenceRing {
             gl.deleteSync(fences[slot]);
             fences[slot] = 0;
         }
-        fences[slot] = gl.fenceSync();
+        fences[slot] = createFence();
         fenceFrames[slot] = frame;
         frame++;
     }
@@ -73,9 +73,12 @@ public final class FrameFenceRing {
             return;
         }
         if (writtenFrame >= frame) {
-            long fence = gl.fenceSync();
-            waitOn(fence);
-            gl.deleteSync(fence);
+            long fence = createFence();
+            try {
+                waitOn(fence);
+            } finally {
+                gl.deleteSync(fence);
+            }
             return;
         }
         int slot = (int) (writtenFrame % fences.length);
@@ -93,6 +96,14 @@ public final class FrameFenceRing {
         }
     }
 
+    private long createFence() {
+        long fence = gl.fenceSync();
+        if (fence == 0) {
+            throw new IllegalStateException("Persistent VBO fence allocation returned zero");
+        }
+        return fence;
+    }
+
     private void waitOn(long fence) {
         int status = gl.clientWaitSync(fence, timeoutNanos);
         if (status == GL32.GL_ALREADY_SIGNALED || status == GL32.GL_CONDITION_SATISFIED) {
@@ -102,9 +113,13 @@ public final class FrameFenceRing {
         if (timeouts == 1) {
             StormLogger.LOGGER.warn(
                     "Persistent VBO fence wait did not complete within {} ms (status 0x{});"
-                            + " continuing without it",
+                            + " switching existing buffers to glFinish synchronization",
                     timeoutNanos / 1_000_000L,
                     Integer.toHexString(status));
         }
+        throw new IllegalStateException(
+                "Persistent VBO fence wait did not complete (status 0x"
+                        + Integer.toHexString(status)
+                        + ")");
     }
 }
