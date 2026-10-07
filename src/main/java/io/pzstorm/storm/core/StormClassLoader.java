@@ -223,22 +223,22 @@ public class StormClassLoader extends ClassLoader {
      */
     byte[] getRawClassByteArray(String name) throws IOException {
         // opens an input stream to read the class for given name
-        InputStream inputStream = getResourceAsStream(getClassFileName(name));
-        if (inputStream == null) {
-            return new byte[0];
+        try (InputStream inputStream = getResourceAsStream(getClassFileName(name))) {
+            if (inputStream == null) {
+                return new byte[0];
+            }
+            int a = inputStream.available();
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream(a < 32 ? 32768 : a);
+            /*
+             * read from input stream and write to output stream
+             * a maximum of 8192 bytes per write operation
+             */
+            int len;
+            byte[] buffer = new byte[8192];
+            while ((len = inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, len);
+            }
+            return outputStream.toByteArray();
         }
-        int a = inputStream.available();
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(a < 32 ? 32768 : a);
-        /*
-         * read from input stream and write to output stream
-         * a maximum of 8192 bytes per write operation
-         */
-        int len;
-        byte[] buffer = new byte[8192];
-        while ((len = inputStream.read(buffer)) > 0) {
-            outputStream.write(buffer, 0, len);
-        }
-        inputStream.close();
-        return outputStream.toByteArray();
     }
 }
