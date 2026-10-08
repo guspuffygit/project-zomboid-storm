@@ -222,17 +222,12 @@ public class StormClassLoader extends ClassLoader {
      * @throws IOException if an I/O error occurred while reading or writing to stream.
      */
     byte[] getRawClassByteArray(String name) throws IOException {
-        // opens an input stream to read the class for given name
         try (InputStream inputStream = getResourceAsStream(getClassFileName(name))) {
             if (inputStream == null) {
                 return new byte[0];
             }
             int a = inputStream.available();
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream(a < 32 ? 32768 : a);
-            /*
-             * read from input stream and write to output stream
-             * a maximum of 8192 bytes per write operation
-             */
             int len;
             byte[] buffer = new byte[8192];
             while ((len = inputStream.read(buffer)) > 0) {

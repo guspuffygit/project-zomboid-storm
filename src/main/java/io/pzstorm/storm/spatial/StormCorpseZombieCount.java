@@ -20,10 +20,8 @@ import zombie.iso.IsoMovingObject;
  * snapshot for the chunks covering the box (plus one chunk of snapshot-drift slack) and applies the
  * exact live filter per candidate: the zombie's {@code movingSq} — the square whose {@code
  * movingObjects} list vanilla's {@code getZombieCount()} would have counted it in — must be at
- * level {@code z}, inside the box, and in the caller's building. The chunk cursor keeps the same
- * candidate order as the collected-list path, but stops pulling candidates at {@code
- * maxCorpseCount}; a dense crowd no longer has to be copied and cleared in full before the live
- * checks begin.
+ * level {@code z}, inside the box, and in the caller's building. The chunk cursor walks the
+ * snapshot in place and stops pulling candidates at {@code maxCorpseCount}.
  *
  * <p>Exactness: the only consumer-visible quantity is {@code min(count, maxCorpseCount)} — {@code
  * getSicknessFromCorpsesRate} returns 0 below 6 and clamps at {@code maxCorpseCount}, and vanilla

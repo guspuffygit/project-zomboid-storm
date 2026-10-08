@@ -22,7 +22,7 @@ import zombie.iso.IsoMovingObject;
 import zombie.iso.areas.IsoBuilding;
 import zombie.iso.areas.IsoRoom;
 
-/** Real native objects/getters, compared against Storm's previous collect-and-filter traversal. */
+/** Real native objects/getters, compared against a collect-then-filter oracle. */
 class StormCorpseZombieCountTest implements UnitTest {
     private static Unsafe unsafe;
     private static StormChunkIndex index;
@@ -80,7 +80,7 @@ class StormCorpseZombieCountTest implements UnitTest {
         index.add(zombie, x, y, StormChunkIndex.TYPE_ZOMBIE);
     }
 
-    private static int previousTraversal(int count, int wx, int wy, int z, IsoBuilding building) {
+    private static int collectAndFilter(int count, int wx, int wy, int z, IsoBuilding building) {
         int x = wx * 8;
         int y = wy * 8;
         StormObjectList candidates = new StormObjectList(64);
@@ -143,7 +143,7 @@ class StormCorpseZombieCountTest implements UnitTest {
                 CorpseCount.maxCorpseCount = 1 + random.nextInt(30);
                 IsoBuilding building = buildings[random.nextInt(3)];
                 assertEquals(
-                        previousTraversal(count, wx, wy, z, building),
+                        collectAndFilter(count, wx, wy, z, building),
                         serve(count, wx, wy, z, building));
                 // The per-call handshake is consumed exactly once.
                 assertEquals(count, StormCorpseZombieCount.augment(count, wx, wy, z, building));
@@ -154,8 +154,8 @@ class StormCorpseZombieCountTest implements UnitTest {
     @Test
     void cappedTraversalDoesNotDereferenceLaterCandidates() throws Exception {
         for (int i = 0; i < 25; i++) addZombie(0, 0, 0, 0, 0, null, true);
-        // A non-world sentinel in the same bucket detects a traversal past the cap. The previous
-        // path copies it but never casts it; the cursor must likewise never inspect its payload.
+        // A non-world sentinel in the same bucket detects a traversal past the cap; the cursor
+        // must never inspect its payload.
         index.add(new Object(), 0, 0, StormChunkIndex.TYPE_ZOMBIE);
         index.endTick();
         CorpseCount.maxCorpseCount = 25;
