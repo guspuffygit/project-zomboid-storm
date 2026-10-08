@@ -307,6 +307,61 @@ class StormChunkIndexTest implements UnitTest {
     }
 
     @Test
+    void chunkCursorMatchesCollectedOrderAndSupportsEarlyExit() {
+        Random random = new Random(20261006);
+        StormChunkIndex index = new StormChunkIndex();
+        StormObjectList expected = new StormObjectList(8);
+        StormChunkIndex.Cursor cursor = index.newCursor();
+        for (int tick = 0; tick < 5; tick++) {
+            index.beginTick(tick);
+            for (int i = 0; i < 8_000; i++) {
+                Obj o =
+                        new Obj(
+                                random.nextFloat() * 800 - 400,
+                                random.nextFloat() * 800 - 400,
+                                random.nextInt(StormChunkIndex.NUM_TYPES));
+                index.add(o, o.x, o.y, o.type);
+            }
+            index.endTick();
+            for (int query = 0; query < 100; query++) {
+                int cx0 = random.nextInt(100) - 50;
+                int cy0 = random.nextInt(100) - 50;
+                // Covers both the table-lookup and scan-all query branches, plus empty rectangles.
+                int cx1 = cx0 + (query % 3 == 0 ? 100 : random.nextInt(7) - 1);
+                int cy1 = cy0 + (query % 3 == 0 ? 100 : random.nextInt(7) - 1);
+                int mask = random.nextInt(StormChunkIndex.MASK_ALL + 1);
+                expected.clear();
+                index.collectChunkRect(cx0, cy0, cx1, cy1, mask, expected);
+                cursor.beginChunkRect(cx0, cy0, cx1, cy1, mask);
+                for (int i = 0; i < expected.size(); i++) {
+                    assertSame(expected.get(i), cursor.next(), "candidate order must be identical");
+                }
+                assertEquals(null, cursor.next());
+                assertEquals(0, cursor.culled());
+                cursor.end();
+                cursor.beginChunkRect(cx0, cy0, cx1, cy1, mask);
+                if (expected.size() > 0) {
+                    assertSame(expected.get(0), cursor.next());
+                }
+                cursor.end();
+                assertEquals(null, cursor.next(), "early exit must release the active walk");
+            }
+        }
+        // Reusing the same cursor in tile mode must restore tile filtering.
+        index.beginTick(6);
+        Obj outside = new Obj(7, 7, StormChunkIndex.TYPE_ZOMBIE);
+        index.add(outside, outside.x, outside.y, outside.type);
+        index.endTick();
+        cursor.beginChunkRect(0, 0, 0, 0, StormChunkIndex.MASK_ZOMBIE);
+        assertSame(outside, cursor.next());
+        cursor.end();
+        cursor.begin(0, 0, 1, 1, StormChunkIndex.MASK_ZOMBIE);
+        assertEquals(null, cursor.next());
+        assertEquals(1, cursor.culled());
+        cursor.end();
+    }
+
+    @Test
     void objectListGrowsAndClearsSlots() {
         StormObjectList list = new StormObjectList(2);
         for (int i = 0; i < 100; i++) {

@@ -254,13 +254,15 @@ public final class StormChunkIndex {
     }
 
     /**
-     * Walks the objects of an inclusive tile rectangle in place — no candidate list, no copy — and
-     * culls on the snapshot position stored beside each object, so an object outside the rectangle
+     * Walks an inclusive tile or chunk rectangle in place — no candidate list, no copy. Tile walks
+     * cull on the snapshot position stored beside each object, so an object outside the rectangle
      * costs one {@code long} read from a contiguous array and never a dereference. {@link #begin}
      * derives the covering chunk rectangle; {@link #next} returns the next object whose snapshot
      * tile lies inside the tile rectangle, or {@code null} when exhausted; {@link #culled} counts
      * the objects in the chunk rectangle that the tile test rejected. Not valid across {@link
      * StormChunkIndex#beginTick}; call {@link #end} when done so no world objects stay pinned.
+     * {@link #beginChunkRect} instead walks every candidate in the chosen chunks and preserves
+     * {@link StormChunkIndex#collectChunkRect}'s order, allowing capped queries to stop early.
      */
     public final class Cursor {
         private int cx0;
@@ -272,6 +274,7 @@ public final class StormChunkIndex {
         private int tileMinY;
         private int tileMaxX;
         private int tileMaxY;
+        private boolean filterTiles;
 
         private boolean active;
         private boolean scanAll;
@@ -294,11 +297,31 @@ public final class StormChunkIndex {
             this.tileMinY = tileMinY;
             this.tileMaxX = tileMaxX;
             this.tileMaxY = tileMaxY;
+            filterTiles = true;
+            beginChunks(
+                    chunkOf(tileMinX),
+                    chunkOf(tileMinY),
+                    chunkOf(tileMaxX),
+                    chunkOf(tileMaxY),
+                    typeMask);
+        }
+
+        /**
+         * Starts a walk over the inclusive chunk rectangle, in exactly the order returned by {@link
+         * StormChunkIndex#collectChunkRect}, without copying candidates or filtering tiles. Callers
+         * can stop early, then {@link #end} to release the current bucket references.
+         */
+        public void beginChunkRect(int cx0, int cy0, int cx1, int cy1, int typeMask) {
+            filterTiles = false;
+            beginChunks(cx0, cy0, cx1, cy1, typeMask);
+        }
+
+        private void beginChunks(int cx0, int cy0, int cx1, int cy1, int typeMask) {
             this.typeMask = typeMask;
-            cx0 = chunkOf(tileMinX);
-            cy0 = chunkOf(tileMinY);
-            cx1 = chunkOf(tileMaxX);
-            cy1 = chunkOf(tileMaxY);
+            this.cx0 = cx0;
+            this.cy0 = cy0;
+            this.cx1 = cx1;
+            this.cy1 = cy1;
             culled = 0;
             bucket = null;
             arr = null;
@@ -318,12 +341,14 @@ public final class StormChunkIndex {
             while (true) {
                 while (i < n) {
                     int k = i++;
-                    long p = pos[k];
-                    int tx = posX(p);
-                    int ty = posY(p);
-                    if (tx < tileMinX || tx > tileMaxX || ty < tileMinY || ty > tileMaxY) {
-                        culled++;
-                        continue;
+                    if (filterTiles) {
+                        long p = pos[k];
+                        int tx = posX(p);
+                        int ty = posY(p);
+                        if (tx < tileMinX || tx > tileMaxX || ty < tileMinY || ty > tileMaxY) {
+                            culled++;
+                            continue;
+                        }
                     }
                     return arr[k];
                 }
