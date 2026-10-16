@@ -124,6 +124,8 @@ import io.pzstorm.storm.patch.performance.AnimalSyncManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.AnimalVirtualRegisterMetricsPatch;
 import io.pzstorm.storm.patch.performance.AnimalZoneSpawnMetricsPatch;
 import io.pzstorm.storm.patch.performance.AnimalZonesUpdateVirtualAnimalsPatch;
+import io.pzstorm.storm.patch.performance.ModelCreateShaderCachePatch;
+import io.pzstorm.storm.patch.performance.ShaderManagerWarmCachePatch;
 import io.pzstorm.storm.patch.performance.AnimationPlayerRecorderIsActivePatch;
 import io.pzstorm.storm.patch.performance.AnimationVariableReferenceGetVariablePatch;
 import io.pzstorm.storm.patch.performance.BaseVehicleAlphaCheckSkipPatch;
@@ -462,6 +464,11 @@ public class StormClassTransformers {
             registerTransformer(new FBORenderCellRenderLayerHoistPatch());
             registerTransformer(new VehiclePartAnimSettledSkipPatch());
             if (!StormEnv.isStormServer()) {
+                if (Boolean.parseBoolean(
+                        System.getProperty("storm.experimental.clientperf.modelShaderCache", "true"))) {
+                    registerTransformer(new ShaderManagerWarmCachePatch());
+                    registerTransformer(new ModelCreateShaderCachePatch());
+                }
                 registerTransformer(new GLVertexBufferObjectPersistentMapPatch());
                 registerTransformer(new SpriteRendererFrameFencePatch());
                 if (Boolean.parseBoolean(
