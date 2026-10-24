@@ -18,13 +18,24 @@ public class PathfindNativeRemoveChunkPatch extends StormClassTransformer {
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
+        // Woven this way round the skip ends up outermost: a remove skipped for an evicted warm
+        // cell (StormCellWarmer.evictLiteReconnect) is not timed, every remove that runs is.
         return builder.visit(
-                Advice.to(
-                                typePool.describe(PKG + "PathfindNativeRemoveChunkAdvice")
-                                        .resolve(),
-                                locator)
-                        .on(
-                                ElementMatchers.named("removeChunkFromWorld")
-                                        .and(ElementMatchers.takesArguments(1))));
+                        Advice.to(
+                                        typePool.describe(
+                                                        PKG + "PathfindNativeEvictRemoveSkipAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("removeChunkFromWorld")
+                                                .and(ElementMatchers.takesArguments(1))))
+                .visit(
+                        Advice.to(
+                                        typePool.describe(PKG + "PathfindNativeRemoveChunkAdvice")
+                                                .resolve(),
+                                        locator)
+                                .on(
+                                        ElementMatchers.named("removeChunkFromWorld")
+                                                .and(ElementMatchers.takesArguments(1))));
     }
 }

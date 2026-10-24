@@ -358,6 +358,7 @@ import io.pzstorm.storm.patch.performance.ZombieAuthStridePatch;
 import io.pzstorm.storm.patch.performance.ZombieGroupManagerPreupdatePatch;
 import io.pzstorm.storm.patch.performance.ZombiePopManRemoveChunkPatch;
 import io.pzstorm.storm.patch.performance.ZombieRainWanderPatch;
+import io.pzstorm.storm.patch.performance.ZombieSyncRelevanceFirstPatch;
 import io.pzstorm.storm.patch.performance.ZombieVehicleOcclusionPatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioSavePatch;
 import io.pzstorm.storm.patch.performance.ZomboidRadioUpdatePatch;
@@ -596,6 +597,7 @@ public class StormClassTransformers {
             registerTransformer(new NetworkZombieManagerAuthPatch());
             registerTransformer(new ZombieAuthScanFastPathPatch());
             registerTransformer(new NetworkZombiePackerAuthPassPatch());
+            registerTransformer(new ZombieSyncRelevanceFirstPatch());
             registerTransformer(new AnimalSyncManagerUpdatePatch());
             registerTransformer(new LuaMainloopPatch());
             registerTransformer(new IsoWorldUpdatePatch());

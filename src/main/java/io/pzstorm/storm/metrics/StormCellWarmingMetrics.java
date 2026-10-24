@@ -100,6 +100,14 @@ public final class StormCellWarmingMetrics {
                                     + " instead of one likely to be rewarmed moments later.")
                     .register(StormPrometheus.registry());
 
+    private static final Counter EVICT_PATHFIND_SKIPS =
+            Counter.builder()
+                    .name("storm_cell_warm_evict_pathfind_skip_total")
+                    .help(
+                            "Chunks of evicted warm cells that skipped the native pathfinder"
+                                    + " re-add and the remove the unload sends right after it.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge WARM_OVER_CAP =
             Gauge.builder()
                     .name("storm_cell_warm_over_cap")
@@ -201,6 +209,10 @@ public final class StormCellWarmingMetrics {
 
     public static void incEvictNearSkips(long count) {
         EVICT_NEAR_SKIPS.inc(count);
+    }
+
+    public static void incEvictPathfindSkips() {
+        EVICT_PATHFIND_SKIPS.inc();
     }
 
     public static void setWarmOverCap(int count) {

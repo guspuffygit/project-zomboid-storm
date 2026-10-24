@@ -121,6 +121,20 @@ public final class StormCellWarmer {
     private static final Set<ServerMap.ServerCell> RELEVENT_SET =
             Collections.newSetFromMap(new IdentityHashMap<>());
 
+    // Chunks of the cell being evicted that evictLiteReconnect did not re-add to the native
+    // pathfinder, so the remove its immediate Unload sends for each of them is skipped as well
+    // (consumeEvictPathfindSkip). Non-empty only between evictLiteReconnect and the end of that
+    // cell's Unload inside one evictOverBudget iteration; emptied in a finally. Main thread only.
+    private static final Set<IsoChunk> EVICT_PATHFIND_SKIP =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+
+    // Set by the first woven PathfindNative.removeChunkFromWorld (consumeEvictPathfindSkip). Until
+    // then evictLiteReconnect keeps the re-add, so if the skip advice never wove (a game update
+    // moved the method) every remove the unload sends still has its balancing add. A cell sends
+    // that same remove for each of its chunks in warm(), before it can be evicted, so on a working
+    // weave this is always set in time.
+    private static boolean evictPathfindSkipArmed;
+
     // Eviction policy (see evictOverBudget). The strict LRU head is often a cell a player is
     // pacing right next to — evicting it is the rewarm thrash this feature exists to avoid — so
     // the victim search scans the first EVICT_SCAN_DEPTH LRU-ordered candidates for one with no
@@ -292,6 +306,21 @@ public final class StormCellWarmer {
      */
     public static boolean isWarmedVehicle(Object obj) {
         return obj instanceof BaseVehicle vehicle && WARMED_VEHICLES.contains(vehicle);
+    }
+
+    /**
+     * Asked by {@code PathfindNativeEvictRemoveSkipAdvice} on every native {@code
+     * removeChunkFromWorld}: {@code true} (skip that remove) exactly once for a chunk {@link
+     * #evictLiteReconnect} left out of the pathfinder, {@code false} for everything else. The set
+     * is empty outside an eviction, so every other caller pays one {@code isEmpty()}.
+     */
+    public static boolean consumeEvictPathfindSkip(IsoChunk chunk) {
+        evictPathfindSkipArmed = true;
+        if (EVICT_PATHFIND_SKIP.isEmpty() || !EVICT_PATHFIND_SKIP.remove(chunk)) {
+            return false;
+        }
+        StormCellWarmingMetrics.incEvictPathfindSkips();
+        return true;
     }
 
     /**
@@ -639,10 +668,28 @@ public final class StormCellWarmer {
      * cell.Unload()}, so only the state that unload's own teardown consumes is re-attached.
      *
      * <ul>
-     *   <li>The animal population manager and the pathfinder are re-added per chunk — unload's
-     *       {@code removeChunkFromWorld} calls must stay balanced against an add (the native
-     *       pathfind side tracks loaded chunks, and the animal manager virtualizes a chunk's
-     *       population on remove).
+     *   <li>The animal population manager is re-added per chunk: unload's {@code
+     *       removeChunkFromWorld} virtualizes the chunk's population on remove, so it must stay
+     *       balanced against an add.
+     *   <li>The native pathfinder is not re-added. The re-add only existed to balance the {@code
+     *       PathfindNative.removeChunkFromWorld} that {@code IsoChunk.removeFromWorld} sends
+     *       unconditionally, and it is the expensive half: a {@code ChunkUpdateTask} serializes
+     *       every square of the chunk on the main thread, and the native thread then rebuilds it,
+     *       only for the remove queued right behind it to drop it again. Instead each chunk that
+     *       would have been re-added goes into {@code EVICT_PATHFIND_SKIP}, and that one remove is
+     *       skipped as it arrives ({@link #consumeEvictPathfindSkip}). The native side then sees
+     *       exactly what it sees for a cell that stays warm: the remove {@code warm()} sent, and
+     *       nothing after it. Nothing about native {@code removeChunk} on an absent chunk is
+     *       assumed, because no such call is made. Java-side state is unchanged too: the add's only
+     *       other effect is {@code loadedBits |= 2}, a bit the remove never clears, so it is still
+     *       set from the chunk's original load. A {@code SoftReset} chunk, and every chunk a failed
+     *       rewarm already re-added (before the cursor), keep their remove exactly as before.
+     *       {@code PolygonalMap2} (non-native) keeps the re-add, and so does every eviction until a
+     *       woven remove has been seen ({@code evictPathfindSkipArmed}), which keeps an unwoven
+     *       skip advice from ever leaving a remove unbalanced. Re-validate on game update: {@code
+     *       IsoChunk.removeFromWorld} must still send exactly one pathfinder remove per chunk, and
+     *       {@code PathfindNative.addChunkToWorld} must still do nothing but queue the task and set
+     *       that bit.
      *   <li>{@code ZombiePopulationManager.addChunkToWorld} is skipped. The native side of an
      *       unbalanced zombie remove is a harmless bitmask clear ({@code Cell::setChunkLoaded}
      *       returns before any cell touch), and the Java side only virtualizes real zombies on the
@@ -686,7 +733,11 @@ public final class StormCellWarmer {
             if (chunk != null && chunk.jobType != IsoChunk.JobType.SoftReset) {
                 AnimalPopulationManager.getInstance().addChunkToWorld(chunk);
                 if (PathfindNative.useNativeCode) {
-                    PathfindNative.instance.addChunkToWorld(chunk);
+                    if (evictPathfindSkipArmed) {
+                        EVICT_PATHFIND_SKIP.add(chunk);
+                    } else {
+                        PathfindNative.instance.addChunkToWorld(chunk);
+                    }
                 } else {
                     PolygonalMap2.instance.addChunkToWorld(chunk);
                 }
@@ -799,7 +850,13 @@ public final class StormCellWarmer {
             int x = cell.wx - serverMap.getMinX();
             int y = cell.wy - serverMap.getMinY();
             int width = serverMap.getMaxX() - serverMap.getMinX() + 1;
-            cell.Unload();
+            try {
+                cell.Unload();
+            } finally {
+                // A skip this Unload did not consume (a chunk whose removeFromWorld threw before
+                // its pathfinder remove) must not swallow a later, unrelated remove of that chunk.
+                EVICT_PATHFIND_SKIP.clear();
+            }
             serverMap.cellMap[y * width + x] = null;
             serverMap.loadedCells.remove(cell);
             evicted = true;

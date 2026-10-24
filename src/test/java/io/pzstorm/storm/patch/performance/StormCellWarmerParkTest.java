@@ -616,7 +616,7 @@ class StormCellWarmerParkTest implements UnitTest {
         }
     }
 
-    private static <T> T bare(Class<T> type) throws Exception {
+    static <T> T bare(Class<T> type) throws Exception {
         Constructor<?> ctor =
                 ReflectionFactory.getReflectionFactory()
                         .newConstructorForSerialization(
@@ -624,7 +624,7 @@ class StormCellWarmerParkTest implements UnitTest {
         return type.cast(ctor.newInstance());
     }
 
-    private static void set(Object target, Class<?> declaring, String field, Object value)
+    static void set(Object target, Class<?> declaring, String field, Object value)
             throws Exception {
         Field f = declaring.getDeclaredField(field);
         f.setAccessible(true);
@@ -643,7 +643,7 @@ class StormCellWarmerParkTest implements UnitTest {
         return cell;
     }
 
-    private static IsoChunk bareChunk(int wx, int wy) throws Exception {
+    static IsoChunk bareChunk(int wx, int wy) throws Exception {
         IsoChunk chunk = bare(IsoChunk.class);
         chunk.wx = wx;
         chunk.wy = wy;
@@ -685,7 +685,7 @@ class StormCellWarmerParkTest implements UnitTest {
         m.invoke(cell);
     }
 
-    private static byte[] classBytes(String resource) throws Exception {
+    static byte[] classBytes(String resource) throws Exception {
         try (InputStream is =
                 StormCellWarmerParkTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertNotNull(is, resource + " must be on the test classpath");
@@ -694,7 +694,7 @@ class StormCellWarmerParkTest implements UnitTest {
     }
 
     /** Every {@code owner.name} invoked inside {@code method}, in bytecode order. */
-    private static List<String> callSequence(byte[] classBytes, String method) {
+    static List<String> callSequence(byte[] classBytes, String method) {
         List<String> sequence = new ArrayList<>();
         new ClassReader(classBytes)
                 .accept(
@@ -727,7 +727,7 @@ class StormCellWarmerParkTest implements UnitTest {
     }
 
     /** Invocations of {@code owner.name} inside {@code method}, any invoke opcode. */
-    private static int calls(byte[] classBytes, String method, String owner, String name) {
+    static int calls(byte[] classBytes, String method, String owner, String name) {
         int[] count = {0};
         new ClassReader(classBytes)
                 .accept(
