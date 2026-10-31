@@ -28,11 +28,13 @@ import zombie.core.skinnedmodel.visual.ItemVisuals;
  * syncModel} is the only caller of {@code setModelData}.
  *
  * <p>Keeping one {@code ModelInstance} across frames means the main thread and the render thread
- * share it, where vanilla hands each frame a fresh pooled instance. The one field both threads
- * write is {@code ModelInstance.targetDepth}: {@code AnimatedModel.initRenderData} resets it to 0.5
- * on the main thread every frame, and {@code WorldModelCamera.Begin} writes the real depth on the
- * render thread just before the shader reads it. When the main-thread reset lands between those
- * two, the mannequin draws at the wrong depth for that frame and vanishes behind the floor. {@link
+ * share it, where vanilla hands each frame a fresh pooled instance. Both threads already write
+ * {@code renderRefCount} unsynchronised on a character's kept {@code ModelSlot} instance, and this
+ * adds no new kind of risk to it. The field that needs handling is {@code
+ * ModelInstance.targetDepth}: {@code AnimatedModel.initRenderData} resets it to 0.5 on the main
+ * thread every frame, and {@code WorldModelCamera.Begin} writes the real depth on the render thread
+ * just before the shader reads it. When the main-thread reset lands between those two, the
+ * mannequin draws at the wrong depth for that frame and vanishes behind the floor. {@link
  * #setDefaultTargetDepth} stands in for the main-thread reset and skips it for instances the gate
  * keeps, so only the render thread touches the field. The gate stays vanilla until that
  * substitution is confirmed woven ({@link #setDepthWriteGuarded}).

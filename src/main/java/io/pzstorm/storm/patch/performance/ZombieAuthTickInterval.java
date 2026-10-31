@@ -5,27 +5,25 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.metrics.StormPerformanceSandboxMetrics;
 import zombie.MovingObjectUpdateScheduler;
 import zombie.characters.IsoZombie;
-import zombie.characters.component.NetworkZombieComponent;
-import zombie.characters.ecs.ECSComponent;
 import zombie.network.GameServer;
 
 /**
- * Per-zombie tick stride for the <em>unowned</em> path of {@code
- * NetworkZombieManager.updateAuth(IsoZombie)} on the dedicated server.
+ * Per-zombie tick stride for {@code NetworkZombieManager.updateAuth(IsoZombie)} on the dedicated
+ * server.
  *
- * <p>Vanilla gates the ownership rescan on {@code now - lastChangeOwner >= 2000ms}, but the gate is
- * bypassed whenever {@code zombie.getOwner() == null} — and {@code lastChangeOwner} is only stamped
- * on an actual owner <em>change</em>. A zombie that stays unowned (no player in relevant range)
- * therefore re-runs the full O(connections × players) relevance scan every single frame for every
- * zombie in the list. With stride N, an unowned zombie scans only on ticks where {@code
- * (frameCounter - onlineID) mod N == 0}, spreading the population evenly across the cycle.
+ * <p>Vanilla gates the ownership rescan on {@code now - lastChangeOwner >= 2000ms}, but {@code
+ * lastChangeOwner} is only stamped on an actual owner <em>change</em>, so the gate holds for 2
+ * seconds after a handoff and is then open for good. An unowned zombie bypasses it altogether.
+ * Either way a zombie re-runs the relevance scan, O(connections * players), every single frame.
+ * With stride N, a zombie scans only on ticks where {@code (frameCounter - onlineID) mod N == 0},
+ * spreading the population evenly across the cycle.
  *
- * <p>Owned zombies always fall through to vanilla untouched — their cadence stays governed by the
- * 2-second gate, so ownership handoff between nearby players is unaffected. The only behavioral
- * delta is that a freshly relevant unowned zombie can wait up to N-1 extra ticks before being
- * assigned an owner; the ceiling of {@value #MAX_TICK_INTERVAL} bounds that at 1.5&nbsp;s on a
- * vanilla 10-TPS server. 0/disable is deliberately not offered: never scanning would leave newly
- * loaded zombies permanently unsimulated.
+ * <p>Owned and unowned zombies take the same stride, so the skip needs no ownership probe: on an
+ * off tick it costs one field read per zombie. The only behavioral delta is that any change of
+ * owner, a freshly relevant zombie's first owner included, can land up to N-1 ticks later. The
+ * ceiling of {@value #MAX_TICK_INTERVAL} bounds that at 1.5&nbsp;s on a vanilla 10-TPS server,
+ * inside the 2 seconds vanilla already holds an owner after a change. 0/disable is deliberately not
+ * offered: never scanning would leave newly loaded zombies permanently unsimulated.
  *
  * <p>The live value is mutable via {@link #setTickInterval(int)}; the {@code
  * Storm.ZombieAuthTickInterval} sandbox option feeds through that setter at {@code
@@ -33,7 +31,7 @@ import zombie.network.GameServer;
  */
 public final class ZombieAuthTickInterval {
 
-    /** Vanilla — every unowned zombie rescans ownership every tick. */
+    /** Vanilla: a zombie past the 2 second gate rescans ownership every tick. */
     public static final int DEFAULT_TICK_INTERVAL = 1;
 
     /** Rescans can be strided but never disabled. */
@@ -43,16 +41,6 @@ public final class ZombieAuthTickInterval {
     public static final int MAX_TICK_INTERVAL = 16;
 
     private static volatile int currentTickInterval = DEFAULT_TICK_INTERVAL;
-
-    /**
-     * The canonical component-map key for {@code NetworkZombieComponent} — the same superclass walk
-     * {@code ECSEntity.tryGetECSComponent} runs on every call ({@code ECSComponent.getECSClass}),
-     * done once. Lets {@link #shouldSkipThisTick} replicate {@code IsoZombie.getOwner() == null} as
-     * a single map probe plus a field read (ATF profile 2026-08-27: the full {@code getOwner()}
-     * chain on the skip path was 0.89% of main).
-     */
-    private static final Class<? extends ECSComponent> NETWORK_COMPONENT_KEY =
-            ECSComponent.getECSClass(NetworkZombieComponent.class);
 
     private ZombieAuthTickInterval() {}
 
@@ -88,7 +76,7 @@ public final class ZombieAuthTickInterval {
 
     /**
      * Called by {@code NetworkZombieAuthStrideAdvice.onEnter}. Returns {@code true} when the
-     * vanilla {@code updateAuth} body must be skipped this tick. Owned zombies never skip.
+     * vanilla {@code updateAuth} body must be skipped this tick.
      */
     public static boolean shouldSkipThisTick(IsoZombie zombie) {
         if (!GameServer.server) {
@@ -99,21 +87,7 @@ public final class ZombieAuthTickInterval {
             return false;
         }
         long frame = MovingObjectUpdateScheduler.instance.getFrameCounter();
-        if (shouldRunForZombie(stride, frame, zombie.getOnlineID())) {
-            // This zombie's phase tick — vanilla runs whether or not it has an owner.
-            return false;
-        }
-        // Probe ownership only on skip-candidate ticks: 42.20.0 turned getOwner() into an
-        // ECS HashMap lookup (getOnlineID() is still a field read). Owned zombies never
-        // skip — vanilla's 2s lastChangeOwner gate already bounds their scan rate.
-        // Exact replica of getOwner() == null without its per-call overhead: vanilla is
-        // tryGetECSComponent(NetworkZombieComponent.class) — a getECSClass superclass walk,
-        // the map get, an instanceof-based tryCastTo, and a PZOptional hop to getAuthOwner.
-        // The walk result is cached above; tryCastTo returns null for a non-instance, which
-        // the instanceof mirrors.
-        ECSComponent component = zombie.getECSComponentMap().get(NETWORK_COMPONENT_KEY);
-        return !(component instanceof NetworkZombieComponent networkZombieComponent)
-                || networkZombieComponent.getAuthOwner() == null;
+        return !shouldRunForZombie(stride, frame, zombie.getOnlineID());
     }
 
     private static int clamp(int requested) {

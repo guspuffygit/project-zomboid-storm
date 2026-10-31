@@ -5,6 +5,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 import io.pzstorm.storm.advice.mannequin.StormMannequinModelData;
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.MemberSubstitution;
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -71,25 +72,23 @@ public class AnimatedModelTargetDepthPatch extends StormClassTransformer {
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
-        try {
-            return builder.visit(
-                    MemberSubstitution.relaxed()
-                            .field(
-                                    ElementMatchers.named("targetDepth")
-                                            .and(
-                                                    ElementMatchers.isDeclaredBy(
-                                                            ElementMatchers.named(MODEL_INSTANCE))))
-                            .onWrite()
-                            .replaceWith(
-                                    StormMannequinModelData.class.getDeclaredMethod(
-                                            "setDefaultTargetDepth",
-                                            zombie.core.skinnedmodel.model.ModelInstance.class,
-                                            float.class))
-                            .on(
-                                    ElementMatchers.named(METHOD)
-                                            .and(ElementMatchers.takesArguments(3))));
-        } catch (NoSuchMethodException e) {
-            throw new RuntimeException("StormMannequinModelData helper signature changed", e);
-        }
+        // Through the pool, never reflection: the helper declares a method taking AnimatedModel,
+        // the class being defined right now, and reflecting on it would re-enter this load.
+        MethodDescription gate =
+                typePool.describe(IsoMannequinModelDataPatch.HELPER)
+                        .resolve()
+                        .getDeclaredMethods()
+                        .filter(ElementMatchers.named("setDefaultTargetDepth"))
+                        .getOnly();
+        return builder.visit(
+                MemberSubstitution.relaxed()
+                        .field(
+                                ElementMatchers.named("targetDepth")
+                                        .and(
+                                                ElementMatchers.isDeclaredBy(
+                                                        ElementMatchers.named(MODEL_INSTANCE))))
+                        .onWrite()
+                        .replaceWith(gate)
+                        .on(ElementMatchers.named(METHOD).and(ElementMatchers.takesArguments(3))));
     }
 }
