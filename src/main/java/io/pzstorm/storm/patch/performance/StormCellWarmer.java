@@ -144,6 +144,8 @@ public final class StormCellWarmer {
     private static final int EVICT_SCAN_DEPTH = 8;
     private static final int EVICT_NEAR_MARGIN = 2;
     private static final int EVICT_MAX_PER_TICK = 4;
+    // Tries per eviction before a cell that keeps throwing is left where it is.
+    private static final int EVICT_UNLOAD_ATTEMPTS = 3;
 
     // A cell that throws on rewarm would otherwise retry — and log — on every tick for as long as
     // a player stands next to it. Back the retry off linearly to a ten-second ceiling instead.
@@ -850,12 +852,16 @@ public final class StormCellWarmer {
             int x = cell.wx - serverMap.getMinX();
             int y = cell.wy - serverMap.getMinY();
             int width = serverMap.getMaxX() - serverMap.getMinX() + 1;
+            boolean unloaded;
             try {
-                cell.Unload();
+                unloaded = unloadEvicted(cell::Unload, cell.wx, cell.wy);
             } finally {
                 // A skip this Unload did not consume (a chunk whose removeFromWorld threw before
                 // its pathfinder remove) must not swallow a later, unrelated remove of that chunk.
                 EVICT_PATHFIND_SKIP.clear();
+            }
+            if (!unloaded) {
+                continue;
             }
             serverMap.cellMap[y * width + x] = null;
             serverMap.loadedCells.remove(cell);
@@ -872,6 +878,43 @@ public final class StormCellWarmer {
         }
         StormCellWarmingMetrics.setWarmOverCap(Math.max(0, WARM_CELLS.size() - max));
         return pathfindPaused;
+    }
+
+    /**
+     * Runs an evicted cell's {@code Unload}, retrying in place if it throws. A throw stops part way
+     * through one chunk, with the chunks before it gone and saved. Vanilla's postupdate finishes
+     * such a cell by retrying on its next tick, but an evicted cell has already left the warm set,
+     * so here the next tick would warm it again and leave it half unloaded for a whole rotation of
+     * the queue, with a returning player finding no squares on its finished chunks.
+     *
+     * <p>Called inside the eviction's {@code try}: a retry still has chunks to reach, so the
+     * pathfinder skips have to outlive it. Nothing escapes, so the caller keeps its {@code
+     * pathfindPaused} flag and the tick's other evictions still run.
+     *
+     * <p>When the tries run out the cell must stay in {@code cellMap} and {@code loadedCells}: the
+     * chunk that threw has no save job yet, so dropping the cell would lose it.
+     *
+     * @return true when the unload finished
+     */
+    static boolean unloadEvicted(Runnable unload, int wx, int wy) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                unload.run();
+                return true;
+            } catch (Throwable t) {
+                StormCellWarmingMetrics.incEvictUnloadFailures();
+                StormLogger.LOGGER.error(
+                        "StormCellWarmer eviction unload failed for cell {},{} (attempt {} of {})",
+                        wx,
+                        wy,
+                        attempt,
+                        EVICT_UNLOAD_ATTEMPTS,
+                        t);
+                if (attempt == EVICT_UNLOAD_ATTEMPTS) {
+                    return false;
+                }
+            }
+        }
     }
 
     /**

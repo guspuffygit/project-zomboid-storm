@@ -132,9 +132,9 @@ class StormCellWarmerEvictPathfindTest implements UnitTest {
     @Test
     void theSkipSetIsEmptiedAfterEveryEvictionUnloadEvenIfItThrows() throws Exception {
         List<String> sequence = callSequence(classBytes(WARMER + ".class"), "evictOverBudget");
-        int unload = sequence.indexOf("zombie/network/ServerMap$ServerCell.Unload");
+        int unload = sequence.indexOf(WARMER + ".unloadEvicted");
         assertTrue(unload >= 0);
-        assertEquals(unload, sequence.lastIndexOf("zombie/network/ServerMap$ServerCell.Unload"));
+        assertEquals(unload, sequence.lastIndexOf(WARMER + ".unloadEvicted"));
         List<String> after = sequence.subList(unload + 1, sequence.size());
         assertEquals(
                 2,
