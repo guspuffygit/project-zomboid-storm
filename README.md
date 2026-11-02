@@ -50,4 +50,15 @@ See [What Storm Changes](docs/what-storm-changes.md) for the full list.
       <br><br>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="640">
+      <br>
+      <sub><b>SPONSORED HOSTING</b></sub>
+      <br><br>
+      <a href="https://indifferentbroccoli.com/?fpr=gus"><img alt="Indifferent Broccoli — Project Zomboid server hosting" src="https://d2gdx5nv84sdx2.cloudfront.net/uploads/jh35snrd/marketing_asset/banner/91584664/IB_BANNER(2).gif" width="640"></a>
+      <br>
+      <sub>Project Zomboid server hosting by <a href="https://indifferentbroccoli.com/?fpr=gus">Indifferent Broccoli</a></sub>
+      <br><br>
+    </td>
+  </tr>
 </table>

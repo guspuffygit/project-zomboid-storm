@@ -26,9 +26,10 @@ import javax.swing.JPanel;
 /**
  * Sponsor block for the bottom of the detail pane. The head sponsor, After The Fall (PvPvE), gets
  * the card: a Discord invite link and a one-click "Play on ATF" profile setup (the window owns the
- * profile flow; see the constructor). Supporting sponsors share one small text line under the card.
+ * profile flow; see the constructor). Supporting sponsors share one small text line under the card,
+ * and the sponsored hosting provider gets its banner below that ({@link SponsorBanner}).
  * Deliberately no live player count: polling the server would send the user's IP to a third party
- * they never chose, so the block goes on the network only when a link is clicked.
+ * they never chose. The banner download is the block's only unprompted network request.
  */
 public final class SponsorPanel extends JPanel {
 
@@ -120,7 +121,25 @@ public final class SponsorPanel extends JPanel {
         supporting.add(supportingKicker);
         supporting.add(Box.createHorizontalStrut(8));
         supporting.add(supportingName);
-        add(supporting, BorderLayout.SOUTH);
+
+        JLabel hostingKicker = new JLabel("SPONSORED HOSTING");
+        hostingKicker.setFont(StormTheme.displayFont(Font.BOLD, 10f));
+        hostingKicker.setForeground(StormTheme.TEXT_DIM);
+        hostingKicker.setBorder(BorderFactory.createEmptyBorder(0, 1, 0, 0));
+
+        JPanel south = new JPanel();
+        south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));
+        south.setOpaque(false);
+        SponsorBanner banner = new SponsorBanner(() -> openLink(SponsorBanner.LINK_URL));
+        for (JComponent c : new JComponent[] {supporting, hostingKicker, banner}) {
+            c.setAlignmentX(LEFT_ALIGNMENT);
+        }
+        south.add(supporting);
+        south.add(Box.createVerticalStrut(12));
+        south.add(hostingKicker);
+        south.add(Box.createVerticalStrut(5));
+        south.add(banner);
+        add(south, BorderLayout.SOUTH);
     }
 
     @Override
