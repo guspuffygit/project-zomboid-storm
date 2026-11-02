@@ -2,6 +2,7 @@ package io.pzstorm.storm.advice.persistentvbo;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
@@ -16,7 +17,7 @@ import org.lwjgl.opengl.GL32;
  * Exercises {@link FrameFenceRing} against a fake {@link SyncGl}: one fence per frame, waits only
  * when a slot's frame is past the watermark, the watermark advancing on signalled waits, an
  * in-frame reuse forcing an immediate fence, ring recycling waiting before delete, and a timeout
- * being tolerated exactly once in the log but never re-waited.
+ * never being accepted as proof that the GPU has finished reading a buffer.
  */
 class FrameFenceRingTest implements UnitTest {
 
@@ -26,12 +27,15 @@ class FrameFenceRingTest implements UnitTest {
     private static final class FakeGl implements SyncGl {
         long nextHandle = 100;
         int waitResult = GL32.GL_ALREADY_SIGNALED;
+        boolean failAllocation;
+        boolean throwOnWait;
         final List<Long> waited = new ArrayList<>();
         final List<Long> deleted = new ArrayList<>();
         final Set<Long> live = new HashSet<>();
 
         @Override
         public long fenceSync() {
+            if (failAllocation) return 0;
             long handle = nextHandle++;
             live.add(handle);
             return handle;
@@ -42,6 +46,7 @@ class FrameFenceRingTest implements UnitTest {
             assertTrue(live.contains(fence), "waited on a fence that was never created/deleted");
             assertEquals(TIMEOUT, timeoutNanos);
             waited.add(fence);
+            if (throwOnWait) throw new IllegalStateException("lost GL context");
             return waitResult;
         }
 
@@ -146,19 +151,84 @@ class FrameFenceRingTest implements UnitTest {
     }
 
     @Test
-    void timeoutIsCountedAndTreatedAsComplete() {
+    void timeoutDoesNotAdvanceWatermarkOrDeleteRingFence() {
         FakeGl gl = new FakeGl();
         gl.waitResult = GL32.GL_TIMEOUT_EXPIRED;
         FrameFenceRing ring = new FrameFenceRing(gl, RING, TIMEOUT);
         ring.endFrame();
         ring.endFrame();
 
-        ring.waitForFrame(0);
+        assertThrows(IllegalStateException.class, () -> ring.waitForFrame(0));
         assertEquals(1, ring.timeouts());
-        assertEquals(0, ring.completedThroughFrame());
+        assertEquals(-1, ring.completedThroughFrame());
+        assertTrue(gl.deleted.isEmpty());
 
+        gl.waitResult = GL32.GL_CONDITION_SATISFIED;
         ring.waitForFrame(0);
-        assertEquals(1, gl.waited.size(), "a timed-out frame is not waited on again");
+        assertEquals(2, gl.waited.size(), "completion still requires a successful wait");
+        assertEquals(0, ring.completedThroughFrame());
         assertFalse(gl.live.isEmpty());
+    }
+
+    @Test
+    void failedOrUnknownWaitStatusDoesNotMarkFrameComplete() {
+        for (int status : new int[] {GL32.GL_WAIT_FAILED, 0}) {
+            FakeGl gl = new FakeGl();
+            gl.waitResult = status;
+            FrameFenceRing ring = new FrameFenceRing(gl, RING, TIMEOUT);
+            ring.endFrame();
+
+            assertThrows(IllegalStateException.class, () -> ring.waitForFrame(0));
+            assertEquals(-1, ring.completedThroughFrame());
+            assertEquals(1, ring.currentFrame());
+            assertEquals(Set.of(100L), gl.live);
+        }
+    }
+
+    @Test
+    void timeoutDuringRecyclingPreservesOldFenceAndFrame() {
+        FakeGl gl = new FakeGl();
+        FrameFenceRing ring = new FrameFenceRing(gl, RING, TIMEOUT);
+        for (int i = 0; i < RING; i++) ring.endFrame();
+        gl.waitResult = GL32.GL_TIMEOUT_EXPIRED;
+
+        assertThrows(IllegalStateException.class, ring::endFrame);
+        assertEquals(RING, ring.currentFrame());
+        assertEquals(-1, ring.completedThroughFrame());
+        assertEquals(RING, gl.live.size());
+        assertTrue(gl.deleted.isEmpty());
+        assertEquals(104, gl.nextHandle, "no new fence may replace the unsignaled fence");
+    }
+
+    @Test
+    void failedInFrameWaitAlwaysDeletesItsTemporaryFence() {
+        for (boolean throwOnWait : new boolean[] {false, true}) {
+            FakeGl gl = new FakeGl();
+            gl.waitResult = GL32.GL_TIMEOUT_EXPIRED;
+            gl.throwOnWait = throwOnWait;
+            FrameFenceRing ring = new FrameFenceRing(gl, RING, TIMEOUT);
+            ring.endFrame();
+
+            assertThrows(IllegalStateException.class, () -> ring.waitForFrame(1));
+            assertEquals(-1, ring.completedThroughFrame());
+            assertEquals(1, ring.currentFrame());
+            assertEquals(List.of(101L), gl.deleted);
+            assertEquals(Set.of(100L), gl.live);
+        }
+    }
+
+    @Test
+    void zeroFenceHandleNeverAdvancesFrameOrCompletion() {
+        FakeGl gl = new FakeGl();
+        gl.failAllocation = true;
+        FrameFenceRing ring = new FrameFenceRing(gl, RING, TIMEOUT);
+
+        assertThrows(IllegalStateException.class, ring::endFrame);
+        assertThrows(IllegalStateException.class, () -> ring.waitForFrame(0));
+        assertEquals(0, ring.currentFrame());
+        assertEquals(-1, ring.completedThroughFrame());
+        assertTrue(gl.waited.isEmpty());
+        assertTrue(gl.deleted.isEmpty());
+        assertTrue(gl.live.isEmpty());
     }
 }
