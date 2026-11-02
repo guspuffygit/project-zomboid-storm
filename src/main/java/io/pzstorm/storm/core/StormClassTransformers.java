@@ -58,6 +58,7 @@ import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.ContainerHatchPositionFixPatch;
 import io.pzstorm.storm.patch.fixes.CoopHatchPositionFixPatch;
 import io.pzstorm.storm.patch.fixes.DebugLogStreamFormatPatch;
+import io.pzstorm.storm.patch.fixes.EntityIdCollisionPatch;
 import io.pzstorm.storm.patch.fixes.GameServerStartPMChatPatch;
 import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.HutchDirtRateFixPatch;
@@ -678,6 +679,7 @@ public class StormClassTransformers {
             registerTransformer(new ServerTickPatch());
             registerTransformer(new MainLoopDrainCapPatch());
             registerTransformer(new IsoObjectIDAllocateFixPatch());
+            registerTransformer(new EntityIdCollisionPatch());
             registerTransformer(new ReceiveSandboxOptionsPatch());
             registerTransformer(new IsoZombieUpdateFixPatch());
             registerTransformer(new IsoAnimalRegistryFixPatch());

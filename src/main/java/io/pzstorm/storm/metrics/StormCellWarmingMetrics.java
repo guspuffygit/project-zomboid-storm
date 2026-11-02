@@ -108,6 +108,15 @@ public final class StormCellWarmingMetrics {
                                     + " re-add and the remove the unload sends right after it.")
                     .register(StormPrometheus.registry());
 
+    private static final Counter EVICT_UNLOAD_FAILURES =
+            Counter.builder()
+                    .name("storm_cell_warm_evict_unload_failures_total")
+                    .help(
+                            "Attempts to unload an evicted warm cell that threw. Each one leaves"
+                                    + " the cell part way through a chunk; eviction retries in"
+                                    + " place before leaving the cell where it is.")
+                    .register(StormPrometheus.registry());
+
     private static final Gauge WARM_OVER_CAP =
             Gauge.builder()
                     .name("storm_cell_warm_over_cap")
@@ -213,6 +222,10 @@ public final class StormCellWarmingMetrics {
 
     public static void incEvictPathfindSkips() {
         EVICT_PATHFIND_SKIPS.inc();
+    }
+
+    public static void incEvictUnloadFailures() {
+        EVICT_UNLOAD_FAILURES.inc();
     }
 
     public static void setWarmOverCap(int count) {
