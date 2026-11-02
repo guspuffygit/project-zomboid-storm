@@ -398,7 +398,7 @@ public class StormClassTransformers {
 
     private static final Map<String, List<StormClassTransformer>> TRANSFORMERS = new HashMap<>();
 
-    /** Class names for which {@link #applyAll} has actually applied at least one transformer. */
+    /** Class names for which {@link #applyAll} has applied every registered transformer. */
     private static final Set<String> TRANSFORMED_CLASSES = ConcurrentHashMap.newKeySet();
 
     static {
@@ -927,7 +927,7 @@ public class StormClassTransformers {
         return loaded;
     }
 
-    /** Class names for which {@link #applyAll} has applied at least one transformer. */
+    /** Class names for which {@link #applyAll} has applied every registered transformer. */
     public static Set<String> getTransformedClasses() {
         return Collections.unmodifiableSet(TRANSFORMED_CLASSES);
     }
@@ -949,8 +949,15 @@ public class StormClassTransformers {
         return TRANSFORMERS.getOrDefault(className, Collections.emptyList());
     }
 
+    /**
+     * Applies every transformer registered for {@code className}, in order. On a server a failure
+     * still fails the class load, so a missing fix is seen at boot. On a client it is logged and
+     * the class keeps the bytes of the other transformers, so a game update that moves one patch's
+     * target costs that patch and not the class.
+     */
     public static byte[] applyAll(String className, byte[] rawClass) {
         List<StormClassTransformer> transformers = getRegistered(className);
+        boolean allApplied = true;
         for (StormClassTransformer transformer : transformers) {
             LOGGER.info(
                     "Applying transformer {} to class {}",
@@ -962,17 +969,20 @@ public class StormClassTransformers {
                         "Successfully applied transformer {} to class {}",
                         transformer.getClass().getSimpleName(),
                         className);
-            } catch (Exception e) {
+            } catch (Exception | LinkageError e) {
                 LOGGER.error(
                         "Failed to apply transformer {} to class {}: {}",
                         transformer.getClass().getSimpleName(),
                         className,
                         e.getMessage(),
                         e);
-                throw e;
+                if (StormEnv.isStormServer()) {
+                    throw e;
+                }
+                allApplied = false;
             }
         }
-        if (!transformers.isEmpty()) {
+        if (!transformers.isEmpty() && allApplied) {
             TRANSFORMED_CLASSES.add(className);
         }
         return rawClass;

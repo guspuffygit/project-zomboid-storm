@@ -156,7 +156,8 @@ public final class PersistentVboSupport {
 
     /** Per-frame draw boundary: fences the frame just drawn. */
     public static void endFrame() {
-        if (disabled || ringBroken) {
+        // disabled only stops adoption: instances already adopted still need real frame fences.
+        if (ringBroken || capable < 0) {
             return;
         }
         if (capable == 0) {

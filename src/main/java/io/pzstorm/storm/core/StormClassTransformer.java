@@ -30,7 +30,7 @@ public abstract class StormClassTransformer {
 
             return dynamicType(locator, typePool, builder).make().getBytes();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to apply ByteBuddy patch to UIElement", e);
+            throw new RuntimeException("Failed to apply ByteBuddy patch to " + className, e);
         }
     }
 

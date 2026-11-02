@@ -115,9 +115,9 @@ public final class StormPerformanceSandboxMetrics {
             Gauge.builder()
                     .name("storm_zombie_auth_tick_interval")
                     .help(
-                            "Configured per-zombie stride for the unowned-zombie ownership rescan"
-                                    + " in NetworkZombieManager.updateAuth() on the server. Owned"
-                                    + " zombies keep vanilla's 2s gate. Sourced from the"
+                            "Configured per-zombie stride for the ownership rescan in"
+                                    + " NetworkZombieManager.updateAuth() on the server, for owned"
+                                    + " and unowned zombies alike. Sourced from the"
                                     + " Storm.ZombieAuthTickInterval sandbox option. Vanilla 1"
                                     + " (every tick).")
                     .register(StormPrometheus.registry());
