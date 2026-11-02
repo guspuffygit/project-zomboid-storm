@@ -62,7 +62,6 @@ class PopManCoreDebugTest implements UnitTest {
         cell.chunkAt(40, 40).zombies.add(PopManZombie.spawnedAt(320, 320, () -> 0));
         cell.chunkAt(40, 40).zombies.add(PopManZombie.spawnedAt(321, 320, () -> 0));
         cell.recomputeAggregates();
-        cell.realCount = 4;
         return cell;
     }
 
@@ -90,7 +89,6 @@ class PopManCoreDebugTest implements UnitTest {
         tick(core);
 
         assertEquals(0, cell.virtualCount);
-        assertEquals(0, cell.realCount);
         assertTrue(cell.chunkAt(40, 40).zombies.isEmpty());
         assertEquals(base, cell.basePopSum, "target population untouched");
         assertEquals(80.0F, cell.lastRepopTime, "clocks untouched");
@@ -153,7 +151,7 @@ class PopManCoreDebugTest implements UnitTest {
             float lastRepop = buf.getFloat();
             if (cx == 1 && cy == 1) {
                 found = true;
-                assertEquals(6, current, "virtual plus real population");
+                assertEquals(2, current, "resident plus passing-through population");
                 assertEquals(
                         PopManPopulation.desiredCellPopulation(core.config(), 0, AGE),
                         desired,

@@ -7,7 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -97,7 +100,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void savingCreatesTheDirectoryAndAVersionSixFile() throws IOException {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
 
         Path file = store.cellFile(CELL_X, CELL_Y);
         assertTrue(Files.isRegularFile(file));
@@ -114,7 +117,7 @@ class PopManStoreTest implements UnitTest {
     @Test
     void aSavedCellComesBackFieldForField() {
         PopManCell saved = populatedCell();
-        store.save(saved);
+        store.save(saved, List.of());
 
         PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
         assertTrue(store.load(loaded));
@@ -138,7 +141,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void loadingLeavesTheRunningTotalsToTheCaller() {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
 
         PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
         store.load(loaded);
@@ -148,11 +151,103 @@ class PopManStoreTest implements UnitTest {
     }
 
     @Test
-    void savingClearsTheDirtyFlag() {
+    void savingLeavesTheDirtyFlagToTheCaller() {
         PopManCell cell = populatedCell();
-        store.save(cell);
+        store.save(cell, List.of());
 
-        assertFalse(cell.dirty);
+        assertTrue(cell.dirty, "the worker clears the flag before it saves");
+    }
+
+    @Test
+    void extrasAreSavedInTheChunkTheyStandInAfterItsOwnZombies() {
+        PopManCell cell = populatedCell();
+        PopManZombie inFlight = zombie(15363.5F, 2845.5F, 0.0F, 1, 0x05, 0);
+        PopManZombie elsewhere = zombie(15600.5F, 3000.5F, 0.0F, 2, 0x05, 0);
+        store.save(cell, List.of(inFlight, elsewhere));
+
+        PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
+        store.load(loaded);
+
+        List<PopManZombie> first = loaded.chunkAtSquare(15363, 2845).zombies;
+        assertEquals(3, first.size());
+        assertSameZombie(inFlight, first.get(2));
+        assertSameZombie(elsewhere, loaded.chunkAtSquare(15600, 3000).zombies.get(0));
+        assertEquals(2, cell.chunkAtSquare(15363, 2845).zombies.size(), "memory is untouched");
+    }
+
+    @Test
+    void theIdFileIsWrittenOnlyWhenTheCounterMoves() throws IOException {
+        PopManZombieIds.resetForTest(77);
+        store.loadIds();
+
+        assertTrue(store.saveIdsIfAdvanced());
+        byte[] bytes = Files.readAllBytes(store.idsFile());
+        assertEquals(6, bytes.length);
+        assertEquals(7, ((bytes[0] & 0xff) << 8) | (bytes[1] & 0xff));
+        assertEquals(77, ByteBuffer.wrap(bytes, 2, 4).getInt());
+
+        Files.delete(store.idsFile());
+        assertTrue(store.saveIdsIfAdvanced());
+        assertFalse(Files.exists(store.idsFile()), "an unchanged counter is not rewritten");
+
+        PopManZombieIds.next();
+        assertTrue(store.saveIdsIfAdvanced());
+        assertTrue(Files.exists(store.idsFile()));
+    }
+
+    @Test
+    void loadingTheIdFileRaisesTheCounter() {
+        PopManZombieIds.resetForTest(5);
+        PopManZombieIds.raiseTo(900);
+        store.saveIdsIfAdvanced();
+        PopManZombieIds.resetForTest(5);
+
+        store.loadIds();
+
+        assertEquals(900, PopManZombieIds.peek());
+    }
+
+    @Test
+    void anUnknownIdFileVersionLeavesTheCounterAlone() throws IOException {
+        Files.createDirectories(store.directory());
+        Files.write(store.idsFile(), new byte[] {0, 8, 0, 0, 0x10, 0});
+        PopManZombieIds.resetForTest(5);
+
+        store.loadIds();
+
+        assertEquals(5, PopManZombieIds.peek());
+    }
+
+    @Test
+    void droppedDuplicatesMarkTheCellForRewrite() throws IOException {
+        Files.createDirectories(store.directory());
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeShort(6);
+        out.writeShort(0);
+        out.writeFloat(0.0F);
+        out.writeFloat(0.0F);
+        for (int i = 0; i < PopManGeometry.CHUNKS_PER_CELL_TOTAL; i++) {
+            out.writeShort(0);
+            out.writeShort(i == 0 ? 2 : 0);
+            for (int z = 0; i == 0 && z < 2; z++) {
+                out.writeFloat(15360.5F);
+                out.writeFloat(2816.5F);
+                out.writeByte(0);
+                out.writeByte(0);
+                out.writeInt(5);
+                out.writeInt(0);
+            }
+            out.writeFloat(0.0F);
+            out.writeFloat(0.0F);
+        }
+        Files.write(store.cellFile(CELL_X, CELL_Y), bytes.toByteArray());
+
+        PopManCell cell = new PopManCell(CELL_X, CELL_Y);
+        assertTrue(store.load(cell));
+
+        assertEquals(1, cell.chunkAtSquare(15360, 2816).zombies.size());
+        assertTrue(cell.dirty);
     }
 
     @Test
@@ -161,7 +256,7 @@ class PopManStoreTest implements UnitTest {
         PopManChunk chunk = cell.chunkAtSquare(15360, 2816);
         chunk.zombies.add(zombie(15360.5F, 2816.5F, 2.75F, 0, 0, 0));
         chunk.zombies.add(zombie(15361.5F, 2816.5F, -0.5F, 0, 0, 0));
-        store.save(cell);
+        store.save(cell, List.of());
 
         PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
         store.load(loaded);
@@ -187,7 +282,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void aTruncatedFileIsRefusedRatherThanHalfLoaded() throws IOException {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
         Path file = store.cellFile(CELL_X, CELL_Y);
         byte[] whole = Files.readAllBytes(file);
         Files.write(file, Arrays.copyOf(whole, whole.length / 2));
@@ -203,7 +298,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void anOutfitKeepsItsNameWhenTheTableIsReordered() {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
         runtimeOutfits = new ArrayList<>(List.of("agent", "newmodoutfit", "police", "generic02"));
 
         PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
@@ -217,7 +312,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void anOutfitThatIsGoneTakesTheWholeDescriptorWithIt() {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
         runtimeOutfits = new ArrayList<>(List.of("agent", "police"));
 
         PopManCell loaded = new PopManCell(CELL_X, CELL_Y);
@@ -238,7 +333,7 @@ class PopManStoreTest implements UnitTest {
         horde.members.add(zombie(15402.5F, 2852.5F, 0.0F, 6, 0x06, (1 << 16) | 0x0002));
         PopManGroup loner = new PopManGroup(zombie(15450.5F, 2860.5F, 0.0F, 1, 0x05, 0));
 
-        store.saveGroups(List.of(horde, loner));
+        assertTrue(store.saveGroups(List.of(horde, loner)));
         List<PopManGroup> loaded = store.loadGroups();
 
         assertEquals(2, loaded.size());
@@ -271,7 +366,7 @@ class PopManStoreTest implements UnitTest {
 
     @Test
     void theCellMapLoadsThroughTheStore() {
-        store.save(populatedCell());
+        store.save(populatedCell(), List.of());
         PopManCellMap cells = new PopManCellMap(new PopManConfig(), new ScriptedWorld(), store);
 
         PopManCell cell = cells.load(CELL_X, CELL_Y, 0.0, 0L);

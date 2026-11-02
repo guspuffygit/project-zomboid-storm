@@ -90,6 +90,88 @@ class ZpopCellTest implements UnitTest {
     }
 
     @Test
+    void versionSevenKeepsEachZombiesId() throws IOException {
+        PopManZombieIds.resetForTest(0);
+        ZpopCell cell = new ZpopCell();
+        PopManZombie z = new PopManZombie();
+        z.id = 0x12345;
+        cell.chunk(1, 1).zombies.add(z);
+
+        ZpopCell back = readFromBytes(writeToBytes(cell, List.of()), null);
+
+        assertEquals(0x12345, back.chunk(1, 1).zombies.get(0).id);
+        assertEquals(0x12346, PopManZombieIds.peek(), "a loaded id raises the counter past it");
+    }
+
+    /** A pre-id file, one chunk holding the given zombies as 18-byte records. */
+    private static byte[] versionSixCell(int[][] zombies) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeShort(6);
+        out.writeShort(0);
+        out.writeFloat(1.0F);
+        out.writeFloat(2.0F);
+        for (int i = 0; i < ZpopChunk.CHUNKS_PER_CELL; i++) {
+            out.writeShort(0);
+            out.writeShort(i == 0 ? zombies.length : 0);
+            if (i == 0) {
+                for (int[] z : zombies) {
+                    out.writeFloat(z[0] + 0.5F);
+                    out.writeFloat(z[1] + 0.5F);
+                    out.writeByte(0);
+                    out.writeByte(2);
+                    out.writeInt(z[2]);
+                    out.writeInt(0x109);
+                }
+            }
+            out.writeFloat(0.0F);
+            out.writeFloat(0.0F);
+        }
+        return bytes.toByteArray();
+    }
+
+    @Test
+    void preIdFilesDropInitializedDuplicates() throws IOException {
+        byte[] bytes =
+                versionSixCell(
+                        new int[][] {
+                            {10, 20, 5}, {10, 20, 5}, {10, 20, 5}, {11, 20, 5},
+                        });
+
+        ZpopCell cell = readFromBytes(bytes, null);
+
+        assertEquals(2, cell.chunks.get(0).zombies.size());
+        assertEquals(2, cell.droppedDuplicates);
+    }
+
+    @Test
+    void preIdFilesKeepUninitializedTwins() throws IOException {
+        ZpopCell cell = readFromBytes(versionSixCell(new int[][] {{10, 20, 4}, {10, 20, 4}}), null);
+
+        assertEquals(2, cell.chunks.get(0).zombies.size(), "only Initialized records are deduped");
+        assertEquals(0, cell.droppedDuplicates);
+        assertTrue(cell.chunks.get(0).zombies.get(0).id != cell.chunks.get(0).zombies.get(1).id);
+    }
+
+    @Test
+    void versionSevenFilesAreNeverDeduped() throws IOException {
+        ZpopCell cell = new ZpopCell();
+        for (int i = 0; i < 2; i++) {
+            PopManZombie z = new PopManZombie();
+            z.x = 10.5F;
+            z.y = 20.5F;
+            z.stateFlags = 5;
+            z.id = 100 + i;
+            cell.chunk(0, 0).zombies.add(z);
+        }
+
+        ZpopCell back = readFromBytes(writeToBytes(cell, List.of()), null);
+
+        assertEquals(2, back.chunk(0, 0).zombies.size());
+        assertEquals(0, back.droppedDuplicates);
+    }
+
+    @Test
     void unsupportedVersionsAreRefusedRatherThanMisparsed() throws IOException {
         byte[] bytes = writeToBytes(new ZpopCell(), List.of());
         bytes[0] = 0;
@@ -125,8 +207,9 @@ class ZpopCellTest implements UnitTest {
     }
 
     /**
-     * The real proof: every zpop cell file on this machine must survive read-then-write unchanged,
-     * byte for byte. Skipped where no save data exists.
+     * The real proof: every current-version zpop cell file on this machine must survive
+     * read-then-write unchanged, byte for byte, and every older one must at least parse. Skipped
+     * where no save data exists.
      */
     @Test
     void realSaveFilesRoundTripByteIdentically() throws IOException {
@@ -136,7 +219,8 @@ class ZpopCellTest implements UnitTest {
         try (Stream<Path> walk = Files.walk(REAL_SAVES)) {
             walk.filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().startsWith("zpop_"))
-                    .filter(p -> !p.getFileName().toString().equals("zpop_virtual.bin"))
+                    .filter(p -> !p.getFileName().toString().equals(PopManStore.VIRTUAL_FILE_NAME))
+                    .filter(p -> !p.getFileName().toString().equals(PopManStore.IDS_FILE_NAME))
                     .forEach(files::add);
         }
         Assumptions.assumeFalse(files.isEmpty(), "no zpop cell files found");
@@ -146,6 +230,9 @@ class ZpopCellTest implements UnitTest {
             byte[] original = Files.readAllBytes(file);
             try {
                 ZpopCell cell = readFromBytes(original, null);
+                if (cell.version != ZpopCell.WRITE_VERSION) {
+                    continue;
+                }
                 byte[] rewritten = writeToBytes(cell, cell.outfitNames);
                 if (!java.util.Arrays.equals(original, rewritten)) {
                     failures.add(file + " (" + original.length + " -> " + rewritten.length + ")");

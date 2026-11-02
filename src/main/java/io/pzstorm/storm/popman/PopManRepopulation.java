@@ -263,6 +263,7 @@ public final class PopManRepopulation {
                 endCell.chunkAt(cx, cy).lastRepopTime = age;
             }
         }
+        endCell.dirty = true;
 
         if (isServer && out != null) {
             out.repopEvents.add(new PopManResultFrame.RepopEvent(firstChunkX, firstChunkY, age));

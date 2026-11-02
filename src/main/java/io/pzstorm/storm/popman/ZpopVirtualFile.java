@@ -9,8 +9,8 @@ import java.util.Map;
 
 /**
  * The roaming hordes, saved alongside the per-cell files as {@code zpop_virtual.bin}. Same outfit
- * name table and same 18-byte zombie record as {@link ZpopCell}, but the zombies are grouped rather
- * than binned by chunk.
+ * name table and same zombie record as {@link ZpopCell}, but the zombies are grouped rather than
+ * binned by chunk.
  *
  * <p>The header is verified against a real save; the group body is not — every {@code
  * zpop_virtual.bin} in the corpus has zero groups, so nothing has ever exercised it. Treat a
@@ -18,7 +18,10 @@ import java.util.Map;
  */
 public final class ZpopVirtualFile {
 
-    public static final int WRITE_VERSION = 6;
+    public static final int WRITE_VERSION = 7;
+
+    /** Version 6 widened the path target from two shorts to two ints. */
+    private static final int MIN_SUPPORTED_VERSION = 6;
 
     /** Written clamped into {@code 1..0x7fff}. */
     public static final int MAX_GROUP_SIZE = 0x7fff;
@@ -42,13 +45,15 @@ public final class ZpopVirtualFile {
             throws IOException {
         ZpopVirtualFile file = new ZpopVirtualFile();
         file.version = in.readUnsignedShort();
-        if (file.version != WRITE_VERSION) {
+        if (file.version < MIN_SUPPORTED_VERSION || file.version > WRITE_VERSION) {
             throw new IOException(
                     "unsupported zpop_virtual version "
                             + file.version
                             + "; only "
+                            + MIN_SUPPORTED_VERSION
+                            + ".."
                             + WRITE_VERSION
-                            + " has a recovered layout");
+                            + " have a recovered layout");
         }
 
         file.outfitNames = ZpopCell.readNameTable(in);

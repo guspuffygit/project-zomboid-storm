@@ -44,6 +44,7 @@ import io.pzstorm.storm.patch.fixes.AnimalDataGrowWaterGuardPatch;
 import io.pzstorm.storm.patch.fixes.AnimalIgnoredTroughExpiryPatch;
 import io.pzstorm.storm.patch.fixes.AnimalWaterSourceFailoverPatch;
 import io.pzstorm.storm.patch.fixes.AnimalZoneContainmentPatch;
+import io.pzstorm.storm.patch.fixes.AnimalZoneMetaCatchUpPatch;
 import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
 import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
@@ -68,7 +69,6 @@ import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionParsePatch;
 import io.pzstorm.storm.patch.fixes.PlayerHitPlayerPacketHitDamagePatch;
-import io.pzstorm.storm.patch.fixes.PopManSaveAdoptFixPatch;
 import io.pzstorm.storm.patch.fixes.RefreshAnimSetsLockPatch;
 import io.pzstorm.storm.patch.fixes.RequestDataManagerFixPatch;
 import io.pzstorm.storm.patch.fixes.SafehouseSpawnCenterFixPatch;
@@ -596,12 +596,6 @@ public class StormClassTransformers {
             registerTransformer(new MPDebugInfoNativePatch());
             registerTransformer(new DebugCommandsNativePatch());
             registerTransformer(new ZombiePopulationRendererNativePatch());
-            // The port reproduces the DLL's save-time adoption of every staged live zombie
-            // into the resident population (zombie "mitosis" on each world save); the fix
-            // stays a patch so the transpiled classes remain an exact replica of the DLL.
-            if (StormEnv.isStormServer()) {
-                registerTransformer(new PopManSaveAdoptFixPatch());
-            }
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerStartPMChatPatch());
@@ -665,6 +659,7 @@ public class StormClassTransformers {
             registerTransformer(new ContainerHatchPositionFixPatch());
             registerTransformer(new HutchDirtRateFixPatch());
             registerTransformer(new AnimalZoneContainmentPatch());
+            registerTransformer(new AnimalZoneMetaCatchUpPatch());
             registerTransformer(new AnimalIgnoredTroughExpiryPatch());
             registerTransformer(new AnimalWaterSourceFailoverPatch());
             registerTransformer(new SyncZonePacketSafehouseGuardPatch());

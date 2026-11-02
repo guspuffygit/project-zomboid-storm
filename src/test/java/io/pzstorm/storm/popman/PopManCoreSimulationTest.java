@@ -92,43 +92,104 @@ class PopManCoreSimulationTest implements UnitTest {
 
         assertEquals(1, core.getAddZombieCount());
         assertEquals(0, cell.virtualCount);
-        assertEquals(1, cell.realCount);
     }
+
+    private static final int NO_PATH = PopManZombie.INVALID_PATH_XY;
 
     @Test
     void aZombieHandedBackBecomesANumberInAChunkAgain() {
         PopManCore core = runningCore();
         PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
-        cell.realCount = 3;
+        cell.dirty = false;
 
-        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, 0, 0);
+        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, NO_PATH, NO_PATH, 77);
         tick(core);
 
         assertEquals(1, cell.chunkAt(3, 4).zombies.size());
+        assertEquals(77, cell.chunkAt(3, 4).zombies.get(0).id, "the persistent id survives");
         assertEquals(1, cell.virtualCount);
-        assertEquals(2, cell.realCount);
         assertTrue(cell.dirty);
     }
 
     @Test
-    void aZombieHandedBackInACellNobodyHasLoadedIsDropped() {
+    void aZombieHandedBackLoadsItsCell() {
         PopManCore core = runningCore();
 
-        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, 0, 0);
+        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, NO_PATH, NO_PATH, 0);
         tick(core);
 
-        assertEquals(0, core.cells().size(), "asking must not conjure a populated cell");
+        assertEquals(1, core.cells().size());
+        assertEquals(1, core.cells().resident(0, 0).virtualCount);
     }
 
     @Test
-    void theGamesLiveZombieTallyReachesTheCellItCountedFor() {
+    void aZombieHandedBackWithAPathTargetKeepsWalking() {
         PopManCore core = runningCore();
-        PopManCell cell = core.cells().load(1, 2, 0.0, NOW_MS);
+        PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
 
-        core.realZombieCount((short) 1, new short[] {1, 2, 42});
+        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, 200, 200, 0);
         tick(core);
 
-        assertEquals(42, cell.realCount);
+        assertEquals(0, cell.virtualCount);
+        assertEquals(1, core.groups().size());
+        assertEquals(200, core.groups().get(0).leader.pathTargetX);
+    }
+
+    @Test
+    void aZombieHandedBackNearAnAggroTargetTravelsAsAGroup() {
+        PopManCore core = runningCore();
+        PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
+
+        core.aggroTarget(1, 100, 100);
+        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, NO_PATH, NO_PATH, 0);
+        tick(core);
+
+        assertEquals(0, cell.virtualCount);
+        assertEquals(1, core.groups().size());
+    }
+
+    @Test
+    void aRegisteredZombieIsTrackedInItsCellUntilReleased() {
+        PopManCore core = runningCore();
+        PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
+
+        int id = core.registerZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 5, 0);
+        tick(core);
+
+        PopManGroup real = core.realZombies().get(id);
+        assertNotNull(real);
+        assertTrue(real.isReal);
+        assertSame(cell, real.cell);
+        assertTrue(cell.groups.contains(real));
+        assertFalse(core.groups().contains(real), "a live zombie is not a travelling horde");
+
+        core.releaseZombie(id);
+        tick(core);
+
+        assertTrue(core.realZombies().isEmpty());
+        assertFalse(cell.groups.contains(real));
+        assertFalse(real.isReal);
+    }
+
+    @Test
+    void realZombieUpdatesMoveTheTrackedZombieBetweenCells() {
+        PopManCore core = runningCore();
+        PopManCell from = core.cells().load(0, 0, 0.0, NOW_MS);
+        PopManCell to = core.cells().load(1, 0, 0.0, NOW_MS);
+        int id = core.registerZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 5, 0);
+        tick(core);
+        from.dirty = false;
+
+        core.updateRealZombies(1, new int[] {id, 9}, new float[] {300.5F, 32.5F, 1.0F});
+        tick(core);
+
+        PopManGroup real = core.realZombies().get(id);
+        assertSame(to, real.cell);
+        assertEquals(300.5F, real.leader.x);
+        assertEquals(9, real.leader.stateFlags);
+        assertEquals(1.0F, real.leader.z);
+        assertTrue(from.dirty, "both cells change hands");
+        assertTrue(to.dirty);
     }
 
     @Test
@@ -188,11 +249,24 @@ class PopManCoreSimulationTest implements UnitTest {
         cell.chunkAt(0, 0).zombies.add(PopManZombie.spawnedAt(1, 2, () -> 0));
         cell.recomputeAggregates();
         cell.dirty = true;
+        core.groups().add(new PopManGroup(PopManZombie.spawnedAt(5, 5, () -> 0)));
 
         core.save();
 
         assertTrue(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_0_0.bin")));
         assertTrue(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_virtual.bin")));
+        assertTrue(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_ids.bin")));
+        assertFalse(cell.dirty);
+    }
+
+    @Test
+    void anUnchangedHordeListIsNotRewritten() {
+        PopManCore core = runningCore();
+        core.cells().load(0, 0, 0.0, NOW_MS).dirty = true;
+
+        core.save();
+
+        assertFalse(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_virtual.bin")));
     }
 
     @Test
@@ -205,33 +279,65 @@ class PopManCoreSimulationTest implements UnitTest {
         assertFalse(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_0_0.bin")));
     }
 
-    /** The zombies the caller staged are exactly the ones the cell is about to lose. */
-    @Test
-    void savingOneCellFoldsInTheLiveZombiesStagedForIt() {
-        PopManCore core = runningCore();
-        PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
-        cell.realCount = 1;
-        PopManZombie live = PopManZombie.spawnedAt(24, 32, () -> 0);
-        core.stagedRealZombies().add(live);
-
-        core.saveCell(0, 0);
-
-        assertTrue(cell.chunkAt(3, 4).zombies.contains(live));
-        assertEquals(1, cell.virtualCount);
-        assertEquals(0, cell.realCount);
-        assertTrue(core.stagedRealZombies().isEmpty());
-        assertTrue(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_0_0.bin")));
+    private PopManCell savedCell(int cellX, int cellY) {
+        PopManCell back = new PopManCell(cellX, cellY);
+        assertTrue(new PopManStore(saveDirectory, List::of).load(back));
+        return back;
     }
 
     @Test
-    void aStagedZombieStandingInAnotherCellIsNotFiledUnderThisOne() {
+    void aSaveRecordsLiveZombiesWithoutAdoptingThem() {
         PopManCore core = runningCore();
         PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
-        core.stagedRealZombies().add(PopManZombie.spawnedAt(300, 300, () -> 0));
+        int id = core.registerZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 5, 0);
+        tick(core);
+
+        core.save();
+
+        List<PopManZombie> onDisk = savedCell(0, 0).chunkAt(3, 4).zombies;
+        assertEquals(1, onDisk.size());
+        assertEquals(id, onDisk.get(0).id);
+        assertTrue(cell.chunkAt(3, 4).zombies.isEmpty(), "the live zombie is not copied in");
+        assertEquals(0, cell.virtualCount);
+    }
+
+    @Test
+    void aZombieInTransitIsSavedOnceAndStillArrivesOnce() {
+        PopManCore core = runningCore();
+        PopManCell cell = core.cells().load(0, 0, 0.0, NOW_MS);
+
+        core.addZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 0, NO_PATH, NO_PATH, 0);
+        core.save();
+
+        assertEquals(1, savedCell(0, 0).chunkAt(3, 4).zombies.size());
+        assertTrue(cell.inFlightZombies.isEmpty());
+        assertTrue(cell.chunkAt(3, 4).zombies.isEmpty());
+
+        tick(core);
+        assertEquals(1, cell.chunkAt(3, 4).zombies.size());
+    }
+
+    @Test
+    void aZombieReleasedBeforeTheSaveIsNotWritten() {
+        PopManCore core = runningCore();
+        core.cells().load(0, 0, 0.0, NOW_MS);
+        int id = core.registerZombie(24.5F, 32.5F, 0.0F, (byte) 2, 0, 5, 0);
+        core.releaseZombie(id);
+
+        core.save();
+
+        assertTrue(savedCell(0, 0).chunkAt(3, 4).zombies.isEmpty());
+        assertTrue(core.realZombies().isEmpty());
+    }
+
+    @Test
+    void savingOneCellSkipsAnUnchangedCell() {
+        PopManCore core = runningCore();
+        core.cells().load(0, 0, 0.0, NOW_MS).dirty = false;
 
         core.saveCell(0, 0);
 
-        assertEquals(0, cell.virtualCount);
+        assertFalse(Files.exists(saveDirectory.resolve("zpop").resolve("zpop_0_0.bin")));
     }
 
     @Test

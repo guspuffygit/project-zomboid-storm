@@ -86,7 +86,7 @@ class PopManRepopulationTest implements UnitTest {
     void aDeficitTooSmallToChaseResetsTheClockInsteadOfAccumulating() {
         build(true);
         PopManCell cell = dueCell();
-        cell.realCount = 1495;
+        cell.virtualCount = 1495;
         cell.repopQuotaTarget = 7;
 
         assertNull(repopulation.repopulateCell(cell, AGE, 0L));
@@ -123,7 +123,7 @@ class PopManRepopulationTest implements UnitTest {
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 if (dx != 0 || dy != 0) {
-                    cells.load(dx, dy, AGE, 0L).realCount = 200;
+                    cells.load(dx, dy, AGE, 0L).virtualCount = 200;
                 }
             }
         }

@@ -27,16 +27,15 @@ class PopManCellTest implements UnitTest {
     }
 
     @Test
-    void currentPopulationCountsRealVirtualAndPassingThrough() {
+    void currentPopulationCountsResidentsAndPassingThrough() {
         PopManCell cell = new PopManCell(0, 0);
-        cell.realCount = 7;
         cell.virtualCount = 5;
 
         PopManGroup pair = new PopManGroup(new PopManZombie());
         pair.members.add(new PopManZombie());
         cell.groups.add(pair);
 
-        assertEquals(14, cell.currentPopulation());
+        assertEquals(7, cell.currentPopulation());
     }
 
     @Test

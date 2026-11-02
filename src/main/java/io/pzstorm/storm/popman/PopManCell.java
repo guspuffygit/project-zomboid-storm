@@ -27,10 +27,14 @@ public final class PopManCell {
     /** Sum of every chunk's {@link PopManChunk#basePop}. */
     public short basePopSum;
 
-    /** Zombies the Java world is simulating here, pushed by {@code n_realZombieCount}. */
-    public short realCount;
-
+    /** Travelling groups plus one {@link PopManGroup#isReal} group per registered real zombie. */
     public final List<PopManGroup> groups = new ArrayList<>();
+
+    /**
+     * Zombies still queued between the threads when a world save ran, parked here so the cell file
+     * writes them. Native {@code m_inFlightZombies}; only {@link PopManCore#save} fills it.
+     */
+    public final List<PopManZombie> inFlightZombies = new ArrayList<>();
 
     public float lastRepopTime;
     public float lastRedistributeTime;
@@ -106,9 +110,9 @@ public final class PopManCell {
         }
     }
 
-    /** Everything the cell is accountable for: real, virtual, and passing through. */
+    /** Everything the cell is accountable for: resident, passing through, and real. */
     public short currentPopulation() {
-        int sum = realCount + virtualCount;
+        int sum = virtualCount;
         for (PopManGroup group : groups) {
             sum += group.population();
         }

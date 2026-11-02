@@ -1,9 +1,11 @@
 package io.pzstorm.storm.popman;
 
+import io.pzstorm.storm.logging.StormLogger;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +87,12 @@ public final class PopManCore {
 
     private Environment environment = UNBOUND;
 
-    private final List<PopManGroup> groups = new ArrayList<>();
+    private final PopManGroupList groups = new PopManGroupList();
+
+    /** Native {@code m_realZombiesById}: each live zombie the game has registered. */
+    private final Map<Integer, PopManGroup> realZombiesById = new LinkedHashMap<>();
+
+    private int lastReportedRealZombieLeak;
     private PopManMap map;
     private PopManCellMap cells;
     private PopManStore store;
@@ -108,7 +115,6 @@ public final class PopManCore {
     private boolean stopped = true;
 
     private final List<int[]> spawnOrigins = new ArrayList<>();
-    private final List<PopManZombie> stagedRealZombies = new ArrayList<>();
     private String[] outfitNames = new String[0];
     private final Map<String, Integer> outfitIndex = new LinkedHashMap<>();
 
@@ -268,11 +274,37 @@ public final class PopManCore {
         hordeSpawn = new PopManHordeSpawn(map, groups::add);
         targeting = new PopManTargeting(map);
         groupTick = new PopManGroupTick(config, map, cells, groups, handoff::output);
+
+        if (store != null) {
+            store.loadIds();
+            groups.addAll(store.loadGroups());
+        }
     }
 
+    /**
+     * Drops every real and travelling zombie and unloads every cell without saving, so the caller
+     * must have saved first.
+     */
     public void stop() {
         this.stopped = true;
         spawnOrigins.clear();
+        if (cells == null) {
+            return;
+        }
+        for (PopManGroup real : realZombiesById.values()) {
+            clearCurrentCell(real);
+            real.isReal = false;
+        }
+        realZombiesById.clear();
+        lastReportedRealZombieLeak = 0;
+        for (PopManGroup group : groups) {
+            clearCurrentCell(group);
+        }
+        groups.clear();
+        for (PopManCell cell : cells.resident()) {
+            cell.dirty = false;
+            cells.unload(cell.cellX, cell.cellY);
+        }
     }
 
     /** Appends rather than replacing, exactly as the native does — calling twice duplicates. */
@@ -347,6 +379,7 @@ public final class PopManCore {
         handoff.drainResults();
     }
 
+    /** A real zombie going back to the population; id zero draws a fresh one. */
     public void addZombie(
             float x,
             float y,
@@ -355,10 +388,72 @@ public final class PopManCore {
             int descriptorID,
             int stateFlags,
             int pathTargetX,
-            int pathTargetY) {
+            int pathTargetY,
+            int persistentId) {
         if (stopped) {
             return;
         }
+        PopManZombie zombie = zombieFromGame(x, y, z, dir, descriptorID, stateFlags, persistentId);
+        zombie.pathTargetX = pathTargetX;
+        zombie.pathTargetY = pathTargetY;
+        handoff.input().addZombies.add(zombie);
+    }
+
+    /**
+     * Starts tracking a zombie the game is simulating. Returns its id, drawing a fresh one for id
+     * zero, which the game stores as the zombie's persistent id.
+     */
+    public int registerZombie(
+            float x, float y, float z, byte dir, int descriptorID, int stateFlags, int id) {
+        PopManZombie zombie = zombieFromGame(x, y, z, dir, descriptorID, stateFlags, id);
+        if (!stopped) {
+            handoff.input().realZombieQueue.add(zombie);
+        }
+        return zombie.id;
+    }
+
+    public void releaseZombie(int id) {
+        if (stopped) {
+            return;
+        }
+        handoff.input().releaseZombieQueue.add(id);
+    }
+
+    /**
+     * Replaces the pending snapshot of every live zombie: two ints ({@code id, state}) and three
+     * floats ({@code x, y, z}) each.
+     */
+    public void updateRealZombies(int count, int[] idsAndStates, float[] positions) {
+        if (count < 0) {
+            throw new IllegalArgumentException("count < 0");
+        }
+        if (idsAndStates == null || positions == null) {
+            throw new NullPointerException();
+        }
+        if (idsAndStates.length < count * 2) {
+            throw new IllegalArgumentException("idsAndStates.length < count * 2");
+        }
+        if (positions.length < count * 3) {
+            throw new IllegalArgumentException("positions.length < count * 3");
+        }
+        if (stopped) {
+            return;
+        }
+        List<PopManInputFrame.RealZombieUpdate> updates = handoff.input().realZombieUpdates;
+        updates.clear();
+        for (int i = 0; i < count; i++) {
+            updates.add(
+                    new PopManInputFrame.RealZombieUpdate(
+                            idsAndStates[i * 2],
+                            idsAndStates[i * 2 + 1],
+                            positions[i * 3],
+                            positions[i * 3 + 1],
+                            positions[i * 3 + 2]));
+        }
+    }
+
+    private static PopManZombie zombieFromGame(
+            float x, float y, float z, byte dir, int descriptorID, int stateFlags, int id) {
         PopManZombie zombie = new PopManZombie();
         zombie.x = x;
         zombie.y = y;
@@ -366,9 +461,8 @@ public final class PopManCore {
         zombie.dir = dir;
         zombie.descriptorID = descriptorID;
         zombie.stateFlags = stateFlags;
-        zombie.pathTargetX = pathTargetX;
-        zombie.pathTargetY = pathTargetY;
-        handoff.input().addZombies.add(zombie);
+        zombie.id = id == 0 ? PopManZombieIds.next() : id;
+        return zombie;
     }
 
     public void aggroTarget(int id, int x, int y) {
@@ -408,14 +502,6 @@ public final class PopManCore {
         handoff.input().sounds.add(new PopManWorldSound(x, y, radius, volume));
     }
 
-    /** {@code count} cells, three shorts each: cell x, cell y, live zombies. */
-    public void realZombieCount(short count, short[] triples) {
-        if (stopped) {
-            return;
-        }
-        handoff.input().realZombieCounts = Arrays.copyOf(triples, count * 3);
-    }
-
     public void loadChunk(int wx, int wy, boolean loaded) {
         if (stopped) {
             return;
@@ -447,6 +533,9 @@ public final class PopManCore {
      */
     public int getAddZombieData(int offset, ByteBuffer buf) {
         List<PopManZombie> spawns = handoff.results().spawns;
+        if (offset < 0 || offset >= spawns.size()) {
+            throw new IllegalArgumentException("invalid offset");
+        }
         int written = 0;
         while (offset + written < spawns.size() && written < PopManZombie.MAX_ADD_RECORDS) {
             spawns.get(offset + written).writeAddRecord(buf, written);
@@ -594,43 +683,19 @@ public final class PopManCore {
             return true;
         }
         PopManInputFrame input = handoff.input();
-        return input.chunkLoads.isEmpty() && input.addZombies.isEmpty();
+        return input.chunkLoads.isEmpty()
+                && input.addZombies.isEmpty()
+                && input.realZombieQueue.isEmpty();
     }
-
-    // --- real-zombie staging ------------------------------------------------
 
     /** How long the worker goes between unprompted full saves. */
     static final long AUTOSAVE_MS = 300_000;
 
     private long nextSaveMs;
 
-    /** Live zombies handed over since the last {@link #beginSaveRealZombies}. */
-    public List<PopManZombie> stagedRealZombies() {
-        return stagedRealZombies;
-    }
-
-    /** The native ignores the count and only clears the staging array; so does this. */
-    public void beginSaveRealZombies(int totalCount) {
-        if (stopped) {
-            return;
-        }
-        stagedRealZombies.clear();
-    }
-
-    /**
-     * Appends one batch of live zombies, read from absolute offset zero — the caller never flips.
-     * Unlike the on-disk record this one honours {@code buf}'s own byte order and puts the outfit
-     * before the state flags, so decoding it as a disk record silently swaps the two.
-     */
-    public void saveRealZombies(int count, ByteBuffer buf) {
-        if (stopped) {
-            return;
-        }
-        for (int i = 0; i < count; i++) {
-            PopManZombie zombie = new PopManZombie();
-            zombie.readSaveRecord(buf, i);
-            stagedRealZombies.add(zombie);
-        }
+    /** Live zombies the worker is tracking, by id. */
+    public Map<Integer, PopManGroup> realZombies() {
+        return realZombiesById;
     }
 
     // --- worker thread ------------------------------------------------------
@@ -718,7 +783,6 @@ public final class PopManCore {
         double age = worldAgeHours;
 
         applyAreas(input);
-        applyRealCounts(input);
 
         Set<PopManCell> touched = cells.refreshSeenClocks(map.loadedAreas(), age, now, false);
 
@@ -726,7 +790,16 @@ public final class PopManCore {
             PopManStreaming.applyChunkLoad(
                     cells, load.worldX(), load.worldY(), load.loaded(), now, out);
         }
-        takeBackZombies(input, now);
+        for (PopManZombie zombie : input.addZombies) {
+            takeBackZombie(zombie, input.aggroTargets, age, now);
+        }
+        for (PopManZombie zombie : input.realZombieQueue) {
+            addRealZombie(zombie);
+        }
+        for (int id : input.releaseZombieQueue) {
+            releaseRealZombie(id);
+        }
+        applyRealZombieUpdates(input.realZombieUpdates);
 
         evictIdleCells(now, touched);
 
@@ -784,7 +857,6 @@ public final class PopManCore {
                         chunk.zombies.clear();
                     }
                     cell.virtualCount = 0;
-                    cell.realCount = 0;
                 }
                 case PopManInputFrame.DebugCommand.SPAWN_NOW -> {
                     float ageF = (float) age;
@@ -828,58 +900,128 @@ public final class PopManCore {
         }
     }
 
+    /** Aggro pulls a returning zombie in only from closer than this, in Manhattan squares. */
+    static final int AGGRO_DISTANCE = 300;
+
     /**
-     * Cell coordinates here are indices into the metagrid, not world cell coordinates — the one
-     * channel that differs, where {@code n_saveCell} and {@code n_debugCommand} both take absolute
-     * ones. Every cell is zeroed first: the game reports only the cells it has zombies in, so a
-     * cell that has just been cleared reports nothing at all and would otherwise keep its old count
-     * forever.
+     * Native {@code ManagerWorker::addZombie}. A zombie with somewhere to go keeps walking as a
+     * group, and so does one on the ground floor with a player close enough to chase on open
+     * ground. Every other zombie goes back to being a number in its chunk.
      */
-    private void applyRealCounts(PopManInputFrame input) {
-        short[] triples = input.realZombieCounts;
-        if (triples == null) {
+    private void takeBackZombie(
+            PopManZombie zombie,
+            List<PopManInputFrame.AggroTarget> aggroTargets,
+            double age,
+            long nowMs) {
+        if (zombie.pathTargetX != PopManZombie.INVALID_PATH_XY) {
+            PopManGroupTick.rehome(cells, startGroup(zombie));
             return;
         }
-        for (PopManCell cell : cells.resident()) {
-            cell.realCount = 0;
+        int squareX = (int) Math.floor(zombie.x);
+        int squareY = (int) Math.floor(zombie.y);
+        if ((int) zombie.z == 0
+                && hasAggroTargetNear(aggroTargets, squareX, squareY)
+                && !map.isSquareBlocked(squareX, squareY)) {
+            zombie.clearPathTarget();
+            PopManGroupTick.rehome(cells, startGroup(zombie));
+            return;
         }
-        for (int i = 0; i + 2 < triples.length; i += 3) {
-            int cellX = triples[i];
-            int cellY = triples[i + 1];
-            if (cellX < 0 || cellY < 0 || cellX >= map.widthCells() || cellY >= map.heightCells()) {
-                continue;
+        if (!cells.inWorld(
+                PopManGeometry.cellOfSquare(squareX), PopManGeometry.cellOfSquare(squareY))) {
+            return;
+        }
+        PopManCell cell = cells.loadForSquare(squareX, squareY, age, nowMs);
+        cell.chunkAtSquare(squareX, squareY).zombies.add(zombie);
+        cell.dirty = true;
+        cell.virtualCount++;
+    }
+
+    private PopManGroup startGroup(PopManZombie leader) {
+        PopManGroup group = new PopManGroup(leader);
+        groups.add(group);
+        return group;
+    }
+
+    private static boolean hasAggroTargetNear(
+            List<PopManInputFrame.AggroTarget> targets, int squareX, int squareY) {
+        for (PopManInputFrame.AggroTarget target : targets) {
+            if (Math.abs(target.x() - squareX) + Math.abs(target.y() - squareY) < AGGRO_DISTANCE) {
+                return true;
             }
-            PopManCell cell = cells.resident(cellX + map.minCellX(), cellY + map.minCellY());
-            if (cell != null) {
-                cell.realCount = triples[i + 2];
-            }
+        }
+        return false;
+    }
+
+    /**
+     * Tracks a live zombie as a one-zombie group in its cell, so the cell counts it and saves it.
+     * It never joins {@link #groups}, so it never walks.
+     */
+    private void addRealZombie(PopManZombie zombie) {
+        if (realZombiesById.containsKey(zombie.id)) {
+            StormLogger.LOGGER.error(
+                    "ZPOP: zombie id "
+                            + Integer.toUnsignedString(zombie.id)
+                            + " was registered while already registered");
+            releaseRealZombie(zombie.id);
+        }
+        zombie.clearPathTarget();
+        PopManGroup real = new PopManGroup(zombie);
+        real.isReal = true;
+        realZombiesById.put(zombie.id, real);
+        PopManGroupTick.rehome(cells, real);
+    }
+
+    private void releaseRealZombie(int id) {
+        PopManGroup real = realZombiesById.remove(id);
+        if (real == null) {
+            return;
+        }
+        clearCurrentCell(real);
+        real.isReal = false;
+    }
+
+    private static void clearCurrentCell(PopManGroup group) {
+        if (group.cell != null) {
+            group.cell.groups.remove(group);
+            group.cell.dirty = true;
+            group.cell = null;
         }
     }
 
-    /** A zombie the game no longer wants to simulate goes back to being a number in a chunk. */
-    private void takeBackZombies(PopManInputFrame input, long nowMs) {
-        for (PopManZombie zombie : input.addZombies) {
-            int squareX = (int) Math.floor(zombie.x);
-            int squareY = (int) Math.floor(zombie.y);
-            PopManCell cell = cells.residentForSquare(squareX, squareY);
-            if (cell == null) {
+    /** How many tracked zombies may go unreported before the leak is worth a log line. */
+    static final int REAL_ZOMBIE_LEAK_THRESHOLD = 64;
+
+    private void applyRealZombieUpdates(List<PopManInputFrame.RealZombieUpdate> updates) {
+        if (updates.isEmpty()) {
+            return;
+        }
+        for (PopManInputFrame.RealZombieUpdate update : updates) {
+            PopManGroup real = realZombiesById.get(update.id());
+            if (real == null) {
                 continue;
             }
-            cell.chunkAtSquare(squareX, squareY).zombies.add(zombie);
-            cell.virtualCount++;
-            if (cell.realCount > 0) {
-                cell.realCount--;
-            }
-            cell.lastTouchedMs = nowMs;
-            cell.dirty = true;
+            real.leader.x = update.x();
+            real.leader.y = update.y();
+            real.leader.stateFlags = update.state();
+            real.leader.z = update.z();
+            PopManGroupTick.rehome(cells, real);
+        }
+        int leak = realZombiesById.size() - updates.size();
+        if (leak > REAL_ZOMBIE_LEAK_THRESHOLD && leak > lastReportedRealZombieLeak) {
+            lastReportedRealZombieLeak = leak;
+            StormLogger.LOGGER.warn(
+                    "ZPOP: "
+                            + leak
+                            + " zombie records are registered but no longer reported by the game");
         }
     }
 
     /** A cell nobody has touched lately is written out and dropped; its file is the population. */
     private void evictIdleCells(long nowMs, Set<PopManCell> touched) {
         for (PopManCell cell : cells.evictIdle(nowMs, touched)) {
-            if (cell.dirty && store != null) {
-                store.save(cell);
+            if (cell.dirty) {
+                cell.dirty = false;
+                saveCellFile(cell, false);
             }
         }
     }
@@ -906,71 +1048,173 @@ public final class PopManCore {
     // --- persistence --------------------------------------------------------
 
     /**
-     * Writes every cell that has changed, plus the travelling hordes, which live in one file of
-     * their own because they belong to no cell.
+     * Native {@code ManagerWorker::save}. Zombies still in transit between the threads have left
+     * one side and not yet reached the other, so they are parked in their cells for this one write.
+     * The id and virtual files go first, so a cell never names an id the counter has not passed.
      */
     public void save() {
-        if (!canWrite()) {
+        if (stopped || cells == null) {
             return;
         }
-        rehomeStagedZombies();
-        for (PopManCell cell : cells.resident()) {
-            if (cell.dirty) {
-                store.save(cell);
+        double age = worldAgeHours;
+        long now = nowMs();
+        List<PopManZombie> zombies = new ArrayList<>();
+        List<PopManZombie> registered = new ArrayList<>();
+        Set<Integer> releasedIds = new HashSet<>();
+
+        for (PopManResultFrame frame : handoff.pendingResultFrames()) {
+            addAllPresent(zombies, frame.spawns);
+        }
+        for (PopManInputFrame frame : handoff.pendingInputFrames()) {
+            addAllPresent(zombies, frame.addZombies);
+            addAllPresent(registered, frame.realZombieQueue);
+            for (Integer id : frame.releaseZombieQueue.toArray(new Integer[0])) {
+                if (id != null) {
+                    releasedIds.add(id);
+                }
+            }
+            applyRealZombieUpdates(
+                    presentOnly(
+                            frame.realZombieUpdates.toArray(
+                                    new PopManInputFrame.RealZombieUpdate[0])));
+        }
+
+        for (int id : releasedIds) {
+            releaseRealZombie(id);
+        }
+        for (PopManZombie zombie : registered) {
+            if (!releasedIds.contains(zombie.id)) {
+                zombies.add(zombie);
             }
         }
-        store.saveGroups(groups);
+
+        for (PopManZombie zombie : zombies) {
+            if (releasedIds.contains(zombie.id)) {
+                continue;
+            }
+            int squareX = (int) Math.floor(zombie.x);
+            int squareY = (int) Math.floor(zombie.y);
+            if (!cells.inWorld(
+                    PopManGeometry.cellOfSquare(squareX), PopManGeometry.cellOfSquare(squareY))) {
+                continue;
+            }
+            PopManCell cell = cells.loadForSquare(squareX, squareY, age, now);
+            cell.inFlightZombies.add(zombie);
+            cell.dirty = true;
+        }
+        for (PopManGroup real : realZombiesById.values()) {
+            if (real.cell != null) {
+                real.cell.lastTouchedMs = now;
+                real.cell.dirty = true;
+            }
+        }
+
+        boolean sharedFilesWritten = saveSharedFiles();
+        List<PopManCell> resident = cells.resident();
+        for (PopManCell cell : resident) {
+            if (cell.loaded && cell.dirty) {
+                cell.dirty = false;
+                saveCellFile(cell, sharedFilesWritten);
+            }
+        }
+        for (PopManCell cell : resident) {
+            cell.inFlightZombies.clear();
+        }
     }
 
-    /**
-     * Writes one cell, because the chunk that was holding it up has just unloaded. The live zombies
-     * staged by the caller are folded in first — they are what the cell is losing.
-     */
+    /** Writes one cell if it changed, because the chunk that was holding it up has unloaded. */
     public void saveCell(int cellX, int cellY) {
-        if (!canWrite()) {
-            stagedRealZombies.clear();
+        if (stopped || cells == null) {
             return;
         }
         PopManCell cell = cells.resident(cellX, cellY);
-        if (cell != null && cell.loaded) {
-            for (PopManZombie zombie : stagedRealZombies) {
-                adopt(cell, zombie);
-            }
-            store.save(cell);
+        if (cell != null && cell.loaded && cell.dirty) {
+            cell.dirty = false;
+            saveCellFile(cell, false);
         }
-        stagedRealZombies.clear();
     }
 
     /**
-     * {@code Core.noSave} makes both writers silent, so a debug session cannot scribble on a save.
+     * Native {@code Cell::save}. Unless the caller has just written them, the id and virtual files
+     * are written first; if either fails the cell stays dirty and unwritten.
      */
-    private boolean canWrite() {
-        return !stopped && store != null && !map.gameState().noSave;
-    }
-
-    private void rehomeStagedZombies() {
-        for (PopManZombie zombie : stagedRealZombies) {
-            adopt(
-                    cells.residentForSquare((int) Math.floor(zombie.x), (int) Math.floor(zombie.y)),
-                    zombie);
-        }
-        stagedRealZombies.clear();
-    }
-
-    /** Only takes the zombie if it really stands in this cell; a stray is dropped, not moved. */
-    private void adopt(PopManCell cell, PopManZombie zombie) {
-        int squareX = (int) Math.floor(zombie.x);
-        int squareY = (int) Math.floor(zombie.y);
-        if (cell == null
-                || PopManGeometry.cellOfSquare(squareX) != cell.cellX
-                || PopManGeometry.cellOfSquare(squareY) != cell.cellY) {
+    private void saveCellFile(PopManCell cell, boolean sharedFilesWritten) {
+        if (!cell.loaded || noSave()) {
             return;
         }
-        cell.chunkAtSquare(squareX, squareY).zombies.add(zombie);
-        cell.virtualCount++;
-        if (cell.realCount > 0) {
-            cell.realCount--;
+        if (!sharedFilesWritten && !saveSharedFiles()) {
+            cell.dirty = true;
+            return;
         }
-        cell.dirty = true;
+        store.save(cell, savedExtras(cell));
+    }
+
+    /** In-flight zombies first, then the live ones, each only if it stands inside this cell. */
+    private static List<PopManZombie> savedExtras(PopManCell cell) {
+        List<PopManZombie> extras = new ArrayList<>();
+        for (PopManZombie zombie : cell.inFlightZombies) {
+            addIfInside(extras, cell, zombie);
+        }
+        for (PopManGroup group : cell.groups) {
+            if (group.isReal) {
+                addIfInside(extras, cell, group.leader);
+            }
+        }
+        return extras;
+    }
+
+    private static void addIfInside(List<PopManZombie> extras, PopManCell cell, PopManZombie z) {
+        int localX = (int) Math.floor(z.x) - cell.minSquareX();
+        int localY = (int) Math.floor(z.y) - cell.minSquareY();
+        if (localX >= 0
+                && localY >= 0
+                && localX < PopManGeometry.SQUARES_PER_CELL
+                && localY < PopManGeometry.SQUARES_PER_CELL) {
+            extras.add(z);
+        }
+    }
+
+    /** Native {@code ZombieIDFile::saveIfAdvanced() && VirtualZombieFile::save()}. */
+    private boolean saveSharedFiles() {
+        if (noSave()) {
+            return true;
+        }
+        if (!store.saveIdsIfAdvanced()) {
+            return false;
+        }
+        if (!groups.changed) {
+            return true;
+        }
+        if (!store.saveGroups(groups)) {
+            return false;
+        }
+        groups.changed = false;
+        return true;
+    }
+
+    /**
+     * {@code Core.noSave} makes every writer silent, so a debug session cannot scribble on a save.
+     */
+    private boolean noSave() {
+        return store == null || map.gameState().noSave;
+    }
+
+    /** Copies a list another thread may be appending to; a slot caught mid-growth reads null. */
+    private static void addAllPresent(List<PopManZombie> into, List<PopManZombie> from) {
+        for (PopManZombie zombie : from.toArray(new PopManZombie[0])) {
+            if (zombie != null) {
+                into.add(zombie);
+            }
+        }
+    }
+
+    private static <T> List<T> presentOnly(T[] items) {
+        List<T> present = new ArrayList<>(items.length);
+        for (T item : items) {
+            if (item != null) {
+                present.add(item);
+            }
+        }
+        return present;
     }
 }

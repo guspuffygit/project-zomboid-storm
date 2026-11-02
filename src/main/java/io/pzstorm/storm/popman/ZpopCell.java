@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reader and writer for {@code zpop_<cellX>_<cellY>.bin} — one popman cell (32x32 chunks), always
@@ -21,7 +23,7 @@ import java.util.Map;
 public final class ZpopCell {
 
     /** The version the native writer always emits. */
-    public static final int WRITE_VERSION = 6;
+    public static final int WRITE_VERSION = 7;
 
     /**
      * The outfit-name table appeared at version 4. Versions 1..3 are refused rather than guessed:
@@ -32,6 +34,15 @@ public final class ZpopCell {
 
     /** Version 5 widened the per-zombie state from a legacy enum byte to the modern bitfield. */
     private static final int FIRST_WIDE_STATE_VERSION = 5;
+
+    /** Version 7 appended the persistent zombie id and made duplicate records impossible. */
+    static final int FIRST_ID_VERSION = 7;
+
+    /** {@code ZombieStateFlag.Initialized}; only dressed zombies are checked for duplicates. */
+    private static final int INITIALIZED_STATE = 1;
+
+    private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
+    private static final long FNV_PRIME = 0x100000001b3L;
 
     public int version = WRITE_VERSION;
 
@@ -47,6 +58,12 @@ public final class ZpopCell {
     public List<String> outfitNames = new ArrayList<>();
 
     public final List<ZpopChunk> chunks = new ArrayList<>(ZpopChunk.CHUNKS_PER_CELL);
+
+    /**
+     * Records a pre-v7 file repeated, dropped on read. Native {@code LegacyZombieSet.numDropped},
+     * one set per file, so a duplicate is caught across chunks but not across cells.
+     */
+    public int droppedDuplicates;
 
     public ZpopCell() {
         for (int i = 0; i < ZpopChunk.CHUNKS_PER_CELL; i++) {
@@ -88,11 +105,19 @@ public final class ZpopCell {
             cell.lastRedistributeTime = in.readFloat();
         }
 
+        Set<Long> fingerprints = cell.version < FIRST_ID_VERSION ? new HashSet<>() : null;
         for (ZpopChunk chunk : cell.chunks) {
             chunk.basePop = in.readShort();
             int count = in.readUnsignedShort();
             for (int i = 0; i < count; i++) {
-                chunk.zombies.add(readZombie(in, cell.version, cell.outfitNames, runtimeIndex));
+                PopManZombie z = readZombie(in, cell.version, cell.outfitNames, runtimeIndex);
+                if (fingerprints == null
+                        || (z.stateFlags & INITIALIZED_STATE) == 0
+                        || fingerprints.add(fingerprint(z))) {
+                    chunk.zombies.add(z);
+                } else {
+                    cell.droppedDuplicates++;
+                }
             }
             chunk.lastSeenTime = in.readFloat();
             chunk.lastRepopTime = in.readFloat();
@@ -171,7 +196,26 @@ public final class ZpopCell {
                 runtimeIndex == null
                         ? storedID
                         : remapOutfitID(storedID, fileOutfitNames, runtimeIndex);
+        if (version >= FIRST_ID_VERSION) {
+            z.id = in.readInt();
+        }
+        z.assignLoadedId();
         return z;
+    }
+
+    /**
+     * FNV-1a over six 32-bit words, one XOR and multiply per word, as native {@code
+     * LegacyZombieSet}. The id stays out because pre-v7 records draw a fresh one on read.
+     */
+    static long fingerprint(PopManZombie z) {
+        long h = FNV_OFFSET_BASIS;
+        h = (h ^ Integer.toUnsignedLong(Float.floatToRawIntBits(z.x))) * FNV_PRIME;
+        h = (h ^ Integer.toUnsignedLong(Float.floatToRawIntBits(z.y))) * FNV_PRIME;
+        h = (h ^ Integer.toUnsignedLong(Float.floatToRawIntBits(z.z))) * FNV_PRIME;
+        h = (h ^ (z.dir & 0xff)) * FNV_PRIME;
+        h = (h ^ Integer.toUnsignedLong(z.stateFlags)) * FNV_PRIME;
+        h = (h ^ Integer.toUnsignedLong(z.descriptorID)) * FNV_PRIME;
+        return h;
     }
 
     static void writeZombie(DataOutput out, PopManZombie z) throws IOException {
@@ -181,9 +225,9 @@ public final class ZpopCell {
         out.writeByte(z.dir);
         out.writeInt(z.stateFlags);
         out.writeInt(z.descriptorID);
+        out.writeInt(z.id);
     }
 
-    /** Anything past the eight real {@code IsoDirections} clamps to {@code Max}. */
     /** Version 4 and earlier stored a small enum where the modern format stores a bitfield. */
     static int expandLegacyState(int legacy) {
         return switch (legacy) {
@@ -195,6 +239,7 @@ public final class ZpopCell {
         };
     }
 
+    /** Anything past the eight real {@code IsoDirections} clamps to {@code Max}. */
     private static byte clampDirection(int dir) {
         return (byte) Math.min(dir, 8);
     }

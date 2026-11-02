@@ -112,14 +112,6 @@ public final class StormPopMan {
         return CORE.shouldWait();
     }
 
-    public static void n_beginSaveRealZombies(int totalCount) {
-        CORE.beginSaveRealZombies(totalCount);
-    }
-
-    public static void n_saveRealZombies(int count, ByteBuffer buf) {
-        CORE.saveRealZombies(count, buf);
-    }
-
     public static void n_save() {
         CORE.save();
     }
@@ -140,8 +132,19 @@ public final class StormPopMan {
             int descriptorID,
             int stateFlags,
             int pathTargetX,
-            int pathTargetY) {
-        CORE.addZombie(x, y, z, dir, descriptorID, stateFlags, pathTargetX, pathTargetY);
+            int pathTargetY,
+            int persistentId) {
+        CORE.addZombie(
+                x, y, z, dir, descriptorID, stateFlags, pathTargetX, pathTargetY, persistentId);
+    }
+
+    public static int n_registerZombie(
+            float x, float y, float z, byte dir, int descriptorID, int stateFlags, int id) {
+        return CORE.registerZombie(x, y, z, dir, descriptorID, stateFlags, id);
+    }
+
+    public static void n_releaseZombie(int id) {
+        CORE.releaseZombie(id);
     }
 
     public static void n_aggroTarget(int id, int x, int y) {
@@ -156,8 +159,8 @@ public final class StormPopMan {
         CORE.loadedAreas(count, areas, isServerCells);
     }
 
-    public static void n_realZombieCount(short count, short[] triples) {
-        CORE.realZombieCount(count, triples);
+    public static void n_updateRealZombies(int count, int[] idsAndStates, float[] positions) {
+        CORE.updateRealZombies(count, idsAndStates, positions);
     }
 
     public static void n_spawnHorde(

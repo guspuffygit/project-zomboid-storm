@@ -1,5 +1,7 @@
 package io.pzstorm.storm.popman;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -44,6 +46,23 @@ public final class PopManHandoff {
     /** Either thread: a published frame the worker has not drained yet. */
     public boolean hasPendingInput() {
         return !toWorker.isEmpty();
+    }
+
+    /**
+     * Worker thread: published input frames not yet drained, oldest first, then {@link #input()}.
+     */
+    public List<PopManInputFrame> pendingInputFrames() {
+        List<PopManInputFrame> frames = new ArrayList<>(toWorker);
+        frames.add(input);
+        return frames;
+    }
+
+    /** Worker thread: {@link #output()}, then published result frames main has not drained. */
+    public List<PopManResultFrame> pendingResultFrames() {
+        List<PopManResultFrame> frames = new ArrayList<>();
+        frames.add(output);
+        frames.addAll(toMain);
+        return frames;
     }
 
     /**

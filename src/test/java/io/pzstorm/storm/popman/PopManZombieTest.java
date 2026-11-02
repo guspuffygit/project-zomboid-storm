@@ -1,7 +1,6 @@
 package io.pzstorm.storm.popman;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
@@ -26,10 +25,8 @@ class PopManZombieTest implements UnitTest {
 
     @Test
     void recordCapsMatchTheThousandTwentyFourByteBuffer() {
-        assertEquals(48, PopManZombie.MAX_SAVE_RECORDS);
-        assertEquals(35, PopManZombie.MAX_ADD_RECORDS);
-        assertTrue(49 * PopManZombie.SAVE_RECORD_BYTES > PopManZombie.BUFFER_BYTES);
-        assertTrue(36 * PopManZombie.ADD_RECORD_BYTES > PopManZombie.BUFFER_BYTES);
+        assertEquals(31, PopManZombie.MAX_ADD_RECORDS);
+        assertTrue(32 * PopManZombie.ADD_RECORD_BYTES > PopManZombie.BUFFER_BYTES);
     }
 
     @Test
@@ -46,6 +43,7 @@ class PopManZombieTest implements UnitTest {
             w.stateFlags = 0x5EED0000 | i;
             w.pathTargetX = 7000 + i;
             w.pathTargetY = -7000 - i;
+            w.id = 0x10000 + i;
             w.writeAddRecord(buf, i);
         }
 
@@ -60,38 +58,9 @@ class PopManZombieTest implements UnitTest {
             assertEquals(0x5EED0000 | i, r.stateFlags);
             assertEquals(7000 + i, r.pathTargetX);
             assertEquals(-7000 - i, r.pathTargetY);
+            assertEquals(0x10000 + i, r.id);
             assertTrue(r.hasPathTarget());
         }
-    }
-
-    @Test
-    void saveRecordRoundTripsAndCarriesNoPathTarget() {
-        ByteBuffer buf = vanillaBuffer();
-        PopManZombie w = new PopManZombie();
-        w.x = 12.5F;
-        w.y = 34.25F;
-        w.z = 1.0F;
-        w.dir = 5;
-        w.descriptorID = 42;
-        w.stateFlags = 0x1234;
-        w.pathTargetX = 999;
-        w.pathTargetY = 888;
-        w.writeSaveRecord(buf, 47);
-
-        PopManZombie r = new PopManZombie();
-        r.pathTargetX = 1;
-        r.pathTargetY = 2;
-        r.readSaveRecord(buf, 47);
-
-        assertEquals(12.5F, r.x);
-        assertEquals(34.25F, r.y);
-        assertEquals(1.0F, r.z);
-        assertEquals((byte) 5, r.dir);
-        assertEquals(42, r.descriptorID);
-        assertEquals(0x1234, r.stateFlags);
-        assertFalse(r.hasPathTarget(), "the 21-byte record has no room for a path target");
-        assertEquals(PopManZombie.INVALID_PATH_XY, r.pathTargetX);
-        assertEquals(PopManZombie.INVALID_PATH_XY, r.pathTargetY);
     }
 
     /**
@@ -114,7 +83,7 @@ class PopManZombieTest implements UnitTest {
         assertEquals(0xAAAA0001, buf.getInt(10), "disk holds state at +10");
         assertEquals(0xBBBB0002, buf.getInt(14), "disk holds the outfit id at +14");
 
-        w.writeSaveRecord(buf, 0);
+        w.writeAddRecord(buf, 0);
         assertEquals(0xBBBB0002, buf.getInt(13), "the wire record holds the outfit id first");
         assertEquals(0xAAAA0001, buf.getInt(17), "and state second");
     }
@@ -132,7 +101,7 @@ class PopManZombieTest implements UnitTest {
         assertEquals((byte) -2, buf.get(8), "floor, not truncation, below zero");
 
         PopManZombie r = new PopManZombie();
-        r.readDiskRecord(buf, 0);
+        r.readDiskRecord(buf, 0, 7);
         assertEquals(-2.0F, r.z);
     }
 
@@ -147,19 +116,62 @@ class PopManZombieTest implements UnitTest {
             w.dir = (byte) (i % 8);
             w.stateFlags = 0x1000 + i;
             w.descriptorID = 0x2000 + i;
+            w.id = 0x3000 + i;
             w.writeDiskRecord(buf, i * PopManZombie.DISK_RECORD_BYTES);
         }
 
         PopManZombie r = new PopManZombie();
         for (int i = 0; i < 20; i++) {
-            r.readDiskRecord(buf, i * PopManZombie.DISK_RECORD_BYTES);
+            r.readDiskRecord(buf, i * PopManZombie.DISK_RECORD_BYTES, 7);
             assertEquals(4000.5F + i, r.x);
             assertEquals(9000.25F + i, r.y);
             assertEquals((float) (i % 4), r.z);
             assertEquals((byte) (i % 8), r.dir);
             assertEquals(0x1000 + i, r.stateFlags);
             assertEquals(0x2000 + i, r.descriptorID);
+            assertEquals(0x3000 + i, r.id);
         }
+    }
+
+    @Test
+    void loadedIdRaisesTheCounterPastIt() {
+        PopManZombieIds.resetForTest(0);
+        ByteBuffer buf = vanillaBuffer();
+        PopManZombie w = new PopManZombie();
+        w.id = 500;
+        w.writeDiskRecord(buf, 0);
+
+        new PopManZombie().readDiskRecord(buf, 0, 7);
+
+        assertEquals(501, PopManZombieIds.next());
+    }
+
+    @Test
+    void preIdRecordDrawsAFreshId() {
+        PopManZombieIds.resetForTest(0);
+        PopManZombieIds.raiseTo(40);
+        ByteBuffer buf = vanillaBuffer();
+        PopManZombie w = new PopManZombie();
+        w.id = 9999;
+        w.writeDiskRecord(buf, 0);
+
+        PopManZombie r = new PopManZombie();
+        r.readDiskRecord(buf, 0, 6);
+
+        assertEquals(40, r.id, "a v6 record has no id field, whatever the bytes after it hold");
+    }
+
+    @Test
+    void zeroIdOnDiskDrawsAFreshId() {
+        PopManZombieIds.resetForTest(0);
+        PopManZombieIds.raiseTo(12);
+        ByteBuffer buf = vanillaBuffer();
+        new PopManZombie().writeDiskRecord(buf, 0);
+
+        PopManZombie r = new PopManZombie();
+        r.readDiskRecord(buf, 0, 7);
+
+        assertEquals(12, r.id);
     }
 
     /** Absolute addressing must not depend on the buffer's position, which vanilla never resets. */

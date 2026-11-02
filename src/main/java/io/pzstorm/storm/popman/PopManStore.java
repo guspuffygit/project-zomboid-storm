@@ -31,12 +31,19 @@ public final class PopManStore implements PopManCellMap.Loader {
     public static final String CELL_FILE_PREFIX = "zpop_";
     public static final String CELL_FILE_SUFFIX = ".bin";
     public static final String VIRTUAL_FILE_NAME = "zpop_virtual.bin";
+    public static final String IDS_FILE_NAME = "zpop_ids.bin";
+
+    public static final short IDS_WRITE_VERSION = 7;
+    public static final short IDS_MIN_SUPPORTED_VERSION = 1;
 
     /** Written beside the real file and moved over it, so a crash mid-write loses nothing. */
     private static final String TEMP_SUFFIX = ".tmp";
 
     private final Path saveDirectory;
     private final Supplier<List<String>> runtimeOutfitNames;
+
+    /** The counter value {@link #IDS_FILE_NAME} last held, read or written. */
+    private int savedIdFloor;
 
     /**
      * @param saveDirectory the directory holding the {@code zpop} subdirectory — vanilla's {@code
@@ -60,6 +67,52 @@ public final class PopManStore implements PopManCellMap.Loader {
 
     public Path virtualFile() {
         return directory().resolve(VIRTUAL_FILE_NAME);
+    }
+
+    public Path idsFile() {
+        return directory().resolve(IDS_FILE_NAME);
+    }
+
+    /**
+     * Raises the id counter to the floor the last save recorded. Runs before any zombie loads, so
+     * no loaded record can draw an id that a saved one already holds.
+     */
+    public void loadIds() {
+        savedIdFloor = 0;
+        Path file = idsFile();
+        if (!Files.isRegularFile(file)) {
+            return;
+        }
+        try (DataInputStream in = openRead(file)) {
+            short version = in.readShort();
+            if (version < IDS_MIN_SUPPORTED_VERSION || version > IDS_WRITE_VERSION) {
+                throw new IOException("unknown file version \"" + version + "\"");
+            }
+            int floor = in.readInt();
+            PopManZombieIds.raiseTo(floor);
+            savedIdFloor = floor;
+        } catch (IOException e) {
+            StormLogger.LOGGER.error("ZPOP: cannot read " + file, e);
+        }
+    }
+
+    /** Writes the counter only when it has moved since the file last held it. */
+    public boolean saveIdsIfAdvanced() {
+        int floor = PopManZombieIds.peek();
+        if (floor == savedIdFloor) {
+            return true;
+        }
+        boolean written =
+                write(
+                        idsFile(),
+                        out -> {
+                            out.writeShort(IDS_WRITE_VERSION);
+                            out.writeInt(floor);
+                        });
+        if (written) {
+            savedIdFloor = floor;
+        }
+        return written;
     }
 
     /**
@@ -86,6 +139,14 @@ public final class PopManStore implements PopManCellMap.Loader {
             StormLogger.LOGGER.error("Unable to read popman cell file " + file, e);
             return false;
         }
+        if (stored.droppedDuplicates > 0) {
+            StormLogger.LOGGER.warn(
+                    "ZPOP: dropped "
+                            + stored.droppedDuplicates
+                            + " duplicate zombie records from "
+                            + file);
+            cell.dirty = true;
+        }
 
         cell.lastRepopTime = stored.lastRepopTime;
         cell.lastRedistributeTime = stored.lastRedistributeTime;
@@ -102,9 +163,11 @@ public final class PopManStore implements PopManCellMap.Loader {
     }
 
     /**
-     * Writes {@code cell} out as a version-6 file, creating the {@code zpop} directory if needed.
+     * Writes {@code cell} out as a version-7 file, creating the {@code zpop} directory if needed.
+     * Each of {@code extras} is saved in the chunk it stands in, after that chunk's own zombies;
+     * the caller has already checked that they stand inside the cell.
      */
-    public void save(PopManCell cell) {
+    public void save(PopManCell cell, List<PopManZombie> extras) {
         ZpopCell stored = new ZpopCell();
         stored.lastRepopTime = cell.lastRepopTime;
         stored.lastRedistributeTime = cell.lastRedistributeTime;
@@ -116,10 +179,14 @@ public final class PopManStore implements PopManCellMap.Loader {
             target.lastRepopTime = source.lastRepopTime;
             target.zombies.addAll(source.zombies);
         }
-
-        if (write(cellFile(cell.cellX, cell.cellY), out -> stored.write(out, outfitNames()))) {
-            cell.dirty = false;
+        for (PopManZombie zombie : extras) {
+            int index =
+                    PopManGeometry.chunkIndexOfSquare(
+                            (int) Math.floor(zombie.x), (int) Math.floor(zombie.y));
+            stored.chunks.get(index).zombies.add(zombie);
         }
+
+        write(cellFile(cell.cellX, cell.cellY), out -> stored.write(out, outfitNames()));
     }
 
     /**
@@ -149,14 +216,15 @@ public final class PopManStore implements PopManCellMap.Loader {
         return groups;
     }
 
-    public void saveGroups(List<PopManGroup> groups) {
+    /** Returns whether the file now holds {@code groups}. */
+    public boolean saveGroups(List<PopManGroup> groups) {
         ZpopVirtualFile file = new ZpopVirtualFile();
         for (PopManGroup group : groups) {
             ZpopVirtualFile.Group stored = new ZpopVirtualFile.Group();
             stored.members.addAll(group.members.isEmpty() ? List.of(group.leader) : group.members);
             file.groups.add(stored);
         }
-        write(virtualFile(), out -> file.write(out, outfitNames()));
+        return write(virtualFile(), out -> file.write(out, outfitNames()));
     }
 
     private List<String> outfitNames() {

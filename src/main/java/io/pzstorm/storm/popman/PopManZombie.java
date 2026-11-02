@@ -4,10 +4,10 @@ import java.nio.ByteBuffer;
 import java.util.function.IntSupplier;
 
 /**
- * One zombie in the population — native {@code popman::Zombie}, 32 bytes, the same eight fields in
- * the same order. Position, facing, outfit and state, plus an optional path target; that is the
- * whole of what the native population kept per zombie, and exactly what crosses the ByteBuffer
- * boundary in both directions.
+ * One zombie in the population — native {@code popman::Zombie}, 36 bytes, the same nine fields in
+ * the same order. Position, facing, outfit, state, an optional path target and a persistent id;
+ * that is the whole of what the native population kept per zombie, and exactly what crosses the
+ * ByteBuffer boundary in both directions.
  *
  * <p>Deliberately not called {@code VirtualZombie}: native {@code popman::VirtualZombie} is an
  * 80-byte <em>horde</em> — a leader plus a member list — not a single zombie.
@@ -23,13 +23,8 @@ public final class PopManZombie {
 
     public static final int BUFFER_BYTES = 1024;
 
-    /** Java writes these when handing real zombies over to be saved. */
-    public static final int SAVE_RECORD_BYTES = 21;
-
-    /**
-     * Native writes these when handing zombies back to be realised; the save record plus a path.
-     */
-    public static final int ADD_RECORD_BYTES = 29;
+    /** Native writes these when handing zombies back to be realised. */
+    public static final int ADD_RECORD_BYTES = 33;
 
     /**
      * The on-disk {@code zpop} record. Deliberately not the wire record: disk writes {@code state}
@@ -37,9 +32,11 @@ public final class PopManZombie {
      * narrows to a signed byte. Getting that swap wrong yields files that parse cleanly and
      * silently mis-dress every zombie.
      */
-    public static final int DISK_RECORD_BYTES = 18;
+    public static final int DISK_RECORD_BYTES = 22;
 
-    public static final int MAX_SAVE_RECORDS = BUFFER_BYTES / SAVE_RECORD_BYTES;
+    /** Files before v7 carry no id, so each record is four bytes shorter. */
+    public static final int LEGACY_DISK_RECORD_BYTES = 18;
+
     public static final int MAX_ADD_RECORDS = BUFFER_BYTES / ADD_RECORD_BYTES;
 
     public float x;
@@ -50,6 +47,9 @@ public final class PopManZombie {
     public int stateFlags;
     public int pathTargetX = INVALID_PATH_XY;
     public int pathTargetY = INVALID_PATH_XY;
+
+    /** Persistent id from {@link PopManZombieIds}; zero only on a record not yet loaded. */
+    public int id;
 
     /**
      * {@code ZombieStateFlag.CanWalk}, and nothing else. The native leaves {@code Initialized}
@@ -88,6 +88,7 @@ public final class PopManZombie {
         zombie.dir = (byte) randomDirection.getAsInt();
         zombie.descriptorID = 0;
         zombie.stateFlags = SPAWN_STATE_FLAGS;
+        zombie.id = PopManZombieIds.next();
         return zombie;
     }
 
@@ -100,19 +101,7 @@ public final class PopManZombie {
         pathTargetY = INVALID_PATH_XY;
     }
 
-    /** Reads the {@code index}-th 21-byte record Java packed for saving. */
-    public void readSaveRecord(ByteBuffer buf, int index) {
-        int at = index * SAVE_RECORD_BYTES;
-        x = buf.getFloat(at);
-        y = buf.getFloat(at + 4);
-        z = buf.getFloat(at + 8);
-        dir = buf.get(at + 12);
-        descriptorID = buf.getInt(at + 13);
-        stateFlags = buf.getInt(at + 17);
-        clearPathTarget();
-    }
-
-    /** Writes the {@code index}-th 29-byte record for Java to realise. */
+    /** Writes the {@code index}-th 33-byte record for Java to realise. */
     public void writeAddRecord(ByteBuffer buf, int index) {
         int at = index * ADD_RECORD_BYTES;
         buf.putFloat(at, x);
@@ -123,6 +112,7 @@ public final class PopManZombie {
         buf.putInt(at + 17, stateFlags);
         buf.putInt(at + 21, pathTargetX);
         buf.putInt(at + 25, pathTargetY);
+        buf.putInt(at + 29, id);
     }
 
     /** Mirror of {@link #writeAddRecord}, for tests and for reading back our own output. */
@@ -136,9 +126,10 @@ public final class PopManZombie {
         stateFlags = buf.getInt(at + 17);
         pathTargetX = buf.getInt(at + 21);
         pathTargetY = buf.getInt(at + 25);
+        id = buf.getInt(at + 29);
     }
 
-    /** Writes the 18-byte {@code zpop} form at an absolute byte offset. */
+    /** Writes the 22-byte {@code zpop} form at an absolute byte offset. */
     public void writeDiskRecord(ByteBuffer buf, int at) {
         buf.putFloat(at, x);
         buf.putFloat(at + 4, y);
@@ -146,27 +137,31 @@ public final class PopManZombie {
         buf.put(at + 9, dir);
         buf.putInt(at + 10, stateFlags);
         buf.putInt(at + 14, descriptorID);
+        buf.putInt(at + 18, id);
     }
 
-    /** Reads the 18-byte {@code zpop} form from an absolute byte offset. */
-    public void readDiskRecord(ByteBuffer buf, int at) {
+    /**
+     * Reads a v5+ {@code zpop} record from an absolute byte offset. A v7 record carries its id and
+     * raises the counter past it; an older record, or a v7 one with id zero, draws a fresh id.
+     */
+    public void readDiskRecord(ByteBuffer buf, int at, int version) {
         x = buf.getFloat(at);
         y = buf.getFloat(at + 4);
         z = buf.get(at + 8);
         dir = buf.get(at + 9);
         stateFlags = buf.getInt(at + 10);
         descriptorID = buf.getInt(at + 14);
+        id = version >= 7 ? buf.getInt(at + 18) : 0;
+        assignLoadedId();
         clearPathTarget();
     }
 
-    /** Mirror of {@link #readSaveRecord}, for tests. */
-    public void writeSaveRecord(ByteBuffer buf, int index) {
-        int at = index * SAVE_RECORD_BYTES;
-        buf.putFloat(at, x);
-        buf.putFloat(at + 4, y);
-        buf.putFloat(at + 8, z);
-        buf.put(at + 12, dir);
-        buf.putInt(at + 13, descriptorID);
-        buf.putInt(at + 17, stateFlags);
+    /** Native {@code Zombie::load}'s id step, shared by every record format. */
+    void assignLoadedId() {
+        if (id != 0) {
+            PopManZombieIds.raiseTo(id + 1);
+        } else {
+            id = PopManZombieIds.next();
+        }
     }
 }

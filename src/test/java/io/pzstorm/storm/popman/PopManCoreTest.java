@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class PopManCoreTest implements UnitTest {
@@ -184,7 +184,7 @@ class PopManCoreTest implements UnitTest {
     void mainThreadSettersAccumulateIntoOneFrame() {
         PopManCore core = newRunningCore();
 
-        core.addZombie(1.0F, 2.0F, 0.0F, (byte) 3, 7, 0, 11, 12);
+        core.addZombie(1.0F, 2.0F, 0.0F, (byte) 3, 7, 0, 11, 12, 0);
         core.aggroTarget(5, 6, 7);
         core.spawnHorde(0, 0, 8, 8, 4.0F, 4.0F, 10);
         core.loadChunk(30, 40, true);
@@ -347,51 +347,73 @@ class PopManCoreTest implements UnitTest {
     }
 
     @Test
-    void realZombieBatchesStageUntilTheNextBegin() {
+    void registeringDrawsAnIdOnlyForIdZero() {
+        PopManZombieIds.resetForTest(50);
+        PopManCore core = newRunningCore();
+
+        assertEquals(50, core.registerZombie(1.5F, 2.5F, 0.0F, (byte) 1, 7, 5, 0));
+        assertEquals(1234, core.registerZombie(1.5F, 2.5F, 0.0F, (byte) 1, 7, 5, 1234));
+
+        List<PopManZombie> queued = core.handoff().input().realZombieQueue;
+        assertEquals(2, queued.size());
+        assertEquals(PopManZombie.INVALID_PATH_XY, queued.get(0).pathTargetX);
+        assertEquals(1234, queued.get(1).id);
+    }
+
+    @Test
+    void releasesQueueTheirIds() {
+        PopManCore core = newRunningCore();
+
+        core.releaseZombie(9);
+        core.releaseZombie(9);
+
+        assertEquals(List.of(9, 9), core.handoff().input().releaseZombieQueue);
+    }
+
+    @Test
+    void realZombieUpdatesReplaceTheWholeSnapshot() {
+        PopManCore core = newRunningCore();
+
+        core.updateRealZombies(
+                2, new int[] {4, 1, 5, 2}, new float[] {10.5F, 11.5F, 0, 20.5F, 21.5F, 1});
+        core.updateRealZombies(1, new int[] {6, 3, 99, 99}, new float[] {30.5F, 31.5F, 0});
+
+        List<PopManInputFrame.RealZombieUpdate> updates = core.handoff().input().realZombieUpdates;
+        assertEquals(
+                List.of(new PopManInputFrame.RealZombieUpdate(6, 3, 30.5F, 31.5F, 0)), updates);
+    }
+
+    @Test
+    void realZombieUpdatesValidateInTheNativeOrder() {
+        PopManCore core = newRunningCore();
+
+        IllegalArgumentException negative =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> core.updateRealZombies(-1, null, null));
+        assertEquals("count < 0", negative.getMessage());
+        assertThrows(NullPointerException.class, () -> core.updateRealZombies(0, null, null));
+        assertEquals(
+                "idsAndStates.length < count * 2",
+                assertThrows(
+                                IllegalArgumentException.class,
+                                () -> core.updateRealZombies(2, new int[3], new float[0]))
+                        .getMessage());
+        assertEquals(
+                "positions.length < count * 3",
+                assertThrows(
+                                IllegalArgumentException.class,
+                                () -> core.updateRealZombies(2, new int[4], new float[5]))
+                        .getMessage());
+    }
+
+    @Test
+    void addZombieDataRefusesAnOffsetPastTheEnd() {
         PopManCore core = newRunningCore();
         ByteBuffer buf = ByteBuffer.allocate(PopManZombie.BUFFER_BYTES);
 
-        core.beginSaveRealZombies(2);
-        PopManZombie zombie = new PopManZombie();
-        zombie.x = 1200.5F;
-        zombie.descriptorID = 0x00010007;
-        zombie.stateFlags = 8;
-        zombie.writeSaveRecord(buf, 0);
-        zombie.x = 1300.5F;
-        zombie.writeSaveRecord(buf, 1);
-        core.saveRealZombies(2, buf);
-        core.saveRealZombies(1, buf);
-
-        assertEquals(3, core.stagedRealZombies().size(), "batches append");
-        assertEquals(1200.5F, core.stagedRealZombies().get(2).x);
-        assertEquals(0x00010007, core.stagedRealZombies().get(0).descriptorID);
-        assertEquals(
-                PopManZombie.INVALID_PATH_XY,
-                core.stagedRealZombies().get(0).pathTargetX,
-                "a real zombie carries no virtual path target");
-
-        core.beginSaveRealZombies(0);
-        assertTrue(core.stagedRealZombies().isEmpty());
-    }
-
-    /** The staging record honours the buffer's own order; the on-disk record is always BE. */
-    @Test
-    void realZombieStagingFollowsTheBuffersByteOrder() {
-        PopManCore core = newRunningCore();
-        ByteBuffer little = ByteBuffer.allocate(64).order(ByteOrder.LITTLE_ENDIAN);
-        PopManZombie zombie = new PopManZombie();
-        zombie.x = 42.0F;
-        zombie.stateFlags = 0x11223344;
-        zombie.writeSaveRecord(little, 0);
-
-        core.beginSaveRealZombies(1);
-        core.saveRealZombies(1, little);
-
-        assertEquals(42.0F, core.stagedRealZombies().get(0).x);
-        assertEquals(0x11223344, core.stagedRealZombies().get(0).stateFlags);
-        assertEquals(
-                0x44332211,
-                ByteBuffer.wrap(little.array()).getInt(17),
-                "read back as big-endian the same bytes mean something else");
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> core.getAddZombieData(0, buf));
+        assertEquals("invalid offset", e.getMessage());
     }
 }

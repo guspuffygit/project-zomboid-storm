@@ -68,6 +68,13 @@ public final class PopManGroup {
      */
     public short squaresTravelled;
 
+    /**
+     * A zombie the game is simulating, registered through {@code n_registerZombie}. It sits in its
+     * cell's {@link PopManCell#groups} so the cell counts it and saves it, but never in the
+     * worker's own group list, so it never walks, follows sounds or shows on the radar.
+     */
+    public boolean isReal;
+
     public PopManGroup(PopManZombie leader) {
         this.leader = leader;
         this.members.add(leader);

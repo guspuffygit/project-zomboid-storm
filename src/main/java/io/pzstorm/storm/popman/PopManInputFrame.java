@@ -28,12 +28,12 @@ public final class PopManInputFrame {
     public final Map<String, Integer> intConfig = new LinkedHashMap<>();
     public boolean configDirty;
 
-    /** Three shorts per cell, as handed over by {@code n_realZombieCount}. */
-    public short[] realZombieCounts;
-
     public final List<AggroTarget> aggroTargets = new ArrayList<>();
     public final List<ChunkLoad> chunkLoads = new ArrayList<>();
     public final List<PopManZombie> addZombies = new ArrayList<>();
+    public final List<PopManZombie> realZombieQueue = new ArrayList<>();
+    public final List<Integer> releaseZombieQueue = new ArrayList<>();
+    public final List<RealZombieUpdate> realZombieUpdates = new ArrayList<>();
     public final List<HordeRequest> hordes = new ArrayList<>();
     public final List<PopManWorldSound> sounds = new ArrayList<>();
 
@@ -51,6 +51,9 @@ public final class PopManInputFrame {
 
     public record AggroTarget(int id, int x, int y) {}
 
+    /** One {@code n_updateRealZombies} entry. */
+    public record RealZombieUpdate(int id, int state, float x, float y, float z) {}
+
     public record ChunkLoad(int worldX, int worldY, boolean loaded) {}
 
     public record HordeRequest(
@@ -67,10 +70,12 @@ public final class PopManInputFrame {
                 && loadedServerCells == null
                 && !timeChanged
                 && !configDirty
-                && realZombieCounts == null
                 && aggroTargets.isEmpty()
                 && chunkLoads.isEmpty()
                 && addZombies.isEmpty()
+                && realZombieQueue.isEmpty()
+                && releaseZombieQueue.isEmpty()
+                && realZombieUpdates.isEmpty()
                 && hordes.isEmpty()
                 && sounds.isEmpty()
                 && !radarRequested
@@ -85,10 +90,12 @@ public final class PopManInputFrame {
         floatConfig.clear();
         intConfig.clear();
         configDirty = false;
-        realZombieCounts = null;
         aggroTargets.clear();
         chunkLoads.clear();
         addZombies.clear();
+        realZombieQueue.clear();
+        releaseZombieQueue.clear();
+        realZombieUpdates.clear();
         hordes.clear();
         sounds.clear();
         radarRequested = false;
@@ -97,8 +104,8 @@ public final class PopManInputFrame {
     }
 
     /**
-     * Folds this frame into an accumulator. Lists append, flags OR, scalars overwrite — taking the
-     * newest frame wholesale instead would silently drop everything the older frames carried.
+     * Folds this frame into an accumulator. Lists append, flags OR, scalars overwrite, and a
+     * non-empty {@code realZombieUpdates} replaces the older snapshot because each one is complete.
      */
     public void mergeInto(PopManInputFrame accumulator) {
         if (loadedAreas != null) {
@@ -117,12 +124,15 @@ public final class PopManInputFrame {
             accumulator.intConfig.putAll(intConfig);
             accumulator.configDirty = true;
         }
-        if (realZombieCounts != null) {
-            accumulator.realZombieCounts = realZombieCounts;
-        }
         accumulator.aggroTargets.addAll(aggroTargets);
         accumulator.chunkLoads.addAll(chunkLoads);
         accumulator.addZombies.addAll(addZombies);
+        accumulator.realZombieQueue.addAll(realZombieQueue);
+        accumulator.releaseZombieQueue.addAll(releaseZombieQueue);
+        if (!realZombieUpdates.isEmpty()) {
+            accumulator.realZombieUpdates.clear();
+            accumulator.realZombieUpdates.addAll(realZombieUpdates);
+        }
         accumulator.hordes.addAll(hordes);
         accumulator.sounds.addAll(sounds);
         accumulator.radarRequested |= radarRequested;
