@@ -360,8 +360,9 @@ public final class StormPerformanceSandboxApplier {
 
     /**
      * Pushes {@link #OPT_PVP_HITS_ALWAYS_DAMAGE} through {@link
-     * PvpHitsAlwaysDamage#setEnabled(boolean)}. While on, the server ignores the shooter's failed
-     * hit-chance roll on player-on-player hits, as 42.20 did. {@code false} restores vanilla.
+     * PvpHitsAlwaysDamage#setEnabled(boolean)}. While on, the server ignores its own failed
+     * hit-chance roll on player-on-player hits, as 42.20 did. Shoves keep vanilla behaviour. {@code
+     * false} restores vanilla.
      */
     private static void applyPvpHitsAlwaysDamage() {
         Boolean value = readBooleanOption(OPT_PVP_HITS_ALWAYS_DAMAGE);

@@ -23,7 +23,6 @@ import zombie.core.znet.SteamUtils;
 import zombie.network.GameClient;
 import zombie.network.PacketTypes;
 import zombie.network.ZomboidNetData;
-import zombie.network.packets.GeneralActionPacket;
 
 /**
  * Test-only helper that drives one logical RakNet client through the full Project Zomboid login
@@ -263,26 +262,6 @@ public final class LiveServerClient implements AutoCloseable {
         b.putEnum(zombie.core.Transaction.TransactionState.Accept);
         b.putLong(duration);
         PacketTypes.PacketType.NetTimedAction.send(connection);
-    }
-
-    /**
-     * Sends a real {@link GeneralActionPacket} with {@code state=Reject} over the wire. Only {@code
-     * id} and {@code state} are assigned, so {@code playerId} stays at its default and the packet
-     * names no player. The server must attribute the reject to the sending connection, which is
-     * what {@code GeneralActionPacketPatch} does.
-     */
-    public void sendGeneralActionReject(byte actionByteId) {
-        GeneralActionPacket packet =
-                new GeneralActionPacket() {
-                    {
-                        id = actionByteId;
-                        state = zombie.core.Transaction.TransactionState.Reject;
-                    }
-                };
-        ByteBufferWriter b = connection.startPacket();
-        PacketTypes.PacketType.GeneralAction.doPacket(b);
-        packet.write(b);
-        PacketTypes.PacketType.GeneralAction.send(connection);
     }
 
     /**

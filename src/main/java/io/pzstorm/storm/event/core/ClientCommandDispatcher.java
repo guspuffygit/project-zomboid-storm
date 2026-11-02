@@ -45,6 +45,18 @@ public class ClientCommandDispatcher {
         HANDLER_REGISTRY.clear();
     }
 
+    /** Remove every handler declared by, or registered on an instance of, the given classes. */
+    static void unregisterHandlers(Set<Class<?>> handlerClasses) {
+        for (Set<HandlerMethod> handlers : HANDLER_REGISTRY.values()) {
+            handlers.removeIf(
+                    h ->
+                            handlerClasses.contains(h.method.getDeclaringClass())
+                                    || (h.handler != null
+                                            && handlerClasses.contains(h.handler.getClass())));
+        }
+        HANDLER_REGISTRY.values().removeIf(Set::isEmpty);
+    }
+
     /**
      * Register a typed client command event class. Reads the {@link ClientCommand} annotation to
      * determine the module and command key.

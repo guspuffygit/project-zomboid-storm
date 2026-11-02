@@ -2,6 +2,7 @@ package io.pzstorm.storm.advice.mannequin;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.client.MannequinDepthWriteGuard;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -37,7 +38,7 @@ import zombie.core.skinnedmodel.visual.ItemVisuals;
  * mannequin draws at the wrong depth for that frame and vanishes behind the floor. {@link
  * #setDefaultTargetDepth} stands in for the main-thread reset and skips it for instances the gate
  * keeps, so only the render thread touches the field. The gate stays vanilla until that
- * substitution is confirmed woven ({@link #setDepthWriteGuarded}).
+ * substitution is confirmed woven ({@link MannequinDepthWriteGuard}).
  *
  * <p>Always on. Any throwable in the gate's own bookkeeping latches it off for the rest of the
  * process, after which the vanilla call runs every frame. {@link #setEnabled(boolean)} switches it
@@ -51,7 +52,6 @@ public final class StormMannequinModelData {
 
     private static boolean disabled;
     private static boolean enabled = true;
-    private static volatile boolean depthWriteGuarded;
 
     private static long applies;
     private static long skips;
@@ -134,7 +134,7 @@ public final class StormMannequinModelData {
     }
 
     private static boolean active() {
-        return !disabled && enabled && depthWriteGuarded;
+        return !disabled && enabled && MannequinDepthWriteGuard.isWoven();
     }
 
     private static void latchOff(Throwable t) {
@@ -143,11 +143,6 @@ public final class StormMannequinModelData {
                 "Storm: mannequin model-data gate failed — reverting to the vanilla per-frame"
                         + " setModelData for the rest of this session",
                 t);
-    }
-
-    /** Set by {@code AnimatedModelTargetDepthPatch} once the depth-write substitution is woven. */
-    public static void setDepthWriteGuarded(boolean value) {
-        depthWriteGuarded = value;
     }
 
     public static void setEnabled(boolean value) {
@@ -174,7 +169,7 @@ public final class StormMannequinModelData {
                 + " enabled="
                 + enabled
                 + " depthWriteGuarded="
-                + depthWriteGuarded
+                + MannequinDepthWriteGuard.isWoven()
                 + " disabled="
                 + disabled;
     }

@@ -223,15 +223,6 @@ public final class LiveServerClientProcess implements AutoCloseable {
         }
     }
 
-    public void sendGeneralActionReject(byte actionByteId) throws Exception {
-        send("send-general-action-reject " + (actionByteId & 0xFF));
-        String line = awaitResponse(Duration.ofSeconds(10));
-        if (line == null || !line.startsWith("SENT")) {
-            throw new IllegalStateException(
-                    "[" + tag + "] send-general-action-reject failed: " + line);
-        }
-    }
-
     public void sendPlayerStartPMChat(String authorName, String destName) throws Exception {
         send("send-whisper-start " + authorName + " " + destName);
         String line = awaitResponse(Duration.ofSeconds(10));

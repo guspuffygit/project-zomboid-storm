@@ -1095,12 +1095,13 @@ public final class ChunkStreamMetrics {
     }
 
     /**
-     * Bracket the persistence path so {@code recordSerialize} can tell the two callers of {@code
-     * IsoChunk.SaveLoadedChunk} apart. {@code ServerChunkLoader.addSaveLoadedJob} delegates
-     * straight to {@code SaveChunkThread.addLoadedJob}, which serializes synchronously on the
-     * calling thread before handing the result to the save queue — so the marker is a thread-local
-     * depth, not a static flag. The caller can be the main thread ({@code SaveAll}) or a {@code
-     * ServerMap} worker, which is why thread identity alone cannot classify it.
+     * Bracket the persistence paths so {@code recordSerialize} can tell saving apart from chunk
+     * streaming at {@code IsoChunk.SaveLoadedChunk}. Two routes are bracketed. {@code
+     * ServerChunkLoader.addSaveLoadedJob} serializes a loaded chunk synchronously on the calling
+     * thread (main thread during {@code SaveAll}, a {@code ServerMap} worker otherwise). {@code
+     * ServerChunkLoader$SaveUnloadedTask.serialize} serializes an unloading chunk on the save
+     * thread or on a LoadChunk worker. Thread identity alone cannot classify the call, so the
+     * marker is a thread-local depth rather than a static flag.
      */
     public static void enterPersistenceSave() {
         PERSISTENCE_DEPTH.get()[0]++;

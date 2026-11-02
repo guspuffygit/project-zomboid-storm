@@ -12,24 +12,17 @@ import net.bytebuddy.pool.TypePool;
  * (and loudly logs) any non-{@link VirtualMachineError} throwable. The actual fix logic lives in
  * {@link ServerCellRecalcCrashGuard}.
  *
- * <h2>The bug this patches</h2>
+ * <h2>The failure this patches</h2>
  *
- * <p>{@code Load2()} runs {@code RecalcAll2()} <i>before</i> its own bookkeeping ({@code
- * loaded2.remove(i)} / {@code return true}), so a single throw leaves the cell in the static {@code
- * loaded2} list and in {@code ServerMap.toLoad} forever. {@code ServerMap.preupdate()} — the first
- * statement of {@code GameServer.main}'s frame-step {@code try} — then re-throws every tick,
- * skipping the whole frame body: the world freezes at full tick rate while network/chat/HTTP
- * threads stay alive, and the 25-per-process exception log budget hides the loop almost
- * immediately. See {@link ServerCellRecalcCrashGuard} for the full write-up and the 2026-08-29 live
- * incident that motivated it.
+ * <p>A throw out of {@code RecalcAll2()} makes {@code ServerMap.preupdate()} drop the whole cell,
+ * and a cell with a player in it reloads and throws again on the next relevance pass. See {@link
+ * ServerCellRecalcCrashGuard} for the full write-up and the 2026-08-29 live incident.
  *
  * <h2>Why the {@code RecalcAll2} boundary and not {@code Load2}</h2>
  *
- * <p>Swallowing at the {@code RecalcAll2} method boundary lets the vanilla {@code Load2} success
- * path do the eviction itself ({@code loaded2.remove}, {@code loadVehicles}, {@code return true} →
- * driver removes the cell from {@code toLoad}) — no list surgery, no duplicated cleanup logic that
- * would need re-validation on every game update. Guarding inside {@code Load2} would require
- * rewriting the mid-loop control flow rather than a method-boundary advice.
+ * <p>Swallowing at the {@code RecalcAll2} method boundary lets the rest of {@code Load2} ({@code
+ * loadVehicles}) run unchanged, with no duplicated cleanup logic that would need re-validation on
+ * every game update.
  *
  * <h2>Registration</h2>
  *

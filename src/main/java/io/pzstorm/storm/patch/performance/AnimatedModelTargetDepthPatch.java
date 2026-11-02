@@ -2,7 +2,7 @@ package io.pzstorm.storm.patch.performance;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
-import io.pzstorm.storm.advice.mannequin.StormMannequinModelData;
+import io.pzstorm.storm.client.MannequinDepthWriteGuard;
 import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.MemberSubstitution;
 import net.bytebuddy.description.method.MethodDescription;
@@ -18,14 +18,14 @@ import net.bytebuddy.pool.TypePool;
  * WorldModelCamera.Begin} and reads it back for the shader. Vanilla never overlaps the two because
  * each frame gets a fresh pooled instance; the mannequin gate keeps one instance across frames, and
  * the main-thread reset then races the render thread and drops the mannequin behind the floor for a
- * frame. This patch routes that one field write through {@link
- * StormMannequinModelData#setDefaultTargetDepth}, which skips it for gate-kept instances and
+ * frame. This patch routes that one field write through {@code
+ * StormMannequinModelData.setDefaultTargetDepth}, which skips it for gate-kept instances and
  * performs it for everything else. Every other model path is unchanged.
  *
- * <p>Fails soft: the class stays vanilla when the woven {@code initRenderData} does not hold
- * exactly one redirected write and no remaining direct write, and the gate only starts skipping
- * {@code setModelData} once this weave is confirmed, so a refused weave costs the perf win and
- * nothing else.
+ * <p>Fails soft: the class stays vanilla when weaving throws or when the woven {@code
+ * initRenderData} does not hold exactly one redirected write and no remaining direct write. The
+ * gate only starts skipping {@code setModelData} once {@link MannequinDepthWriteGuard} confirms the
+ * weave, so a refused weave costs the perf win and nothing else.
  *
  * <p>PZ-update re-validation: {@code initRenderData(StateInfo, AnimatedModelInstanceRenderData,
  * ModelInstance)} still holding exactly one write to {@code ModelInstance.targetDepth}; {@code
@@ -51,34 +51,39 @@ public class AnimatedModelTargetDepthPatch extends StormClassTransformer {
 
     @Override
     public byte[] transform(byte[] rawClass) {
-        byte[] woven = super.transform(rawClass);
+        byte[] woven;
         try {
+            woven = super.transform(rawClass);
             WeaveCheck.require(
                     woven, METHOD, DESCRIPTOR, HELPER_INTERNAL, "setDefaultTargetDepth", 1);
             WeaveCheck.requireFieldWrites(
                     woven, METHOD, DESCRIPTOR, MODEL_INSTANCE_INTERNAL, "targetDepth", 0);
             WeaveCheck.require(woven, null, null, HELPER_INTERNAL, "setDefaultTargetDepth", 1);
-        } catch (IllegalStateException e) {
+        } catch (RuntimeException | LinkageError e) {
             LOGGER.error(
                     "AnimatedModelTargetDepthPatch: {}; leaving AnimatedModel vanilla and the"
                             + " mannequin gate off",
-                    e.getMessage());
+                    e.toString());
             return rawClass;
         }
-        StormMannequinModelData.setDepthWriteGuarded(true);
+        MannequinDepthWriteGuard.setWoven(true);
         return woven;
     }
 
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
-        // Through the pool, never reflection: the helper declares a method taking AnimatedModel,
-        // the class being defined right now, and reflecting on it would re-enter this load.
-        MethodDescription gate =
+
+        // Reflecting on the helper would resolve AnimatedModel from its signatures while
+        // AnimatedModel is mid-load, which throws ClassCircularityError.
+
+        MethodDescription setter =
                 typePool.describe(IsoMannequinModelDataPatch.HELPER)
                         .resolve()
                         .getDeclaredMethods()
-                        .filter(ElementMatchers.named("setDefaultTargetDepth"))
+                        .filter(
+                                ElementMatchers.named("setDefaultTargetDepth")
+                                        .and(ElementMatchers.takesArguments(2)))
                         .getOnly();
         return builder.visit(
                 MemberSubstitution.relaxed()
@@ -88,7 +93,7 @@ public class AnimatedModelTargetDepthPatch extends StormClassTransformer {
                                                 ElementMatchers.isDeclaredBy(
                                                         ElementMatchers.named(MODEL_INSTANCE))))
                         .onWrite()
-                        .replaceWith(gate)
+                        .replaceWith(setter)
                         .on(ElementMatchers.named(METHOD).and(ElementMatchers.takesArguments(3))));
     }
 }

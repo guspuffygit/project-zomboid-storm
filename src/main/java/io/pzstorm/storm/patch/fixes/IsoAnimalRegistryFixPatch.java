@@ -28,7 +28,7 @@ import net.bytebuddy.pool.TypePool;
  * // AnimalManagerMain.fromWorker — chunk comes back, the same instance is re-realized
  * isoAnimal.addToWorld();
  * IsoWorld.instance.currentCell.getObjectList().add(isoAnimal);
- * // ❌ never calls AnimalInstanceManager.add(...)
+ * AnimalInstanceManager.add(isoAnimal);   // 42.22 re-registers here; kept as a belt-and-braces guard
  * }</pre>
  *
  * <p>The peer path does not have the problem: {@code AnimalPopulationManager.removeChunkFromWorld}

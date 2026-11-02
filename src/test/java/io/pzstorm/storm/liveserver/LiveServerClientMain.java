@@ -107,19 +107,6 @@ public final class LiveServerClientMain {
                                 System.out.flush();
                                 break;
                             }
-                        case "send-general-action-reject":
-                            {
-                                if (client == null) {
-                                    System.out.println("ERROR not-connected");
-                                    System.out.flush();
-                                    break;
-                                }
-                                byte id = (byte) Integer.parseInt(parts[1]);
-                                client.sendGeneralActionReject(id);
-                                System.out.println("SENT");
-                                System.out.flush();
-                                break;
-                            }
                         case "send-whisper-start":
                             {
                                 if (client == null) {

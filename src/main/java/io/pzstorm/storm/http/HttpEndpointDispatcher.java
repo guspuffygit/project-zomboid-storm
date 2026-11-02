@@ -3,6 +3,7 @@ package io.pzstorm.storm.http;
 import com.sun.net.httpserver.HttpExchange;
 import io.pzstorm.storm.metrics.HttpEndpointMetrics;
 import java.lang.reflect.Method;
+import java.util.Set;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -20,6 +21,10 @@ public class HttpEndpointDispatcher {
 
     public static void reset() {
         REGISTRY.reset();
+    }
+
+    public static void unregisterHandlers(Set<Class<?>> handlerClasses) {
+        REGISTRY.unregisterHandlers(handlerClasses);
     }
 
     public static void registerHandler(Method method, @Nullable Object handler) {

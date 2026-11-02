@@ -11,16 +11,16 @@ import net.bytebuddy.pool.TypePool;
  * Substitutes the {@code this.getCell().getAnimals()} call inside {@code
  * IsoAnimal.reattachBackToMom()} with {@link ReattachCellAnimalsMemo#animalsThisTick(Object)}, so
  * every orphaned animal searching for its mother in the same tick shares one walk of the cell's
- * moving-object set instead of each doing its own. The {@code DesignationZoneAnimal.getAnimals()}
- * calls in the same method are a different declaring type and are left alone.
+ * moving-object set instead of each doing its own. The {@code
+ * DesignationZoneAnimal.getAnimalsInZone()} calls in the same method are a different declaring type
+ * and are left alone.
  *
  * <p>Scoped to the one method via {@code MemberSubstitution.on(...)}; {@code IsoCell.getAnimals()}
  * itself is unchanged for every other caller (it is public API used from Lua). The matcher names
  * {@code zombie.iso.IsoCell} as a string so registering this patch does not load the class before
  * its own transformers are in place.
  *
- * <p>Server-only. Companion to {@code IsoCellGetAnimalsPatch}, which made the list an {@code
- * ArrayList} so the indexed scan in {@code findMotherAndAttach} stopped being O(n²).
+ * <p>Server-only.
  */
 public class IsoAnimalReattachBackToMomCellAnimalsMemoPatch extends StormClassTransformer {
 

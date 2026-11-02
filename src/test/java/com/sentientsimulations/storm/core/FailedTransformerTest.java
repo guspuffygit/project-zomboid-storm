@@ -19,11 +19,11 @@ import net.bytebuddy.pool.TypePool;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins what {@link StormClassTransformers#applyAll} does when a transformer throws: a client logs
- * it and keeps the bytes of the transformers around it, a server fails the class load, and neither
- * reports the class as transformed. {@link LinkageError} is covered because that is what a
- * transformer gets when it reaches back into its own target, and {@code catch (Exception)} misses
- * it.
+ * Pins what {@link StormClassTransformers#applyAll} does when a Storm transformer throws. A client
+ * logs it and keeps the bytes of the transformers around it, and the class still counts as
+ * transformed when at least one of them applied. A server fails the class load and never reports
+ * the class as transformed. {@link LinkageError} is covered because that is what a transformer gets
+ * when it reaches back into its own target, and {@code catch (Exception)} misses it.
  */
 class FailedTransformerTest implements IntegrationTest {
 
@@ -82,7 +82,7 @@ class FailedTransformerTest implements IntegrationTest {
                         appending(target, 3));
 
         assertArrayEquals(new byte[] {1, 2, 3}, result);
-        assertFalse(StormClassTransformers.getTransformedClasses().contains(target));
+        assertTrue(StormClassTransformers.getTransformedClasses().contains(target));
     }
 
     @Test
@@ -96,11 +96,11 @@ class FailedTransformerTest implements IntegrationTest {
                         throwing(target, new ClassCircularityError("target")));
 
         assertArrayEquals(new byte[] {1, 2}, result);
-        assertFalse(StormClassTransformers.getTransformedClasses().contains(target));
+        assertTrue(StormClassTransformers.getTransformedClasses().contains(target));
     }
 
     @Test
-    void clientStillReportsAFullyTransformedClass() throws Exception {
+    void clientReportsACleanlyTransformedClass() throws Exception {
         String target = "zombie.FailedTransformerTest$ClientClean";
         byte[] result = applyAs(false, target, appending(target, 2));
 

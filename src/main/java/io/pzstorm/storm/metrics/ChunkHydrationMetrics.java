@@ -281,8 +281,8 @@ public final class ChunkHydrationMetrics {
     }
 
     /**
-     * Close out a finished cell, from the {@code Load2} exit advice on the {@code return true} path
-     * only — the fall-through return is a drain-and-bail that does no hydration work.
+     * Close out a finished cell, from the {@code Load2} exit advice on a normal return only. A
+     * throwing {@code Load2} is dropped by {@code ServerMap.preupdate} and never counts as loaded.
      *
      * <p>{@code content} is decided by scanning the cell's 64 chunks for {@code isNewChunk()},
      * which {@code LoadBrandNew} sets and only {@code resetForStore} clears, so it stays valid for
@@ -458,8 +458,9 @@ public final class ChunkHydrationMetrics {
 
     /**
      * Age the oldest dispatched-but-unfinished cell. Reads {@code toLoad} directly rather than
-     * tracking a separate collection: a cell leaves that list only when it loads or is cancelled,
-     * so anything still in it with a stamp is genuinely outstanding.
+     * tracking a separate collection, because a cell leaves that list only when it loads, is
+     * cancelled, or is dropped by {@code preupdate} after a throwing {@code Load2}. Anything still
+     * in it with a stamp is genuinely outstanding.
      */
     private static void sampleOldestPending(List<?> toLoad) {
         Field field = hydrateStartField();

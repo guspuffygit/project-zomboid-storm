@@ -9,21 +9,22 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Server only. Exit advice on {@code PlayerHitPlayerPacket.parse} that hands the parsed hits to
- * {@link PvpHitsAlwaysDamage}, which clears the failed-roll {@code ignoreDamage} flag while the
+ * Server only. Entry advice on {@code PlayerHitPlayerPacket.process} that hands the rolled hits to
+ * {@link PvpHitsAlwaysDamage}, which clears the failed-roll {@code isIgnoreDamage} flag while the
  * {@code Storm.PvpHitsAlwaysDamage} sandbox option is on.
  *
- * <p>Fail-soft: the advice suppresses its own errors, and the helper goes inert and logs when the
+ * <p>Fail-soft: the advice suppresses its own errors, and the helper goes inert and logs when a
  * field is missing, so hits fall back to vanilla. Re-validate on game updates. The patch assumes
- * {@code PlayerHitCharacter.hits} holds the parsed {@code WeaponHit}s, and that {@code
- * WeaponHit.process} still passes {@code ignoreDamage} to {@code IsoGameCharacter.Hit}.
+ * {@code HitCharacter.processClient} runs {@code preProcess} (which calls {@code Hit.roll}) before
+ * {@code process}, that {@code PlayerHit.hits} holds the {@code Hit}s, and that {@code Hit.process}
+ * still passes {@code hitData.isIgnoreDamage()} to {@code IsoGameCharacter.Hit}.
  */
 public class PlayerHitPlayerPacketHitDamagePatch extends StormClassTransformer {
 
     private static final String TARGET = "zombie.network.packets.hit.PlayerHitPlayerPacket";
-    private static final String HIT = "zombie.network.fields.hit.WeaponHit";
+    private static final String HIT = "zombie.network.fields.hit.Hit";
     private static final String ADVICE =
-            "io.pzstorm.storm.advice.pvphitdamage.PlayerHitPlayerPacketParseDamageAdvice";
+            "io.pzstorm.storm.advice.pvphitdamage.PlayerHitPlayerPacketProcessDamageAdvice";
 
     public PlayerHitPlayerPacketHitDamagePatch() {
         super(TARGET);
@@ -34,23 +35,26 @@ public class PlayerHitPlayerPacketHitDamagePatch extends StormClassTransformer {
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
         TypeDescription target = typePool.describe(TARGET).resolve();
         if (target.getDeclaredMethods()
-                .filter(ElementMatchers.named("parse").and(ElementMatchers.takesArguments(2)))
+                .filter(ElementMatchers.named("process").and(ElementMatchers.takesArguments(0)))
                 .isEmpty()) {
             throw new IllegalStateException(
-                    "PlayerHitPlayerPacketHitDamagePatch: PlayerHitPlayerPacket.parse(reader,"
-                            + " connection) is gone. Re-verify against the current game source.");
+                    "PlayerHitPlayerPacketHitDamagePatch: PlayerHitPlayerPacket.process() is gone."
+                            + " Re-verify against the current game source.");
         }
         if (typePool.describe(HIT)
-                .resolve()
-                .getDeclaredFields()
-                .filter(ElementMatchers.named("ignoreDamage"))
-                .isEmpty()) {
+                        .resolve()
+                        .getDeclaredFields()
+                        .filter(ElementMatchers.namedOneOf("isIgnoreDamage", "hitData"))
+                        .size()
+                != 2) {
             throw new IllegalStateException(
-                    "PlayerHitPlayerPacketHitDamagePatch: WeaponHit.ignoreDamage is gone."
-                            + " Re-verify how failed hit rolls reach the server.");
+                    "PlayerHitPlayerPacketHitDamagePatch: Hit.isIgnoreDamage or Hit.hitData is"
+                            + " gone. Re-verify how failed hit rolls reach the damage call.");
         }
         return builder.visit(
                 Advice.to(typePool.describe(ADVICE).resolve(), locator)
-                        .on(ElementMatchers.named("parse").and(ElementMatchers.takesArguments(2))));
+                        .on(
+                                ElementMatchers.named("process")
+                                        .and(ElementMatchers.takesArguments(0))));
     }
 }

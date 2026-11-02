@@ -2,7 +2,6 @@ package io.pzstorm.storm.core;
 
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
-import java.util.Set;
 
 /**
  * This class bootstraps everything needed to launch the game with static initialization. It should
@@ -90,7 +89,6 @@ public class StormBootstrap {
      * io.pzstorm.storm.core.StormModLoader#loadStormModClasses()} Calls {@link
      * io.pzstorm.storm.core.StormModRegistry#registerMods()}
      */
-    @SuppressWarnings("unchecked")
     static void loadAndRegisterMods() throws ReflectiveOperationException {
         MOD_LOADER_CLASS.getDeclaredMethod("loadStormMods").invoke(null);
 
@@ -113,14 +111,7 @@ public class StormBootstrap {
         // version, so re-registration after the fact has no effect.
         TRANSFORMERS_CLASS.getDeclaredMethod("collectTransformers").invoke(null);
 
-        // this class should have already been initialized, so just get the reference
-        Class<?> zomboidModClass =
-                Class.forName("io.pzstorm.storm.mod.ZomboidMod", false, CLASS_LOADER);
-
-        for (Object mod :
-                (Set<Object>) modRegistry.getDeclaredMethod("getRegisteredMods").invoke(null)) {
-            zomboidModClass.getDeclaredMethod("registerEventHandlers").invoke(mod);
-        }
+        modRegistry.getDeclaredMethod("registerEventHandlers").invoke(null);
 
         Class<?> commandRegistry =
                 Class.forName("io.pzstorm.storm.core.StormCommandRegistry", true, CLASS_LOADER);

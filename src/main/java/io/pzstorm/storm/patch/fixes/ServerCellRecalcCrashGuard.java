@@ -7,31 +7,28 @@ import zombie.network.ServerMap;
 
 /**
  * Pure logic behind {@link ServerCellRecalcCrashGuardPatch}: swallow a throwable escaping {@code
- * ServerCell.RecalcAll2()} so the throwing cell finishes {@code Load2()} and is evicted from the
- * retry lists instead of wedging the server main loop forever.
+ * ServerCell.RecalcAll2()} so the throwing cell still finishes {@code Load2()} and stays loaded.
  *
- * <h2>The bug this heals</h2>
+ * <h2>The failure this heals</h2>
  *
- * <p>{@code ServerCell.Load2()} calls {@code RecalcAll2()} <b>before</b> {@code loaded2.remove(i)}
- * and before {@code return true}. Any exception out of {@code RecalcAll2} therefore leaves the cell
- * in the static {@code ServerCell.loaded2} list <i>and</i> in {@code ServerMap.toLoad} permanently.
- * {@code ServerMap.preupdate()} retries it every frame — and {@code preupdate} is the <i>first</i>
- * statement in {@code GameServer.main}'s frame-step {@code try}, so the re-thrown exception skips
- * the entire rest of the frame body on every tick: world update, {@code StatisticManager.update},
- * {@code LoginQueue.update}, {@code SteamUtils.runLoop}, console command processing. The world
- * freezes while chat/network/HTTP threads keep serving, and the {@code mainCycleExceptionLogCount =
- * 25} process-lifetime log budget in {@code GameServer.main} hides the loop after at most 25 log
- * lines. Observed live 2026-08-29: an {@code IllegalArgumentException: Entity is already
- * registered} from {@code IsoChunk.doLoadGridsquare} → {@code IsoObject.addToWorld} froze the
- * server for ~13 minutes until a manual restart, with 21 log lines covering ~15,000 silent retry
- * frames.
+ * <p>{@code ServerMap.preupdate()} catches an {@code Exception} out of {@code Load2()}, unloads the
+ * cell, clears its {@code cellMap} slot and removes it from {@code loadedCells}. A player still
+ * standing there makes the cell relevant again, so it reloads, throws again and drops again, and
+ * the area never finishes loading. Observed live 2026-08-29: an {@code IllegalArgumentException:
+ * Entity is already registered} from {@code IsoChunk.doLoadGridsquare} → {@code
+ * IsoObject.addToWorld}.
+ *
+ * <p>Vanilla's catch leaves two gaps. It catches {@code Exception} only, so an {@code Error} still
+ * escapes {@code preupdate} and skips the whole frame body every tick. And each drop drifts {@code
+ * RoomDef.indoorZombies}: {@code RecalcAll2} clears {@code unexploredRooms} before it refills the
+ * list and only increments the counters at its very end, so {@code Unload} decrements rooms that
+ * were never incremented.
  *
  * <h2>The fix</h2>
  *
- * <p>Swallowing the throwable at the {@code RecalcAll2} method boundary lets {@code Load2} run its
- * own cleanup: {@code loaded2.remove(i)}, {@code loadVehicles()}, {@code return true} — and the
- * {@code preupdate} driver then removes the cell from {@code toLoad}. One bad cell degrades to a
- * loudly-logged, partially-recalculated (but present and playable) cell instead of a dead server.
+ * <p>Swallowing the throwable at the {@code RecalcAll2} method boundary lets {@code Load2} finish
+ * normally, including {@code loadVehicles()}. One bad cell degrades to a loudly-logged,
+ * partially-recalculated (but present and playable) cell instead of a drop/reload loop.
  *
  * <p>{@link VirtualMachineError}s ({@code OutOfMemoryError}, {@code StackOverflowError}, ...) are
  * never masked — hiding those would trade a visible crash for undefined behavior. The decision
@@ -75,8 +72,8 @@ public final class ServerCellRecalcCrashGuard {
         ServerCellRecalcGuardMetrics.recordFailure();
         ServerMap.ServerCell cell = (ServerMap.ServerCell) cellRef;
         LOGGER.error(
-                "ServerCell.RecalcAll2 threw for cell {},{} — dropping the cell from the recalc"
-                        + " retry lists so the main loop keeps running. The cell stays loaded but"
+                "ServerCell.RecalcAll2 threw for cell {},{} — keeping the cell loaded instead of"
+                        + " letting ServerMap.preupdate drop and reload it every pass. The cell is"
                         + " partially recalculated (some squares may have stale room/LOS"
                         + " bookkeeping until the next load).",
                 cell.wx,

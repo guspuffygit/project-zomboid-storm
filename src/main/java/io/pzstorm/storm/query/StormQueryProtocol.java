@@ -6,10 +6,10 @@ package io.pzstorm.storm.query;
  *
  * <p>The query rides PZ's own user-packet framing ({@code byte 134}, {@code short packetId},
  * payload) on an established RakNet connection, but uses packet ids far outside the vanilla enum
- * ordinal range (vanilla ends at 294). Vanilla resolves ids through {@code
- * PacketTypes.packetTypes.get(id)} and treats a miss as a logged drop, so a server without Storm —
- * or with an older Storm — simply ignores the query and the launcher times out and degrades to its
- * previous behavior.
+ * ordinal range (vanilla ends at 302). Vanilla resolves ids through {@code PacketType.getById(id)},
+ * which returns {@code null} past the enum's last ordinal, and treats that miss as a logged drop,
+ * so a server without Storm — or with an older Storm — simply ignores the query and the launcher
+ * times out and degrades to its previous behavior.
  *
  * <p>Answering happens in {@code GameServer.addIncoming}, on the UdpEngine thread, which runs
  * <i>before</i> the {@code mainLoopDealWithNetData} login gate that force-disconnects any
@@ -25,7 +25,7 @@ public final class StormQueryProtocol {
     public static final int RAKNET_USER_PACKET_ENUM = 134;
 
     /**
-     * Request id. Chosen in the 0x7A00 block: vanilla ordinals end at 294 and grow upward with each
+     * Request id. Chosen in the 0x7A00 block: vanilla ordinals end at 302 and grow upward with each
      * update, so this leaves ~28k of headroom before a collision is even conceivable.
      */
     public static final short QUERY_PACKET_ID = 0x7A17;

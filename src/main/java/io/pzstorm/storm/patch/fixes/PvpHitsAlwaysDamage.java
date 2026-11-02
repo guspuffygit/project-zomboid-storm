@@ -8,27 +8,37 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
+import zombie.CombatManager;
+import zombie.characters.IsoGameCharacter;
+import zombie.characters.IsoLivingCharacter;
 import zombie.network.GameServer;
-import zombie.network.fields.hit.WeaponHit;
+import zombie.network.fields.hit.Hit;
+import zombie.network.packets.hit.PlayerHitPlayerPacket;
 
 /**
  * Server-side: every player-on-player hit that reaches the server does damage, gated on {@code
  * Storm.PvpHitsAlwaysDamage} (default off = vanilla).
  *
- * <p>The shooter's client rolls hit chance. Under {@code FirearmUseDamageChance = 3} a failed roll
- * is still sent, as a hit with {@code WeaponHit.ignoreDamage} set, and {@code
- * IsoPlayer.hitConsequences} then skips the body damage. Before 42.21 the packet never carried that
- * flag, so the server damaged the target on every hit it received. Clearing the flag right after
- * {@code PlayerHitPlayerPacket.parse} restores that, so the server's own hit, the relay to other
- * clients, and the combat log all see a normal hit. Zombie and animal hits use other packets and
- * are untouched.
+ * <p>The server rolls hit chance for player targets in {@code Hit.roll}. Under {@code
+ * FirearmUseDamageChance = 3} a failed roll still lands, as a hit whose {@code HitData} has {@code
+ * isIgnoreDamage} set, and {@code IsoGameCharacter.Hit} then skips the body damage. Before 42.21
+ * that flag never reached player hits, so every hit the server received did damage. Clearing it on
+ * entry to {@code PlayerHitPlayerPacket.process}, after the roll and before the damage, restores
+ * that, so the server's own hit, the relay to other clients, and the combat log all see a normal
+ * hit. Zombie and animal hits use other packets and are untouched.
+ *
+ * <p>{@code CombatManager.getHitData} also seeds {@code isIgnoreDamage} from the wielder's shove
+ * state ({@code isIgnoreHitCountDamage}). A shove, or a stomp on a target who is not prone, is a
+ * push with no body damage by design. Those hits keep the flag so the option only restores failed
+ * rolls.
  */
 public final class PvpHitsAlwaysDamage {
 
     public static final boolean DEFAULT_ENABLED = false;
 
     private static final long FAILURE_LOG_INTERVAL_MS = 5000L;
-    private static final VarHandle IGNORE_DAMAGE = ignoreDamageHandle();
+    private static final VarHandle IGNORE_DAMAGE = hitHandle("isIgnoreDamage", boolean.class);
+    private static final VarHandle HIT_DATA = hitHandle("hitData", CombatManager.HitData.class);
 
     public static final LongAdder restored = new LongAdder();
 
@@ -55,12 +65,15 @@ public final class PvpHitsAlwaysDamage {
         return enabled;
     }
 
-    /** Runs after {@code PlayerHitPlayerPacket.parse}; acts on the server only. */
-    public static void afterParse(List<?> hits) {
+    /** Runs on entry to {@code PlayerHitPlayerPacket.process}; acts on the server only. */
+    public static void beforeProcess(Object packet, List<?> hits) {
         if (!enabled || !GameServer.server) {
             return;
         }
         try {
+            if (isShoveHit(packet)) {
+                return;
+            }
             int cleared = clearIgnoreDamage(hits);
             if (cleared > 0) {
                 restored.add(cleared);
@@ -70,27 +83,56 @@ public final class PvpHitsAlwaysDamage {
         }
     }
 
-    /** Clears {@code ignoreDamage} on each hit and returns how many were set. */
+    /** True when the wielder's shove state, not a failed roll, set {@code isIgnoreDamage}. */
+    static boolean isShoveHit(Object packet) {
+        if (!(packet instanceof PlayerHitPlayerPacket hitPacket)) {
+            return false;
+        }
+        IsoGameCharacter wielder = hitPacket.getCharacter();
+        IsoGameCharacter target = hitPacket.target.getCharacter();
+        if (!(wielder instanceof IsoLivingCharacter living) || target == null) {
+            return false;
+        }
+        return isShoveHit(living.isDoShove(), living.isShoveStompAnim(), target.isProne());
+    }
+
+    /** Mirrors {@code CombatManager.isIgnoreHitCountDamage}. */
+    static boolean isShoveHit(boolean doShove, boolean stompAnim, boolean targetProne) {
+        return doShove && (!stompAnim || !targetProne);
+    }
+
+    /** Clears the rolled {@code isIgnoreDamage} on each hit and returns how many were set. */
     static int clearIgnoreDamage(List<?> hits) {
-        if (hits == null || IGNORE_DAMAGE == null) {
+        if (hits == null || IGNORE_DAMAGE == null || HIT_DATA == null) {
             return 0;
         }
         int cleared = 0;
-        for (Object hit : hits) {
-            if (hit instanceof WeaponHit weaponHit && (boolean) IGNORE_DAMAGE.get(weaponHit)) {
-                IGNORE_DAMAGE.set(weaponHit, false);
-                cleared++;
+        for (Object o : hits) {
+            if (!(o instanceof Hit hit)
+                    || !(HIT_DATA.get(hit) instanceof CombatManager.HitData data)
+                    || !data.isIgnoreDamage()) {
+                continue;
             }
+            HIT_DATA.set(
+                    hit,
+                    new CombatManager.HitData(
+                            data.hitHead(),
+                            data.hitLegs(),
+                            false,
+                            data.isPiercedTargetDamageReduction(),
+                            data.isValidHitLocation()));
+            IGNORE_DAMAGE.set(hit, false);
+            cleared++;
         }
         return cleared;
     }
 
-    private static VarHandle ignoreDamageHandle() {
+    private static VarHandle hitHandle(String name, Class<?> type) {
         try {
-            return MethodHandles.privateLookupIn(WeaponHit.class, MethodHandles.lookup())
-                    .findVarHandle(WeaponHit.class, "ignoreDamage", boolean.class);
+            return MethodHandles.privateLookupIn(Hit.class, MethodHandles.lookup())
+                    .findVarHandle(Hit.class, name, type);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            LOGGER.error("Storm: WeaponHit.ignoreDamage is gone; PvpHitsAlwaysDamage is inert", e);
+            LOGGER.error("Storm: Hit.{} is gone; PvpHitsAlwaysDamage is inert", name, e);
             return null;
         }
     }
