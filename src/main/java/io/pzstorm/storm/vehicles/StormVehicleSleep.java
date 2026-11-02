@@ -30,9 +30,13 @@ import zombie.vehicles.BaseVehicle;
  *       vehicle, start engine, hook a tow, open the mechanics window, alarm, headlights, physics
  *       (re)activation by an impulse or network authority &mdash; so the vehicle resumes full
  *       updates on the very next tick, not after the throttle period.
- *   <li>State only reachable through the skipped body (pending tow-reconnect by id, lightbar
- *       world-light transitions, the {@code addThumpWorldSound} flag) is picked up on the next
- *       staggered full tick, at most {@code SLEEP_TICKS - 1} ticks late.
+ *   <li>State only reachable through the skipped body (lightbar world-light transitions, the {@code
+ *       addThumpWorldSound} flag) is picked up on the next staggered full tick, at most {@code
+ *       SLEEP_TICKS - 1} ticks late.
+ *   <li>A vehicle with a tow partner id but no partner reference yet ({@code
+ *       BaseVehicle.isWaitingToReattachTowingPartner()}) never sleeps. The reattach runs inside the
+ *       full update and vanilla abandons it after 5&nbsp;s of waiting, so a sleeping vehicle would
+ *       miss the window and drop its tow.
  * </ul>
  *
  * <p>{@code timeSinceLastAuth > 0} blocks sleep and cannot deadlock: while it is positive the
@@ -109,13 +113,15 @@ public final class StormVehicleSleep {
         if (v.getDriver() != null || v.isPhysicsActive() || v.needPartsUpdate()) {
             return false;
         }
-        if (v.headlightsOn || v.jniIsCollide || v.timeSinceLastAuth > 0.0F) {
+        if (v.getHeadlightsOn() || v.jniIsCollide || v.timeSinceLastAuth > 0.0F) {
             return false;
         }
         if (v.getEngineState() != BaseVehicle.engineStateTypes.Idle) {
             return false;
         }
-        if (v.getVehicleTowing() != null || v.getVehicleTowedBy() != null) {
+        if (v.getVehicleTowing() != null
+                || v.getVehicleTowedBy() != null
+                || v.isWaitingToReattachTowingPartner()) {
             return false;
         }
         if (v.isAlarmed() || v.isSirenActive() || v.isMechanicUIOpen()) {

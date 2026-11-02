@@ -267,11 +267,30 @@ public class StormEventDispatcher {
     }
 
     /**
-     * Dispatch the given event to all methods registered in dispatch registry. This is an internal
-     * method <b>only</b> called by {@code StormHook} implementations installed in game code.
-     *
-     * @param event {@link ZomboidEvent} to dispatch.
+     * Remove every handler method declared by, or registered on an instance of, one of the given
+     * classes, across this registry and the annotation sub-dispatchers it feeds. Used to back out a
+     * mod that failed part-way through loading.
      */
+    public static void unregisterEventHandlers(Set<Class<?>> handlerClasses) {
+        if (handlerClasses.isEmpty()) {
+            return;
+        }
+        for (Set<EventHandlerMethod> handlerMethods : DISPATCH_REGISTRY.values()) {
+            handlerMethods.removeIf(
+                    handlerMethod ->
+                            handlerClasses.contains(handlerMethod.method.getDeclaringClass())
+                                    || (handlerMethod.handler != null
+                                            && handlerClasses.contains(
+                                                    handlerMethod.handler.getClass())));
+        }
+        DISPATCH_REGISTRY.values().removeIf(Set::isEmpty);
+        recomputeLuaEventInterest();
+        ClientCommandDispatcher.unregisterHandlers(handlerClasses);
+        PacketEventDispatcher.unregisterHandlers(handlerClasses);
+        HttpEndpointDispatcher.unregisterHandlers(handlerClasses);
+        GameHttpEndpointDispatcher.unregisterHandlers(handlerClasses);
+    }
+
     /** Returns whether at least one handler is registered for the given event class. */
     public static boolean hasHandlers(Class<? extends ZomboidEvent> eventClass) {
         Set<EventHandlerMethod> handlerMethods = DISPATCH_REGISTRY.get(eventClass);

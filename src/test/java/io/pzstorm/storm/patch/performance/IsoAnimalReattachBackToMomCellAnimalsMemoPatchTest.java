@@ -26,6 +26,7 @@ class IsoAnimalReattachBackToMomCellAnimalsMemoPatchTest implements UnitTest {
     private static final String CELL_OWNER = "zombie/iso/IsoCell";
     private static final String DZONE_OWNER = "zombie/iso/areas/DesignationZoneAnimal";
     private static final String GET_ANIMALS = "getAnimals";
+    private static final String DZONE_GET_ANIMALS = "getAnimalsInZone";
     private static final String HELPER_OWNER =
             "io/pzstorm/storm/patch/performance/ReattachCellAnimalsMemo";
     private static final String HELPER_METHOD = "animalsThisTick";
@@ -53,12 +54,14 @@ class IsoAnimalReattachBackToMomCellAnimalsMemoPatchTest implements UnitTest {
                 countCalls(transformed, HELPER_OWNER, HELPER_METHOD),
                 "exactly one call to ReattachCellAnimalsMemo.animalsThisTick expected");
 
-        int dzoneBefore = countCalls(rawClass, DZONE_OWNER, GET_ANIMALS);
-        assertTrue(dzoneBefore >= 1, "vanilla should also read DesignationZoneAnimal.getAnimals");
+        int dzoneBefore = countCalls(rawClass, DZONE_OWNER, DZONE_GET_ANIMALS);
+        assertTrue(
+                dzoneBefore >= 1,
+                "vanilla should also read DesignationZoneAnimal.getAnimalsInZone");
         assertEquals(
                 dzoneBefore,
-                countCalls(transformed, DZONE_OWNER, GET_ANIMALS),
-                "DesignationZoneAnimal.getAnimals calls must be left alone");
+                countCalls(transformed, DZONE_OWNER, DZONE_GET_ANIMALS),
+                "DesignationZoneAnimal.getAnimalsInZone calls must be left alone");
     }
 
     private byte[] readClassBytes(String resourcePath) throws Exception {

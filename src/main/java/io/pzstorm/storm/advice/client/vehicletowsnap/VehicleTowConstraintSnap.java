@@ -16,20 +16,23 @@ import zombie.vehicles.BaseVehicle;
  * is the usual launch vector after a chunk reload.
  *
  * <p>Above {@link #SNAP_THRESHOLD_SQ} the driverless vehicle of the pair is teleported so the
- * hitches coincide (the {@code positionTrailer} pattern). Any measurable separation also arms
- * vanilla's own attach softening: with {@code beginAttachTrailerMS} fresh, {@code
- * addPointConstraint} sets the constraint ERP to 0.02 and {@code checkTrailerAttachTime()} restores
- * 0.2 two seconds later, so residual error is pulled in gently instead of in one solver step.
+ * hitches coincide (the {@code positionTrailer} pattern). The snap translates without rotating, so
+ * it is skipped when the two forward vectors are closer to perpendicular than {@link
+ * #MIN_FORWARD_ALIGNMENT}. Vanilla's reconnect path accepts any orientation, and a translated but
+ * crosswise pair would still start with a large angular error.
  *
  * <p>Fail-soft: any error permanently disables the helper and vanilla behavior resumes.
  */
 public final class VehicleTowConstraintSnap {
 
-    /** Below this hitch separation (squared, physics meters) the attach is left untouched. */
-    public static final float NOISE_EPSILON_SQ = 0.05F * 0.05F;
-
     /** Above this hitch separation (squared, physics meters) the pair is snapped together. */
     public static final float SNAP_THRESHOLD_SQ = 0.25F * 0.25F;
+
+    /**
+     * Minimum |dot| of the two vehicles' forward vectors for a snap. Matches the alignment
+     * vanilla's {@code canAttachTrailer} demands for a player-initiated attach.
+     */
+    public static final float MIN_FORWARD_ALIGNMENT = 0.6F;
 
     public static volatile boolean disabled;
 
@@ -59,50 +62,56 @@ public final class VehicleTowConstraintSnap {
                 float dy = hitchA.y - hitchB.y;
                 float dz = hitchA.z - hitchB.z;
                 float sepSq = dx * dx + dy * dy + dz * dz;
-                if (!Float.isFinite(sepSq) || sepSq <= NOISE_EPSILON_SQ) {
+                if (!Float.isFinite(sepSq) || sepSq <= SNAP_THRESHOLD_SQ) {
                     return;
                 }
-                if (sepSq > SNAP_THRESHOLD_SQ) {
-                    BaseVehicle target = null;
-                    float sign = 1.0F;
-                    if (vehicleB.getDriver() == null) {
-                        target = vehicleB;
-                    } else if (vehicleA.getDriver() == null) {
-                        target = vehicleA;
-                        sign = -1.0F;
-                    }
-                    if (target != null) {
-                        target.getWorldTransform(xfrm);
-                        xfrm.origin.x += sign * dx;
-                        xfrm.origin.y += sign * dy;
-                        xfrm.origin.z += sign * dz;
-                        target.setWorldTransform(xfrm);
-                        // physics x/z map to world x/y; physics y is height
-                        float newX = target.getX() + sign * dx;
-                        float newY = target.getY() + sign * dz;
-                        target.setX(newX);
-                        target.setLastX(newX);
-                        target.setY(newY);
-                        target.setLastY(newY);
-                        target.setCurrentSquareFromPosition(newX, newY, target.getZ());
-                        StormLogger.LOGGER.info(
-                                "Tow snap: moved vehicle id={} ({}) onto hitch of id={} ({}),"
-                                        + " separation was {} m (dx={} dz={} dy={})",
-                                target.getId(),
-                                target.getScriptName(),
-                                (target == vehicleB ? vehicleA : vehicleB).getId(),
-                                (target == vehicleB ? vehicleA : vehicleB).getScriptName(),
-                                Math.sqrt(sepSq),
-                                dx,
-                                dz,
-                                dy);
-                    }
+                float dotForward =
+                        vehicleA.getForwardVector(new Vector3f())
+                                .dot(vehicleB.getForwardVector(new Vector3f()));
+                if (!Float.isFinite(dotForward) || Math.abs(dotForward) < MIN_FORWARD_ALIGNMENT) {
+                    StormLogger.LOGGER.debug(
+                            "Tow snap: skipped id={} and id={}, forward dot {} below {}",
+                            vehicleA.getId(),
+                            vehicleB.getId(),
+                            dotForward,
+                            MIN_FORWARD_ALIGNMENT);
+                    return;
                 }
-                // Arm vanilla's attach softening so addPointConstraint applies ERP 0.02 and
-                // checkTrailerAttachTime() ramps back to 0.2 after 2 s.
-                if (!vehicleA.isAttachingTrailer()) {
-                    vehicleA.beginAttachingTrailer();
+                BaseVehicle target = null;
+                float sign = 1.0F;
+                if (vehicleB.getDriver() == null) {
+                    target = vehicleB;
+                } else if (vehicleA.getDriver() == null) {
+                    target = vehicleA;
+                    sign = -1.0F;
                 }
+                if (target == null) {
+                    return;
+                }
+                target.getWorldTransform(xfrm);
+                xfrm.origin.x += sign * dx;
+                xfrm.origin.y += sign * dy;
+                xfrm.origin.z += sign * dz;
+                target.setWorldTransform(xfrm);
+                // physics x/z map to world x/y; physics y is height
+                float newX = target.getX() + sign * dx;
+                float newY = target.getY() + sign * dz;
+                target.setX(newX);
+                target.setLastX(newX);
+                target.setY(newY);
+                target.setLastY(newY);
+                target.setCurrentSquareFromPosition(newX, newY, target.getZ());
+                StormLogger.LOGGER.info(
+                        "Tow snap: moved vehicle id={} ({}) onto hitch of id={} ({}),"
+                                + " separation was {} m (dx={} dz={} dy={})",
+                        target.getId(),
+                        target.getScriptName(),
+                        (target == vehicleB ? vehicleA : vehicleB).getId(),
+                        (target == vehicleB ? vehicleA : vehicleB).getScriptName(),
+                        Math.sqrt(sepSq),
+                        dx,
+                        dz,
+                        dy);
             } finally {
                 BaseVehicle.releaseTransform(xfrm);
             }

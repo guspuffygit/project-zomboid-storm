@@ -52,6 +52,18 @@ class HttpEndpointRegistry {
         knownPaths.clear();
     }
 
+    /** Remove every handler declared by, or registered on an instance of, the given classes. */
+    synchronized void unregisterHandlers(Set<Class<?>> handlerClasses) {
+        handlers.values()
+                .removeIf(
+                        h ->
+                                handlerClasses.contains(h.method.getDeclaringClass())
+                                        || (h.handler != null
+                                                && handlerClasses.contains(h.handler.getClass())));
+        knownPaths.removeIf(
+                path -> handlers.keySet().stream().noneMatch(key -> key.endsWith(" " + path)));
+    }
+
     synchronized void registerHandler(
             String httpMethod, String path, Method method, @Nullable Object handler) {
         httpMethod = httpMethod.toUpperCase(Locale.ROOT);

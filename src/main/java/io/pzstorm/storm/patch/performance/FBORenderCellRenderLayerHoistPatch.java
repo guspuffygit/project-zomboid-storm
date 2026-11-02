@@ -4,14 +4,12 @@ import io.pzstorm.storm.core.StormClassTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.asm.MemberSubstitution;
 import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
-import zombie.characters.IsoGameCharacter;
-import zombie.core.Core;
-import zombie.iso.IsoWater;
 
 /**
  * EXPERIMENTAL, CLIENT-SIDE, opt-in via {@code -Dstorm.experimental.clientperf=true}. This is a
@@ -44,6 +42,8 @@ import zombie.iso.IsoWater;
 public class FBORenderCellRenderLayerHoistPatch extends StormClassTransformer {
 
     private static final String PKG = "io.pzstorm.storm.advice.fborendercell.";
+    private static final String CACHE =
+            "io.pzstorm.storm.patch.performance.FBORenderCellHoistCache";
 
     public FBORenderCellRenderLayerHoistPatch() {
         super("zombie.iso.fboRenderChunk.FBORenderCell");
@@ -52,55 +52,56 @@ public class FBORenderCellRenderLayerHoistPatch extends StormClassTransformer {
     @Override
     public DynamicType.Builder<Object> dynamicType(
             ClassFileLocator locator, TypePool typePool, DynamicType.Builder<Object> builder) {
-        try {
-            ElementMatcher.Junction<MethodDescription> helperMatcher =
-                    ElementMatchers.<MethodDescription>named("isObjectRenderLayer_Floor")
-                            .or(ElementMatchers.named("isObjectRenderLayer_MinusFloor"))
-                            .or(ElementMatchers.named("isObjectRenderLayer_MinusFloorSE"))
-                            .or(ElementMatchers.named("isObjectRenderLayer_TranslucentFloor"))
-                            .or(ElementMatchers.named("isObjectRenderLayer_Translucent"));
-            Advice refreshAdvice =
-                    Advice.to(
-                            typePool.describe(PKG + "FBORenderCellHoistRefreshAdvice").resolve(),
-                            locator);
-            return builder.visit(
-                            refreshAdvice.on(
-                                    ElementMatchers.named("calculateObjectRenderInfo")
-                                            .and(ElementMatchers.takesArguments(1))))
-                    .visit(
-                            refreshAdvice.on(
-                                    ElementMatchers.named("renderJoinedRoofTile")
-                                            .and(ElementMatchers.takesArguments(4))))
-                    .visit(
-                            MemberSubstitution.relaxed()
-                                    .method(
-                                            ElementMatchers.named("getOptionDoWindSpriteEffects")
-                                                    .and(ElementMatchers.takesArguments(0)))
-                                    .replaceWith(
-                                            FBORenderCellHoistCache.class.getDeclaredMethod(
-                                                    "getOptionDoWindSpriteEffects", Core.class))
-                                    .on(helperMatcher))
-                    .visit(
-                            MemberSubstitution.relaxed()
-                                    .method(
-                                            ElementMatchers.named("isClimbing")
-                                                    .and(ElementMatchers.takesArguments(0)))
-                                    .replaceWith(
-                                            FBORenderCellHoistCache.class.getDeclaredMethod(
-                                                    "isClimbing", IsoGameCharacter.class))
-                                    .on(helperMatcher))
-                    .visit(
-                            MemberSubstitution.relaxed()
-                                    .method(
-                                            ElementMatchers.named("getShaderEnable")
-                                                    .and(ElementMatchers.takesArguments(0)))
-                                    .replaceWith(
-                                            FBORenderCellHoistCache.class.getDeclaredMethod(
-                                                    "getShaderEnable", IsoWater.class))
-                                    .on(helperMatcher));
-        } catch (NoSuchMethodException e) {
-            throw new RuntimeException(
-                    "Failed to setup MemberSubstitution for FBORenderCell render-layer hoist", e);
-        }
+        ElementMatcher.Junction<MethodDescription> helperMatcher =
+                ElementMatchers.<MethodDescription>named("isObjectRenderLayer_Floor")
+                        .or(ElementMatchers.named("isObjectRenderLayer_MinusFloor"))
+                        .or(ElementMatchers.named("isObjectRenderLayer_MinusFloorSE"))
+                        .or(ElementMatchers.named("isObjectRenderLayer_TranslucentFloor"))
+                        .or(ElementMatchers.named("isObjectRenderLayer_Translucent"));
+        Advice refreshAdvice =
+                Advice.to(
+                        typePool.describe(PKG + "FBORenderCellHoistRefreshAdvice").resolve(),
+                        locator);
+
+        // Reflecting on the cache class would load Core, IsoGameCharacter and IsoWater while
+        // FBORenderCell is mid-load, which throws ClassCircularityError.
+
+        MethodList<MethodDescription.InDefinedShape> bridges =
+                typePool.describe(CACHE).resolve().getDeclaredMethods();
+        return builder.visit(
+                        refreshAdvice.on(
+                                ElementMatchers.named("calculateObjectRenderInfo")
+                                        .and(ElementMatchers.takesArguments(1))))
+                .visit(
+                        refreshAdvice.on(
+                                ElementMatchers.named("renderJoinedRoofTile")
+                                        .and(ElementMatchers.takesArguments(4))))
+                .visit(
+                        MemberSubstitution.relaxed()
+                                .method(
+                                        ElementMatchers.named("getOptionDoWindSpriteEffects")
+                                                .and(ElementMatchers.takesArguments(0)))
+                                .replaceWith(bridge(bridges, "getOptionDoWindSpriteEffects"))
+                                .on(helperMatcher))
+                .visit(
+                        MemberSubstitution.relaxed()
+                                .method(
+                                        ElementMatchers.named("isClimbing")
+                                                .and(ElementMatchers.takesArguments(0)))
+                                .replaceWith(bridge(bridges, "isClimbing"))
+                                .on(helperMatcher))
+                .visit(
+                        MemberSubstitution.relaxed()
+                                .method(
+                                        ElementMatchers.named("getShaderEnable")
+                                                .and(ElementMatchers.takesArguments(0)))
+                                .replaceWith(bridge(bridges, "getShaderEnable"))
+                                .on(helperMatcher));
+    }
+
+    private static MethodDescription bridge(
+            MethodList<MethodDescription.InDefinedShape> bridges, String name) {
+        return bridges.filter(ElementMatchers.named(name).and(ElementMatchers.takesArguments(1)))
+                .getOnly();
     }
 }

@@ -46,8 +46,9 @@ public class PacketEventDispatcher {
      */
     public static final List<String> SUPPORTED_PACKETS =
             List.of(
+                    "zombie.network.packets.AcceptMedicalCheckPacket",
+                    "zombie.network.packets.AcceptTradingPacket",
                     "zombie.network.packets.AddBrokenGlassPacket",
-                    "zombie.network.packets.AddExplosiveTrapPacket",
                     "zombie.network.packets.AddObjectToMapPacket",
                     "zombie.network.packets.AddTicketPacket",
                     "zombie.network.packets.AddUserlogPacket",
@@ -72,6 +73,8 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.PlayerXpPacket",
                     "zombie.network.packets.ReadAnnotedMapPacket",
                     "zombie.network.packets.RegisterZonePacket",
+                    "zombie.network.packets.RejectMedicalCheckPacket",
+                    "zombie.network.packets.RejectTradingPacket",
                     "zombie.network.packets.RemoveInventoryItemFromContainerPacket",
                     "zombie.network.packets.RemoveTicketPacket",
                     "zombie.network.packets.RemoveUserlogPacket",
@@ -88,7 +91,6 @@ public class PacketEventDispatcher {
                     "zombie.network.packets.SyncClothingPacket",
                     "zombie.network.packets.SyncCustomLightSettingsPacket",
                     "zombie.network.packets.SyncExtendedPlacementPacket",
-                    "zombie.network.packets.SyncHandWeaponFieldsPacket",
                     "zombie.network.packets.SyncItemActivatedPacket",
                     "zombie.network.packets.SyncItemFieldsPacket",
                     "zombie.network.packets.SyncNonPvpZonePacket",
@@ -189,6 +191,18 @@ public class PacketEventDispatcher {
         HANDLER_REGISTRY.clear();
         TYPED_EVENT_CACHE.clear();
         NO_TYPED_EVENT.clear();
+    }
+
+    /** Remove every handler declared by, or registered on an instance of, the given classes. */
+    static void unregisterHandlers(Set<Class<?>> handlerClasses) {
+        for (Set<HandlerMethod> handlers : HANDLER_REGISTRY.values()) {
+            handlers.removeIf(
+                    h ->
+                            handlerClasses.contains(h.method.getDeclaringClass())
+                                    || (h.handler != null
+                                            && handlerClasses.contains(h.handler.getClass())));
+        }
+        HANDLER_REGISTRY.values().removeIf(Set::isEmpty);
     }
 
     /**

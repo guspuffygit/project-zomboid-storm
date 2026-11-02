@@ -11,11 +11,9 @@ import zombie.network.GameServer;
  * Times {@code Load2} and closes the hydration clock opened by the {@code ServerChunkLoader}
  * advices.
  *
- * <p>{@code Load2} has two returns: it drains the recalc queue first and only does real work —
- * {@code RecalcAll2} plus {@code loadVehicles} — on the {@code true} path. The {@code false} path
- * dominates by call count, so hydration latency is recorded only when the return says the cell
- * actually finished. The wall-clock timer below deliberately covers both, because the drain itself
- * runs on the main thread and its cost belongs in the tick budget either way.
+ * <p>{@code ServerMap.preupdate} calls {@code Load2} only for cells whose recalc finished, and
+ * drops the cell when it throws. Hydration latency is recorded only for a normal return; the
+ * wall-clock timer covers both.
  */
 public class ServerCellLoad2Advice {
 
@@ -30,7 +28,7 @@ public class ServerCellLoad2Advice {
     @Advice.OnMethodExit(onThrowable = Throwable.class)
     public static void onExit(
             @Advice.Enter long startNanos,
-            @Advice.Return boolean loaded,
+            @Advice.Thrown Throwable thrown,
             @Advice.FieldValue("storm$hydrateStartNanos") long hydrateStart,
             @Advice.FieldValue("storm$recalcStartNanos") long recalcStart,
             @Advice.FieldValue("chunks") IsoChunk[][] chunks) {
@@ -43,7 +41,7 @@ public class ServerCellLoad2Advice {
         long elapsed = System.nanoTime() - startNanos;
         ServerCellLoad2Metrics.recordNanos(elapsed);
         MainLoopStepTimings.record("ServerCell.Load2", elapsed);
-        if (loaded) {
+        if (thrown == null) {
             ChunkHydrationMetrics.recordCellLoaded(hydrateStart, recalcStart, chunks);
         }
     }

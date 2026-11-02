@@ -88,7 +88,6 @@ public final class PuddleBatchRenderer {
     private static WeakReference<IsoCell> lastCell = new WeakReference<>(null);
     private static int lastQuality = Integer.MIN_VALUE;
     private static int lastPerfPuddles = Integer.MIN_VALUE;
-    private static int lastTileScale = Integer.MIN_VALUE;
     private static boolean lastNoLighting;
     private static int lastSweepFrame;
     private static long pass;
@@ -388,14 +387,11 @@ public final class PuddleBatchRenderer {
         }
         int quality = PerformanceSettings.puddlesQuality;
         int perfPuddles = Core.getInstance().getPerfPuddles();
-        int tileScale = Core.tileScale;
         if (quality != lastQuality
                 || perfPuddles != lastPerfPuddles
-                || tileScale != lastTileScale
                 || noLighting != lastNoLighting) {
             lastQuality = quality;
             lastPerfPuddles = perfPuddles;
-            lastTileScale = tileScale;
             lastNoLighting = noLighting;
             if (!TABLE.isEmpty()) {
                 TABLE.invalidateAll();

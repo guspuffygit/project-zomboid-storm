@@ -12,9 +12,7 @@ import io.pzstorm.storm.patch.client.GameClientStartClientRetryPatch;
 import io.pzstorm.storm.patch.client.ImageDataCreateSteamAvatarLeakPatch;
 import io.pzstorm.storm.patch.client.IsoBulletTracerEffectsConfigNullGuardPatch;
 import io.pzstorm.storm.patch.client.IsoFallingClothingDropNullGuardPatch;
-import io.pzstorm.storm.patch.client.IsoHutchNullAnimalSlotGuardPatch;
 import io.pzstorm.storm.patch.client.IsoObjectAdminSeeAllTargetAlphaPatch;
-import io.pzstorm.storm.patch.client.IsoTreePlayerRoomNullGuardPatch;
 import io.pzstorm.storm.patch.client.IsoWorldInventoryObjectRenderSpriteGuardPatch;
 import io.pzstorm.storm.patch.client.LoadingQueueStateTcpDrainPatch;
 import io.pzstorm.storm.patch.client.LoginQueueOverTcpPatch;
@@ -25,7 +23,6 @@ import io.pzstorm.storm.patch.client.RequestDataOverTcpPatch;
 import io.pzstorm.storm.patch.client.VehicleChunkRehomePatch;
 import io.pzstorm.storm.patch.client.VehicleModelAttachRetryPatch;
 import io.pzstorm.storm.patch.client.VehicleRequestMergeFlagsPatch;
-import io.pzstorm.storm.patch.client.VehicleSoundsClientCreatePatch;
 import io.pzstorm.storm.patch.client.VehicleTowConstraintSnapPatch;
 import io.pzstorm.storm.patch.client.WorldStreamerChunkTcpPatch;
 import io.pzstorm.storm.patch.client.experimental.KahluaMetatableCachePatch;
@@ -41,7 +38,6 @@ import io.pzstorm.storm.patch.events.ChatServerSendMessagePatch;
 import io.pzstorm.storm.patch.events.LuaEventManagerPatch;
 import io.pzstorm.storm.patch.events.OnDeathTriggerPatch;
 import io.pzstorm.storm.patch.fixes.ActionGroupSyncPatch;
-import io.pzstorm.storm.patch.fixes.ActionManagerPatch;
 import io.pzstorm.storm.patch.fixes.ActionStateContainerPatch;
 import io.pzstorm.storm.patch.fixes.AdvancedAnimatorMissingFolderPatch;
 import io.pzstorm.storm.patch.fixes.AnimalDataGrowWaterGuardPatch;
@@ -51,17 +47,12 @@ import io.pzstorm.storm.patch.fixes.AnimalZoneContainmentPatch;
 import io.pzstorm.storm.patch.fixes.AnimationSetLockPatch;
 import io.pzstorm.storm.patch.fixes.AssetManagerSyncPatch;
 import io.pzstorm.storm.patch.fixes.BaseVehicleSavePatch;
-import io.pzstorm.storm.patch.fixes.BodyDamageSyncPatch;
-import io.pzstorm.storm.patch.fixes.BodyDamageUpdatePacketPatch;
-import io.pzstorm.storm.patch.fixes.ChatServerDisconnectPatch;
 import io.pzstorm.storm.patch.fixes.CompressIdenticalItemsPatch;
 import io.pzstorm.storm.patch.fixes.ContainerHatchPositionFixPatch;
 import io.pzstorm.storm.patch.fixes.CoopHatchPositionFixPatch;
 import io.pzstorm.storm.patch.fixes.DebugLogStreamFormatPatch;
 import io.pzstorm.storm.patch.fixes.GameServerStartPMChatPatch;
-import io.pzstorm.storm.patch.fixes.GeneralActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.HutchDirtRateFixPatch;
-import io.pzstorm.storm.patch.fixes.InventoryItemGetOutermostContainerPatch;
 import io.pzstorm.storm.patch.fixes.InventoryItemStoreByteDataPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalCanClimbStairsNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalReattachBackToMomPatch;
@@ -69,13 +60,10 @@ import io.pzstorm.storm.patch.fixes.IsoAnimalRegistryFixPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalUpdateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoAnimalWideIdPatch;
 import io.pzstorm.storm.patch.fixes.IsoGridSquareGetRoomNullDefGuardPatch;
-import io.pzstorm.storm.patch.fixes.IsoGridSquareRemoveGlassAttachmentsPatch;
 import io.pzstorm.storm.patch.fixes.IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoObjectIDAllocateFixPatch;
 import io.pzstorm.storm.patch.fixes.IsoObjectTransmitUpdatedSpriteGuardPatch;
 import io.pzstorm.storm.patch.fixes.IsoZombieUpdateFixPatch;
-import io.pzstorm.storm.patch.fixes.ItemContainerChainGuardPatch;
-import io.pzstorm.storm.patch.fixes.ItemTransactionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionPacketPatch;
 import io.pzstorm.storm.patch.fixes.NetTimedActionParsePatch;
 import io.pzstorm.storm.patch.fixes.PlayerHitPlayerPacketHitDamagePatch;
@@ -89,8 +77,6 @@ import io.pzstorm.storm.patch.fixes.SpriteConfigFixPatch;
 import io.pzstorm.storm.patch.fixes.SyncZonePacketSafehouseGuardPatch;
 import io.pzstorm.storm.patch.fixes.TransactionManagerPatch;
 import io.pzstorm.storm.patch.fixes.TranslatorPatch;
-import io.pzstorm.storm.patch.fixes.VehiclesDbChunkKeyPatch;
-import io.pzstorm.storm.patch.fixes.VehiclesDbChunkKeyRepairPatch;
 import io.pzstorm.storm.patch.fixes.WorldMapVisitedServerAllKnownPatch;
 import io.pzstorm.storm.patch.lua.LuaExposerDumpPatch;
 import io.pzstorm.storm.patch.lua.LuaManagerPatch;
@@ -200,7 +186,6 @@ import io.pzstorm.storm.patch.performance.InventoryItemVisualFieldPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalReattachBackToMomCellAnimalsMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateLOSPatch;
 import io.pzstorm.storm.patch.performance.IsoAnimalUpdateTimingPatch;
-import io.pzstorm.storm.patch.performance.IsoCellGetAnimalsPatch;
 import io.pzstorm.storm.patch.performance.IsoCellObjectDeletionAdditionPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessIsoObjectPatch;
 import io.pzstorm.storm.patch.performance.IsoCellProcessItemsPatch;
@@ -305,6 +290,7 @@ import io.pzstorm.storm.patch.performance.ServerCellLoad2Patch;
 import io.pzstorm.storm.patch.performance.ServerCellRecalcAll2Patch;
 import io.pzstorm.storm.patch.performance.ServerCellUnloadPatch;
 import io.pzstorm.storm.patch.performance.ServerCellUpdatePatch;
+import io.pzstorm.storm.patch.performance.ServerChunkLoaderSaveUnloadedTaskPatch;
 import io.pzstorm.storm.patch.performance.ServerChunkLoaderUpdateSavedPatch;
 import io.pzstorm.storm.patch.performance.ServerGUIUpdatePatch;
 import io.pzstorm.storm.patch.performance.ServerLOSFindDataPatch;
@@ -331,7 +317,6 @@ import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
 import io.pzstorm.storm.patch.performance.ThermalNodeInsulationVisualPatch;
 import io.pzstorm.storm.patch.performance.ThermoregulatorClothingVisualsPatch;
 import io.pzstorm.storm.patch.performance.TradingManagerUpdatePatch;
-import io.pzstorm.storm.patch.performance.TryAddIndoorZombiesPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerSweepFastPathPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
@@ -380,6 +365,7 @@ import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -396,6 +382,10 @@ import org.jetbrains.annotations.Contract;
 public class StormClassTransformers {
 
     private static final Map<String, List<StormClassTransformer>> TRANSFORMERS = new HashMap<>();
+
+    /** Mod id for each mod-provided transformer, so a failing one can be traced to its mod. */
+    private static final Map<StormClassTransformer, String> MOD_TRANSFORMERS =
+            new IdentityHashMap<>();
 
     /** Class names for which {@link #applyAll} has actually applied at least one transformer. */
     private static final Set<String> TRANSFORMED_CLASSES = ConcurrentHashMap.newKeySet();
@@ -438,10 +428,7 @@ public class StormClassTransformers {
         registerTransformer(new CoopMasterPatch());
         registerTransformer(new ServerWorldDatabasePatch());
         registerTransformer(new NetTimedActionPacketPatch());
-        registerTransformer(new ActionManagerPatch());
-        registerTransformer(new GeneralActionPacketPatch());
         registerTransformer(new ActionStateContainerPatch());
-        registerTransformer(new ItemTransactionPacketPatch());
         registerTransformer(new TransactionManagerPatch());
         registerTransformer(new CompressIdenticalItemsPatch());
         registerTransformer(new IsoAnimalReattachBackToMomPatch());
@@ -451,9 +438,6 @@ public class StormClassTransformers {
         registerTransformer(new IsoAnimalWideIdPatch());
         registerTransformer(new IsoMovingObjectIsPushedByForSeparateNullDefGuardPatch());
         registerTransformer(new IsoGridSquareGetRoomNullDefGuardPatch());
-        registerTransformer(new IsoGridSquareRemoveGlassAttachmentsPatch());
-        registerTransformer(new ItemContainerChainGuardPatch());
-        registerTransformer(new InventoryItemGetOutermostContainerPatch());
         registerTransformer(new BaseVehicleSavePatch());
         registerTransformer(new SitOnFurnitureBoxedInChairPatch());
         registerTransformer(new InventoryItemStoreByteDataPatch());
@@ -519,8 +503,6 @@ public class StormClassTransformers {
             registerTransformer(new AssetManagerSyncPatch());
             // vehicles.db rows keyed by a stale/recycled chunk pointer never load again at
             // the vehicle's real position; file by x,y and repair misfiled rows at boot.
-            registerTransformer(new VehiclesDbChunkKeyPatch());
-            registerTransformer(new VehiclesDbChunkKeyRepairPatch());
         }
         registerTransformer(new ServerCellUnloadPatch());
         registerTransformer(new ServerLOSUpdatePatch());
@@ -620,7 +602,6 @@ public class StormClassTransformers {
         }
         registerTransformer(new PacketsCacheLimitBypassPatch());
         registerTransformer(new GameServerStartPMChatPatch());
-        registerTransformer(new ChatServerDisconnectPatch());
         if (StormEnv.isStormServer()) {
             registerTransformer(new ChatServerSendMessagePatch());
         }
@@ -642,15 +623,12 @@ public class StormClassTransformers {
             registerTransformer(new ModelManagerReloadWaitPatch());
             registerTransformer(new VehicleTowConstraintSnapPatch());
             registerTransformer(new VehicleChunkRehomePatch());
-            registerTransformer(new VehicleSoundsClientCreatePatch());
             registerTransformer(new PacketLimitMetricsPatch());
             registerTransformer(new PlayerDataRequestBackoffPatch());
             registerTransformer(new IsoObjectAdminSeeAllTargetAlphaPatch());
             registerTransformer(new IsoWorldInventoryObjectRenderSpriteGuardPatch());
             registerTransformer(new CombatManagerBallisticsNullGuardPatch());
             registerTransformer(new IsoFallingClothingDropNullGuardPatch());
-            registerTransformer(new IsoHutchNullAnimalSlotGuardPatch());
-            registerTransformer(new IsoTreePlayerRoomNullGuardPatch());
             registerTransformer(new IsoBulletTracerEffectsConfigNullGuardPatch());
             registerTransformer(new RequestDataOverTcpPatch());
             registerTransformer(new PlayerProfileOverTcpPatch());
@@ -690,9 +668,6 @@ public class StormClassTransformers {
             registerTransformer(new PlayerHitPlayerPacketHitDamagePatch());
             registerTransformer(new IsoObjectTransmitUpdatedSpriteGuardPatch());
 
-            registerTransformer(new BodyDamageUpdatePacketPatch());
-            registerTransformer(new BodyDamageSyncPatch());
-
             registerTransformer(new UdpConnectionRelevancePatch());
 
             registerTransformer(new IsoObjectSyncGatePatch());
@@ -721,6 +696,7 @@ public class StormClassTransformers {
             registerTransformer(new ServerCellUpdatePatch());
             registerTransformer(new NetworkZombiePackerPostUpdatePatch());
             registerTransformer(new ServerChunkLoaderUpdateSavedPatch());
+            registerTransformer(new ServerChunkLoaderSaveUnloadedTaskPatch());
             registerTransformer(new ServerMapQueuedSaveAllPatch());
             registerTransformer(new ServerMapPostUpdateWarmPatch());
             registerTransformer(new MovingObjectSchedulerBucketAddPatch());
@@ -740,7 +716,6 @@ public class StormClassTransformers {
             registerTransformer(new DesignationZoneAnimalFoodFastContainsPatch());
             registerTransformer(new DesignationZoneAnimalGetAllDZonesPatch());
             registerTransformer(new IsoCellObjectDeletionAdditionPatch());
-            registerTransformer(new IsoCellGetAnimalsPatch());
             registerTransformer(new IsoAnimalReattachBackToMomCellAnimalsMemoPatch());
             registerTransformer(new IsoGameCharacterUpdateEmitterServerSkipPatch());
             registerTransformer(new IsoDeadBodyUpdateBodiesPatch());
@@ -788,7 +763,6 @@ public class StormClassTransformers {
             registerTransformer(new EngineUpdatePatch());
             registerTransformer(new EngineUpdateSimulationPatch());
             registerTransformer(new EntitySimulationUpdatePatch());
-            registerTransformer(new TryAddIndoorZombiesPatch());
             registerTransformer(new MapCollisionDataUpdateGameStatePatch());
             registerTransformer(new IngameStateUpdatePatch());
             registerTransformer(new RCONServerUpdatePatch());
@@ -883,15 +857,39 @@ public class StormClassTransformers {
     }
 
     public static void collectTransformers() {
-        for (ZomboidMod mod : StormModRegistry.getRegisteredMods()) {
-            List<StormClassTransformer> transformers = mod.getClassTransformers();
+        for (Map.Entry<String, ZomboidMod> entry :
+                StormModRegistry.getRegisteredModsById().entrySet()) {
+            String modId = entry.getKey();
+            List<StormClassTransformer> transformers;
+            try {
+                transformers = entry.getValue().getClassTransformers();
+            } catch (RuntimeException | LinkageError e) {
+                StormModRegistry.disableMod(modId, "getClassTransformers", e);
+                continue;
+            }
             if (transformers != null) {
                 for (StormClassTransformer transformer : transformers) {
                     registerTransformer(transformer);
+                    MOD_TRANSFORMERS.put(transformer, modId);
                 }
             }
         }
         errorIfTargetsAlreadyLoaded();
+    }
+
+    /** Removes every transformer the mod contributed. Classes already woven stay as they are. */
+    static void dropTransformers(String modId) {
+        List<StormClassTransformer> dropped = new ArrayList<>();
+        for (Map.Entry<StormClassTransformer, String> entry : MOD_TRANSFORMERS.entrySet()) {
+            if (modId.equals(entry.getValue())) {
+                dropped.add(entry.getKey());
+            }
+        }
+        MOD_TRANSFORMERS.keySet().removeAll(dropped);
+        for (List<StormClassTransformer> list : TRANSFORMERS.values()) {
+            list.removeAll(dropped);
+        }
+        TRANSFORMERS.values().removeIf(List::isEmpty);
     }
 
     /**
@@ -948,7 +946,8 @@ public class StormClassTransformers {
     }
 
     public static byte[] applyAll(String className, byte[] rawClass) {
-        List<StormClassTransformer> transformers = getRegistered(className);
+        List<StormClassTransformer> transformers = new ArrayList<>(getRegistered(className));
+        boolean applied = false;
         for (StormClassTransformer transformer : transformers) {
             LOGGER.info(
                     "Applying transformer {} to class {}",
@@ -956,21 +955,29 @@ public class StormClassTransformers {
                     className);
             try {
                 rawClass = transformer.transform(rawClass);
+                applied = true;
                 LOGGER.info(
                         "Successfully applied transformer {} to class {}",
                         transformer.getClass().getSimpleName(),
                         className);
-            } catch (Exception e) {
-                LOGGER.error(
-                        "Failed to apply transformer {} to class {}: {}",
-                        transformer.getClass().getSimpleName(),
-                        className,
-                        e.getMessage(),
+            } catch (RuntimeException | LinkageError e) {
+                String modId = MOD_TRANSFORMERS.get(transformer);
+                if (modId == null) {
+                    LOGGER.error(
+                            "Failed to apply transformer {} to class {}: {}",
+                            transformer.getClass().getSimpleName(),
+                            className,
+                            e.getMessage(),
+                            e);
+                    throw e;
+                }
+                StormModRegistry.disableMod(
+                        modId,
+                        "applying " + transformer.getClass().getSimpleName() + " to " + className,
                         e);
-                throw e;
             }
         }
-        if (!transformers.isEmpty()) {
+        if (applied) {
             TRANSFORMED_CLASSES.add(className);
         }
         return rawClass;

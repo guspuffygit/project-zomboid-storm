@@ -103,9 +103,9 @@ public final class StormSyncIsoObjectGate {
                 }
             } else {
                 received = true;
-                obj.syncIsoObjectReceive((ByteBufferReader) bbObj);
-                // Vanilla relay: only when source is non-null, excluding the source. Gate added.
                 UdpConnection source = (UdpConnection) sourceObj;
+                obj.syncIsoObjectReceive((ByteBufferReader) bbObj, source);
+                // Vanilla relay: only when source is non-null, excluding the source. Gate added.
                 for (UdpConnection connection : GameServer.udpEngine.connections) {
                     if (source != null
                             && connection.getConnectedGUID() != source.getConnectedGUID()) {

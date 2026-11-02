@@ -11,11 +11,13 @@ import zombie.network.GameServer;
  * makes the per-call distribution and the call rate visible on their own, which is what tells apart
  * "many cheap chunks" from "a few expensive ones".
  *
- * <p>{@code ServerCell.Save} reaches the same method through {@code
+ * <p>Saving reaches the same method on two routes. {@code ServerCell.Save} goes through {@code
  * ServerChunkLoader.addSaveLoadedJob}, on the main thread during {@code SaveAll} and on a {@code
- * ServerMap} worker otherwise. {@link ChunkStreamMetrics#recordSerialize(long)} separates the two
- * by the thread-local marker that {@code ServerChunkLoaderSaveLoadedJobAdvice} sets, and owns the
- * step-timings line as well so both decisions are made in one place.
+ * ServerMap} worker otherwise. An unloading chunk goes through {@code
+ * ServerChunkLoader$SaveUnloadedTask.serialize}, on the save thread or on a LoadChunk worker that
+ * needs the pending bytes. {@link ChunkStreamMetrics#recordSerialize(long)} separates saving from
+ * streaming by the thread-local marker that {@code ServerChunkLoaderSaveLoadedJobAdvice} sets on
+ * both save routes, and owns the step-timings line as well so both decisions are made in one place.
  */
 public class IsoChunkSaveLoadedChunkAdvice {
 

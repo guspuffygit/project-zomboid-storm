@@ -208,13 +208,12 @@ public final class StormPlayerLos {
         Stack<IsoMovingObject> spottedList = player.getSpottedList();
         Stack<IsoMovingObject> lastSpotted = player.getLastSpotted();
 
-        // Pre-loop resets — kept verbatim (numChasingZombies has server readers in
-        // CombatManager; the musicZombies* resets keep those fields deterministically 0 now
-        // that their per-object increments are stripped).
+        // numChasingZombies is untouched here. MovingObjectUpdateScheduler.startFrame owns the
+        // count on the server, so zeroing it in the LOS pass would clobber the frame's tally that
+        // CombatManager reads. The musicZombies* resets keep those fields deterministically 0
+        // because their per-object increments are stripped.
         spottedList.clear();
         stats.numVisibleZombies = 0;
-        stats.setLastNumberChasingZombies(stats.numChasingZombies);
-        stats.numChasingZombies = 0;
         stats.musicZombiesTargetingDistantNotMoving = 0;
         stats.musicZombiesTargetingNearbyNotMoving = 0;
         stats.musicZombiesTargetingDistantMoving = 0;

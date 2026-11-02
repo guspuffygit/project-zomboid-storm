@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
  * <p>The delegation target matters: the fix logic must stay out of {@code
  * NetTimedActionPacketPatch} itself, because the patch class is linked during transformer
  * registration and any game type it references gets loaded — and defined untransformed — before
- * registration completes. Someone folding {@code processServerFixed} back into the patch class
- * would reintroduce that bug; {@link
+ * registration completes. Someone folding {@code onProcessServer} back into the patch class would
+ * reintroduce that bug; {@link
  * com.sentientsimulations.storm.core.TransformerRegistrationClassLoadTest} catches the load, this
  * test pins the woven call site.
  */
@@ -38,11 +38,9 @@ class NetTimedActionPacketPatchTest {
         assertTrue(
                 woven.contains("io/pzstorm/storm/patch/fixes/NetTimedActionPacketFix"),
                 "woven processServer should delegate to NetTimedActionPacketFix");
-        assertTrue(
-                woven.contains("processServerFixed"),
-                "woven bytecode should call processServerFixed");
+        assertTrue(woven.contains("onProcessServer"), "woven bytecode should call onProcessServer");
         assertFalse(
-                vanilla.contains("processServerFixed"),
+                vanilla.contains("onProcessServer"),
                 "sanity: vanilla bytecode should not already contain the advice call site");
     }
 }

@@ -3,6 +3,7 @@ package io.pzstorm.storm.patch.fixes;
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import zombie.GameTime;
@@ -13,24 +14,41 @@ import zombie.core.raknet.UdpConnection;
 import zombie.network.GameClient;
 import zombie.network.GameServer;
 import zombie.network.IConnection;
-import zombie.network.fields.character.PlayerID;
+import zombie.network.fields.character.Player;
 
 /**
  * Shared utility for NetTimedAction debug logging. All log messages use a consistent {@value
  * #PREFIX} prefix for easy filtering by Steam ID.
+ *
+ * <p>Traces are emitted only for the players named in {@value #DEBUG_PLAYERS_PROPERTY}, a
+ * comma-separated list of Steam IDs and/or usernames read once at class load. The allow list is
+ * empty by default so nothing is traced on an unconfigured JVM.
  */
 public class NtaDebugLog {
 
     public static final String PREFIX = "[STORM-NTA]";
 
-    // 76561197984809068
-    private static volatile Set<String> allowedPlayers = Set.of("");
+    public static final String DEBUG_PLAYERS_PROPERTY = "storm.nta.debugPlayers";
+
+    private static volatile Set<String> allowedPlayers = readAllowedPlayers();
+
+    private static Set<String> readAllowedPlayers() {
+        String raw = System.getProperty(DEBUG_PLAYERS_PROPERTY, "");
+        Set<String> players = new HashSet<>();
+        for (String entry : raw.split(",")) {
+            String trimmed = entry.trim();
+            if (!trimmed.isEmpty()) {
+                players.add(trimmed);
+            }
+        }
+        return Set.copyOf(players);
+    }
 
     // --- Reflection cache for Action (package-private) fields ---
 
     private static volatile Field stateField;
     private static volatile Field idField;
-    private static volatile Field playerIdField;
+    private static volatile Field playerField;
     private static volatile Field startTimeField;
     private static volatile Field endTimeField;
     private static volatile Field actionsField;
@@ -46,7 +64,7 @@ public class NtaDebugLog {
             sf.setAccessible(true);
             Field idf = actionClass.getDeclaredField("id");
             idf.setAccessible(true);
-            Field pf = actionClass.getDeclaredField("playerId");
+            Field pf = actionClass.getDeclaredField("player");
             pf.setAccessible(true);
             Field stf = actionClass.getDeclaredField("startTime");
             stf.setAccessible(true);
@@ -57,7 +75,7 @@ public class NtaDebugLog {
 
             // Publish all at once - volatile write of stateField acts as release fence
             idField = idf;
-            playerIdField = pf;
+            playerField = pf;
             startTimeField = stf;
             endTimeField = etf;
             actionsField = af;
@@ -77,44 +95,28 @@ public class NtaDebugLog {
     // --- Steam ID filtering ---
 
     public static boolean isAllowedConnection(IConnection connection) {
-        if (connection == null) {
+        if (connection == null || allowedPlayers.isEmpty()) {
             return false;
         }
-        return allowedPlayers.contains(String.valueOf(connection.getSteamId()));
+        if (allowedPlayers.contains(String.valueOf(connection.getSteamId()))) {
+            return true;
+        }
+        if (connection instanceof UdpConnection udp && udp.usernames != null) {
+            for (String username : udp.usernames) {
+                if (username != null && allowedPlayers.contains(username)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public static boolean isAllowedClient() {
-        return GameClient.client && allowedPlayers.contains(String.valueOf(GameClient.steamID));
-    }
-
-    public static boolean isAllowedAction(Object action) {
-        if (action == null) {
+        if (!GameClient.client || allowedPlayers.isEmpty()) {
             return false;
         }
-        try {
-            ensureFields();
-            PlayerID pid = (PlayerID) playerIdField.get(action);
-            return isAllowedPlayerId(pid);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    public static boolean isAllowedPlayerId(PlayerID playerId) {
-        if (playerId == null) {
-            return false;
-        }
-        if (GameServer.server) {
-            if (playerId.getPlayer() == null) {
-                return false;
-            }
-            UdpConnection conn = GameServer.getConnectionFromPlayer(playerId.getPlayer());
-            if (conn == null) {
-                return false;
-            }
-            return isAllowedConnection(conn);
-        }
-        return GameClient.client && isAllowedClient();
+        return allowedPlayers.contains(String.valueOf(GameClient.steamID))
+                || allowedPlayers.contains(GameClient.username);
     }
 
     // --- Field accessors ---
@@ -137,10 +139,10 @@ public class NtaDebugLog {
         }
     }
 
-    public static PlayerID getPlayerId(Object action) {
+    public static Player getPlayer(Object action) {
         try {
             ensureFields();
-            return (PlayerID) playerIdField.get(action);
+            return (Player) playerField.get(action);
         } catch (Exception e) {
             return null;
         }
@@ -191,7 +193,7 @@ public class NtaDebugLog {
         try {
             byte id = getId(action);
             Transaction.TransactionState state = getState(action);
-            PlayerID pid = getPlayerId(action);
+            Player pid = getPlayer(action);
             long duration = -1;
             String type = action.getClass().getSimpleName();
             String name = "";
@@ -202,7 +204,7 @@ public class NtaDebugLog {
             }
             long startTime = getStartTime(action);
             long endTime = getEndTime(action);
-            int playerId = (pid != null) ? pid.getID() : -1;
+            int playerId = (pid != null) ? pid.getId() : -1;
             String playerName =
                     (pid != null && pid.getPlayer() != null) ? pid.getPlayer().getUsername() : "?";
 
@@ -228,33 +230,6 @@ public class NtaDebugLog {
                     connInfo);
         } catch (Exception e) {
             return "{error=" + e.getMessage() + "}";
-        }
-    }
-
-    public static String describePlayerActions(PlayerID playerId) {
-        if (playerId == null) {
-            return "[]";
-        }
-        try {
-            ConcurrentLinkedQueue<Object> q = getActionsQueue();
-            StringBuilder sb = new StringBuilder("[");
-            boolean first = true;
-            int count = 0;
-            for (Object a : q) {
-                PlayerID p = getPlayerId(a);
-                if (p != null && p.getID() == playerId.getID()) {
-                    if (!first) {
-                        sb.append(", ");
-                    }
-                    sb.append(describe(a));
-                    first = false;
-                    count++;
-                }
-            }
-            sb.append("] (").append(count).append(" player / ").append(q.size()).append(" total)");
-            return sb.toString();
-        } catch (Exception e) {
-            return "[error]";
         }
     }
 

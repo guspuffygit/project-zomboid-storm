@@ -295,31 +295,42 @@ public class StormModLoader extends URLClassLoader {
 
         CLASS_CATALOG.clear();
 
-        for (Map.Entry<String, StormMod> entry : STORM_MODS.entrySet()) {
+        for (String modId : STORM_MODS.keySet()) {
             Set<Class<?>> modClasses = new HashSet<>();
-            for (ModJar modJar : entry.getValue().getModJars()) {
-                Enumeration<JarEntry> jarEntries = modJar.entries();
-                while (jarEntries.hasMoreElements()) {
-                    JarEntry jarEntry = jarEntries.nextElement();
-                    if (jarEntry.isDirectory() || !jarEntry.getName().endsWith(".class")) {
-                        continue;
-                    }
-                    String entryName = jarEntry.getName();
-                    String className = entryName.substring(0, entryName.length() - 6);
-                    try {
-                        modClasses.add(
-                                StormBootstrap.CLASS_LOADER.loadClass(
-                                        className.replace('/', '.'), true));
-                    } catch (ClassNotFoundException e) {
-                        throw new RuntimeException(e);
-                    }
+            try {
+                for (String className : getModClassNames(modId)) {
+                    modClasses.add(StormBootstrap.CLASS_LOADER.loadClass(className, true));
                 }
+            } catch (ClassNotFoundException | RuntimeException | LinkageError e) {
+                StormModRegistry.disableMod(modId, "loading classes", e);
+                continue;
             }
-            CLASS_CATALOG.put(entry.getKey(), ImmutableSet.copyOf(modClasses));
+            CLASS_CATALOG.put(modId, ImmutableSet.copyOf(modClasses));
 
             LOGGER.debug("Created new metadata catalog entry:");
-            LOGGER.debug("Found {} classes in mod directory {}", modClasses.size(), entry.getKey());
+            LOGGER.debug("Found {} classes in mod directory {}", modClasses.size(), modId);
         }
+    }
+
+    /** Binary names of every class in the mod's jars, or an empty list for an unknown mod. */
+    static List<String> getModClassNames(String modId) {
+        StormMod mod = STORM_MODS.get(modId);
+        if (mod == null) {
+            return Collections.emptyList();
+        }
+        List<String> classNames = new ArrayList<>();
+        for (ModJar modJar : mod.getModJars()) {
+            Enumeration<JarEntry> jarEntries = modJar.entries();
+            while (jarEntries.hasMoreElements()) {
+                JarEntry jarEntry = jarEntries.nextElement();
+                String entryName = jarEntry.getName();
+                if (jarEntry.isDirectory() || !entryName.endsWith(".class")) {
+                    continue;
+                }
+                classNames.add(entryName.substring(0, entryName.length() - 6).replace('/', '.'));
+            }
+        }
+        return classNames;
     }
 
     /**

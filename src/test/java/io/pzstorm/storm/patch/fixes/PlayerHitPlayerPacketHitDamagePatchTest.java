@@ -15,41 +15,45 @@ import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import org.junit.jupiter.api.Test;
-import zombie.network.fields.hit.WeaponHit;
+import zombie.CombatManager;
+import zombie.network.fields.hit.Hit;
 
 /**
- * Verifies that {@link PlayerHitPlayerPacketHitDamagePatch} lands on {@code parse} only, and
+ * Verifies that {@link PlayerHitPlayerPacketHitDamagePatch} lands on {@code process} only, and
  * unit-tests the flag clearing in {@link PvpHitsAlwaysDamage}.
  */
 class PlayerHitPlayerPacketHitDamagePatchTest implements UnitTest {
 
     private static final String TARGET_CLASS = "zombie/network/packets/hit/PlayerHitPlayerPacket";
     private static final String HELPER_CLASS = "io/pzstorm/storm/patch/fixes/PvpHitsAlwaysDamage";
-    private static final String PARSE_DESC =
-            "(Lzombie/core/network/ByteBufferReader;Lzombie/network/IConnection;)V";
 
     @Test
-    void patchLandsOnParseOnly() throws Exception {
+    void patchLandsOnProcessOnly() throws Exception {
         byte[] raw = readClassBytes(TARGET_CLASS + ".class");
         byte[] out = new PlayerHitPlayerPacketHitDamagePatch().transform(raw);
         assertNotNull(out);
 
-        assertEquals(0, countHelperCalls(raw, "parse", PARSE_DESC));
-        assertTrue(countHelperCalls(out, "parse", PARSE_DESC) >= 1);
-        assertEquals(0, countHelperCalls(out, "process", null));
+        assertEquals(0, countHelperCalls(raw, "process", "()V"));
+        assertTrue(countHelperCalls(out, "process", "()V") >= 1);
+        assertEquals(0, countHelperCalls(out, "parse", null));
         assertEquals(0, countHelperCalls(out, "write", null));
     }
 
     @Test
     void clearsOnlyTheFlaggedHits() throws Exception {
-        List<WeaponHit> hits = new ArrayList<>();
+        List<Hit> hits = new ArrayList<>();
         hits.add(hit(true));
         hits.add(hit(false));
         hits.add(hit(true));
+        hits.add(new Hit());
 
         assertEquals(2, PvpHitsAlwaysDamage.clearIgnoreDamage(hits));
-        for (WeaponHit hit : hits) {
-            assertFalse(ignoreDamage(hit));
+        for (Hit hit : hits) {
+            assertFalse((boolean) field("isIgnoreDamage").get(hit));
+            CombatManager.HitData data = (CombatManager.HitData) field("hitData").get(hit);
+            if (data != null) {
+                assertFalse(data.isIgnoreDamage());
+            }
         }
         assertEquals(0, PvpHitsAlwaysDamage.clearIgnoreDamage(hits));
     }
@@ -58,18 +62,33 @@ class PlayerHitPlayerPacketHitDamagePatchTest implements UnitTest {
     void toleratesNullAndForeignEntries() {
         assertEquals(0, PvpHitsAlwaysDamage.clearIgnoreDamage(null));
         assertEquals(0, PvpHitsAlwaysDamage.clearIgnoreDamage(List.of("not a hit")));
+        assertFalse(PvpHitsAlwaysDamage.isShoveHit((Object) null));
+        assertFalse(PvpHitsAlwaysDamage.isShoveHit("not a packet"));
     }
 
-    private static WeaponHit hit(boolean ignoreDamage) {
-        WeaponHit hit = new WeaponHit();
-        hit.set(10f, 1f, 1f, 0f, 1f, false, false, false, ignoreDamage);
+    @Test
+    void shovesKeepVanillaFlag() {
+        assertTrue(PvpHitsAlwaysDamage.isShoveHit(true, false, false));
+        assertTrue(PvpHitsAlwaysDamage.isShoveHit(true, false, true));
+        assertTrue(PvpHitsAlwaysDamage.isShoveHit(true, true, false));
+        assertFalse(PvpHitsAlwaysDamage.isShoveHit(true, true, true));
+        assertFalse(PvpHitsAlwaysDamage.isShoveHit(false, false, false));
+        assertFalse(PvpHitsAlwaysDamage.isShoveHit(false, true, true));
+    }
+
+    private static Hit hit(boolean ignoreDamage) throws Exception {
+        CombatManager.HitData data =
+                new CombatManager.HitData((byte) 1, false, ignoreDamage, false, true);
+        Hit hit = new Hit();
+        hit.set(10f, 1f, 1f, data, false, 0f);
+        field("hitData").set(hit, data);
         return hit;
     }
 
-    private static boolean ignoreDamage(WeaponHit hit) throws Exception {
-        Field field = WeaponHit.class.getDeclaredField("ignoreDamage");
+    private static Field field(String name) throws Exception {
+        Field field = Hit.class.getDeclaredField(name);
         field.setAccessible(true);
-        return field.getBoolean(hit);
+        return field;
     }
 
     private byte[] readClassBytes(String resourcePath) throws Exception {
