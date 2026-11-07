@@ -2,6 +2,7 @@ package io.pzstorm.storm.http;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.connection.LoginQueueEarlyRelease;
 import io.pzstorm.storm.connection.StormRequestDataSerializer;
 import io.pzstorm.storm.connection.StormTcpSessionRegistry.Session;
 import io.pzstorm.storm.util.StormServerTaskQueue;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import zombie.characters.Capability;
+import zombie.core.raknet.UdpConnection;
 import zombie.network.packets.RequestDataPacket;
 
 /**
@@ -32,8 +34,10 @@ public class GamePortRequestDataEndpoints {
         if (session == null) {
             return;
         }
-        if (GamePortHandshakeEndpoints.requireConnection(event, session, Capability.LoginOnServer)
-                == null) {
+        UdpConnection connection =
+                GamePortHandshakeEndpoints.requireConnection(
+                        event, session, Capability.LoginOnServer);
+        if (connection == null) {
             return;
         }
         String idName = event.getQueryParams().get("id");
@@ -46,7 +50,14 @@ public class GamePortRequestDataEndpoints {
         }
         try {
             byte[] payload =
-                    StormServerTaskQueue.submit(() -> StormRequestDataSerializer.serialize(id))
+                    StormServerTaskQueue.submit(
+                                    () -> {
+                                        byte[] bytes = StormRequestDataSerializer.serialize(id);
+                                        if (id == RequestDataPacket.RequestID.WorldMap) {
+                                            LoginQueueEarlyRelease.onWorldMapServed(connection);
+                                        }
+                                        return bytes;
+                                    })
                             .get(SERIALIZE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             event.setContentType("application/octet-stream");
             event.send(200, payload);

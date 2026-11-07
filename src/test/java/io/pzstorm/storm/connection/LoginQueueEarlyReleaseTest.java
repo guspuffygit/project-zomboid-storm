@@ -8,7 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.pzstorm.storm.UnitTest;
 import io.pzstorm.storm.connection.LoginQueueEarlyRelease.LoaderTracker;
+import io.pzstorm.storm.event.packet.RequestDataPacketEvent;
+import java.lang.reflect.Field;
 import org.junit.jupiter.api.Test;
+import sun.misc.Unsafe;
+import zombie.core.raknet.UdpConnection;
 import zombie.network.packets.RequestDataPacket;
 
 /**
@@ -52,6 +56,29 @@ class LoginQueueEarlyReleaseTest implements UnitTest {
         assertFalse(LoginQueueEarlyRelease.isTerminalWorldMapRequest(request, null));
         // non-enum garbage must fail closed too
         assertFalse(LoginQueueEarlyRelease.isTerminalWorldMapRequest("Request", "WorldMap"));
+    }
+
+    @Test
+    void eventKeepsTheRequestTypeAfterProcessServerRewritesIt() throws Exception {
+        RequestDataPacket packet = new RequestDataPacket();
+        packet.setRequest(RequestDataPacket.RequestID.WorldMap);
+        RequestDataPacketEvent event = new RequestDataPacketEvent(packet, unsafeConnection());
+        event.capturePreState();
+
+        // processServer answers a sub-1 KB payload by rewriting the packet's own type in place
+        Field type = RequestDataPacket.class.getDeclaredField("type");
+        type.setAccessible(true);
+        type.set(packet, requestTypeConstant("FullData"));
+
+        assertTrue(
+                LoginQueueEarlyRelease.isTerminalWorldMapRequest(
+                        event.getField("type"), event.getField("id")));
+    }
+
+    private static UdpConnection unsafeConnection() throws Exception {
+        Field f = Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        return (UdpConnection) ((Unsafe) f.get(null)).allocateInstance(UdpConnection.class);
     }
 
     private static Object requestTypeConstant(String name) throws Exception {

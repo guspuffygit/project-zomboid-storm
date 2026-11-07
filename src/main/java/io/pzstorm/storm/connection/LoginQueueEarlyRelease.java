@@ -122,6 +122,25 @@ public final class LoginQueueEarlyRelease {
         }
     }
 
+    /**
+     * The game-port TCP transfer path serves {@code RequestData} without a {@code
+     * RequestDataPacket}, so it reports the terminal WorldMap transfer here. Main thread only.
+     */
+    public static void onWorldMapServed(UdpConnection connection) {
+        if (!GameServer.server) {
+            return;
+        }
+        try {
+            tryRelease(connection);
+        } catch (Throwable t) {
+            LOGGER.error(
+                    "LoginQueueEarlyRelease: release attempt failed for {} — slot left for the"
+                            + " vanilla path to clear",
+                    connection.getUserName(),
+                    t);
+        }
+    }
+
     @SubscribeEvent
     public static void onLoginQueueDone(LoginQueueDonePacketEvent event) {
         if (!GameServer.server) {
