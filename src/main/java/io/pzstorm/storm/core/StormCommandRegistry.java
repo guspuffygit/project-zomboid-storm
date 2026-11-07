@@ -5,6 +5,7 @@ import io.pzstorm.storm.commands.PingCommand;
 import io.pzstorm.storm.commands.PrintDebugCommand;
 import io.pzstorm.storm.commands.TestActionRemoveBugCommand;
 import io.pzstorm.storm.commands.TestCountActionCommand;
+import io.pzstorm.storm.commands.TestFactionChatStateCommand;
 import io.pzstorm.storm.commands.TestSeedActionCommand;
 import io.pzstorm.storm.commands.TestStatsGetCommand;
 import io.pzstorm.storm.commands.TestStormKahluaTableCommand;
@@ -43,6 +44,7 @@ public class StormCommandRegistry {
             MOD_COMMANDS.add(TestStormLuaCallFrameCommand.class);
             MOD_COMMANDS.add(TestStormKahluaTableCommand.class);
             MOD_COMMANDS.add(TestWhisperChatStateCommand.class);
+            MOD_COMMANDS.add(TestFactionChatStateCommand.class);
             MOD_COMMANDS.add(TestWorldMapVisibilityParityCommand.class);
             MOD_COMMANDS.add(TestVehicleSoundRelevanceCommand.class);
         }

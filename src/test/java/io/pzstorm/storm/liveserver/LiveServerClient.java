@@ -300,6 +300,32 @@ public final class LiveServerClient implements AutoCloseable {
         PacketTypes.PacketType.PlayerStartPMChat.send(connection);
     }
 
+    /** Sends a raw {@code FactionCreate} packet, as the faction UI does when creating a faction. */
+    public void sendFactionCreate(String title, String ownerName) {
+        ByteBufferWriter b = connection.startPacket();
+        PacketTypes.PacketType.FactionCreate.doPacket(b);
+        b.putUTF(title);
+        b.putUTF(ownerName);
+        PacketTypes.PacketType.FactionCreate.send(connection);
+    }
+
+    /** Sends a raw {@code FactionChangeTitle} packet, as the faction UI does when renaming. */
+    public void sendFactionChangeTitle(String currentTitle, String newTitle) {
+        ByteBufferWriter b = connection.startPacket();
+        PacketTypes.PacketType.FactionChangeTitle.doPacket(b);
+        b.putUTF(currentTitle);
+        b.putUTF(newTitle);
+        PacketTypes.PacketType.FactionChangeTitle.send(connection);
+    }
+
+    /** Sends a raw {@code FactionDisband} packet for a faction this client owns. */
+    public void sendFactionDisband(String title) {
+        ByteBufferWriter b = connection.startPacket();
+        PacketTypes.PacketType.FactionDisband.doPacket(b);
+        b.putUTF(title);
+        PacketTypes.PacketType.FactionDisband.send(connection);
+    }
+
     @Override
     public void close() {
         if (connection != null) {
