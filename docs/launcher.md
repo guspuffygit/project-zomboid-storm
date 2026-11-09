@@ -524,7 +524,16 @@ java -jar storm-launcher.jar --list
 java -jar storm-launcher.jar --accept-terms
 java -jar storm-launcher.jar --print-launch <name|host:port>
 java -jar storm-launcher.jar --join <name|host:port>
+java -jar storm-launcher.jar --join <name|host:port> --user <username> --vm-arg <arg> ... --quick
 ```
+
+Several saved profiles can share a server (one per account). `--user` picks
+the one with that username instead of the first match. With no saved match, a
+`host:port` selector becomes an ad-hoc auto-connect profile carrying that
+username. `--vm-arg` (repeatable) appends a JVM arg to this launch only. It
+never reaches launcher.json, so the profile stays as saved. `--quick` makes
+`--join` use the UI's fast "Join Server" mod check instead of forcing every
+item through Steam.
 
 `--print-launch` prints the exact command line (password masked) without
 starting anything — useful for debugging launch problems. (It shows the

@@ -7,6 +7,8 @@ import io.pzstorm.launcher.ui.StormTheme;
 import io.pzstorm.launcher.ui.TermsDialog;
 import java.awt.GraphicsEnvironment;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiPredicate;
 import javax.swing.SwingUtilities;
 
@@ -16,7 +18,11 @@ import javax.swing.SwingUtilities;
  * freely and the game only ever boots against the already-updated files.
  *
  * <p>Headless modes (mainly for scripting/CI): {@code --list}, {@code --print-launch <server>},
- * {@code --join <server>} where {@code <server>} is a profile name or {@code host:port}.
+ * {@code --join <server>} where {@code <server>} is a profile name or {@code host:port}. Both
+ * launch modes take {@code --user <username>} to pick among profiles that share a server, and
+ * repeatable {@code --vm-arg <arg>} to add a JVM arg to this launch only (never saved). {@code
+ * --join} also takes {@code --quick} to use the UI's fast "Join Server" mod check instead of
+ * forcing every item through Steam.
  */
 public final class LauncherMain {
 
@@ -170,6 +176,11 @@ public final class LauncherMain {
         }
     }
 
+    private static final String USAGE =
+            "Usage: storm-launcher [--list | --version | --accept-terms"
+                    + " | --print-launch <server> | --join <server>]"
+                    + " [--user <username>] [--vm-arg <arg>]... [--quick]";
+
     private static void runHeadless(LauncherConfig config, String[] args) throws Exception {
         String mode = args[0];
         switch (mode) {
@@ -195,10 +206,7 @@ public final class LauncherMain {
                 break;
             default:
                 System.err.println("Unknown option: " + mode);
-                System.err.println(
-                        "Usage: storm-launcher"
-                                + " [--list | --version | --accept-terms"
-                                + " | --print-launch <server> | --join <server>]");
+                System.err.println(USAGE);
                 System.exit(2);
                 return;
         }
@@ -207,12 +215,42 @@ public final class LauncherMain {
             System.exit(2);
             return;
         }
-        ServerProfile profile = findProfile(config, args[1]);
+        String username = null;
+        List<String> vmArgs = new ArrayList<>();
+        boolean quick = false;
+        for (int i = 2; i < args.length && args[i].startsWith("--"); i++) {
+            if (args[i].equals("--quick")) {
+                quick = true;
+                continue;
+            }
+            if (i + 1 >= args.length) {
+                System.err.println(args[i] + " needs a value");
+                System.err.println(USAGE);
+                System.exit(2);
+                return;
+            }
+            switch (args[i]) {
+                case "--user" -> username = args[++i];
+                case "--vm-arg" -> vmArgs.add(args[++i]);
+                default -> {
+                    System.err.println("Unknown option: " + args[i]);
+                    System.err.println(USAGE);
+                    System.exit(2);
+                    return;
+                }
+            }
+        }
+        ServerProfile profile = findProfile(config, args[1], username);
         if (profile == null) {
-            System.err.println("No saved server matches '" + args[1] + "'");
+            System.err.println(
+                    "No saved server matches '"
+                            + args[1]
+                            + "'"
+                            + (username == null ? "" : " with username '" + username + "'"));
             System.exit(2);
             return;
         }
+        profile.extraVmArgs.addAll(vmArgs);
         switch (mode) {
             case "--print-launch":
                 {
@@ -222,7 +260,7 @@ public final class LauncherMain {
                     break;
                 }
             case "--join":
-                JoinFlow.join(config, profile);
+                JoinFlow.join(config, profile, !quick);
                 break;
             default:
                 throw new AssertionError(mode);
@@ -352,9 +390,19 @@ public final class LauncherMain {
     }
 
     static ServerProfile findProfile(LauncherConfig config, String selector) {
+        return findProfile(config, selector, null);
+    }
+
+    /**
+     * First saved profile whose name or {@code host:port} matches {@code selector} and, when {@code
+     * username} is given, whose username matches too. With no saved match, a {@code host:port}
+     * selector becomes an ad-hoc profile carrying that username.
+     */
+    static ServerProfile findProfile(LauncherConfig config, String selector, String username) {
         for (ServerProfile profile : config.servers) {
-            if (profile.name.equalsIgnoreCase(selector)
-                    || profile.connectAddress().equalsIgnoreCase(selector)) {
+            if ((profile.name.equalsIgnoreCase(selector)
+                            || profile.connectAddress().equalsIgnoreCase(selector))
+                    && (username == null || profile.username.equalsIgnoreCase(username))) {
                 return profile;
             }
         }
@@ -363,6 +411,10 @@ public final class LauncherMain {
             ServerProfile adHoc = new ServerProfile();
             adHoc.name = selector;
             adHoc.host = selector.substring(0, colon);
+            if (username != null) {
+                adHoc.username = username;
+                adHoc.autoConnect = true;
+            }
             try {
                 adHoc.port = Integer.parseInt(selector.substring(colon + 1));
                 return adHoc;

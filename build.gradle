@@ -108,6 +108,10 @@ def os = OperatingSystem.current()
 
 def getLocalProperty(String property, String defaultValue = null) {
 	return providers.provider {
+		def override = findProperty(property)
+		if (override != null) {
+			return override.toString()
+		}
 		def props = new Properties()
 		def propFile = file("local.properties")
 

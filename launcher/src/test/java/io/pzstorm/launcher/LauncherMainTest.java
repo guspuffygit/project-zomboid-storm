@@ -3,6 +3,7 @@ package io.pzstorm.launcher;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -43,5 +44,30 @@ class LauncherMainTest {
 
         assertNull(LauncherMain.findProfile(config, "unknown"));
         assertNull(LauncherMain.findProfile(config, "host:notaport"));
+    }
+
+    @Test
+    void usernamePicksAmongProfilesSharingAServer() {
+        LauncherConfig config = new LauncherConfig();
+        ServerProfile alt = new ServerProfile();
+        alt.name = "ATF";
+        alt.host = "play.example.org";
+        alt.username = "Alt Char";
+        ServerProfile main = new ServerProfile();
+        main.name = "ATF";
+        main.host = "play.example.org";
+        main.username = "Main Char";
+        config.servers.add(alt);
+        config.servers.add(main);
+
+        assertEquals(alt, LauncherMain.findProfile(config, "atf"));
+        assertEquals(main, LauncherMain.findProfile(config, "atf", "main char"));
+        assertEquals(main, LauncherMain.findProfile(config, "play.example.org:16261", "Main Char"));
+
+        ServerProfile adHoc = LauncherMain.findProfile(config, "play.example.org:16261", "New");
+        assertEquals("New", adHoc.username);
+        assertEquals("play.example.org", adHoc.host);
+        assertTrue(adHoc.autoConnect);
+        assertNull(LauncherMain.findProfile(config, "atf", "New"));
     }
 }
