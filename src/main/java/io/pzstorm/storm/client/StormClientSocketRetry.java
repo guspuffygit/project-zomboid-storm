@@ -4,6 +4,7 @@ import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
 import zombie.Lua.LuaEventManager;
 import zombie.core.Translator;
+import zombie.core.raknet.RakNetPeerInterface;
 import zombie.core.raknet.UdpEngine;
 import zombie.core.random.Rand;
 import zombie.network.CoopMaster;
@@ -55,6 +56,7 @@ public final class StormClientSocketRetry {
     private static boolean rebind(GameClient gameClient) {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_BIND_ATTEMPTS; attempt++) {
+            shutDownFailedPeer();
             try {
                 UdpEngine engine = new UdpEngine(Rand.Next(10000) + 12345, 0, 1, null, false);
                 gameClient.udpEngine = engine;
@@ -85,6 +87,21 @@ public final class StormClientSocketRetry {
                 MAX_BIND_ATTEMPTS,
                 last);
         return false;
+    }
+
+    /**
+     * The native RakNet peer is one global object in the DLL; {@link RakNetPeerInterface} holds no
+     * handle, so any instance reaches it. A failed {@code Startup} returns without a {@code
+     * Shutdown}, and calling {@code Init} and {@code Startup} again on top of that leaves a socket
+     * whose Steam auth never completes. The server then drops the join after its 5 s login
+     * deadline. Shutting the peer down first restores vanilla's own reconnect sequence.
+     */
+    private static void shutDownFailedPeer() {
+        try {
+            new RakNetPeerInterface().Shutdown();
+        } catch (Throwable t) {
+            LOGGER.warn("Could not shut down the failed RakNet peer before retrying", t);
+        }
     }
 
     /** Vanilla leaves the connect screen spinning forever on this path. Tell the player instead. */
