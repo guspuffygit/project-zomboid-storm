@@ -144,6 +144,7 @@ public final class LogReport {
         lines.add("Bootstrap: " + (bootstrapDir == null ? "NOT FOUND" : bootstrapDir));
         lines.add("Auto memory: " + config.autoMemory + " (manual " + config.memoryGb + " GB)");
         lines.add("Client perf fixes: " + config.clientPerfFixes);
+        lines.add("Lazy tile loading: " + config.lazyTileLoading);
         lines.add("Skip menus: " + config.skipMenus);
         List<String> vmArgs = new ArrayList<>();
         for (String arg : config.globalVmArgs) {

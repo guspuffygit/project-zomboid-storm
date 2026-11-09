@@ -34,6 +34,12 @@ public final class GameLaunch {
     public static final String CLIENT_PERF_PROPERTY = "storm.experimental.clientperf";
 
     /**
+     * Enables Storm's lazy tile-pack page loading; the launcher passes it unless the user unticks
+     * it. Keep in sync with the gate in {@code io.pzstorm.storm.core.StormClassTransformers}.
+     */
+    public static final String LAZY_TILES_PROPERTY = "storm.experimental.lazytiles";
+
+    /**
      * Skips the intro screens (photosensitivity warning, TIS/attribution/Storm logos, TOS) so the
      * game boots straight to the main menu; the launcher passes it by default. Keep in sync with
      * the gate in {@code io.pzstorm.storm.core.StormClassTransformers}.
@@ -249,6 +255,9 @@ public final class GameLaunch {
             if (config.clientPerfFixes && !specifiesClientPerf(config, profile)) {
                 command.add("-D" + CLIENT_PERF_PROPERTY + "=true");
             }
+            if (config.lazyTileLoading && !specifiesLazyTiles(config, profile)) {
+                command.add("-D" + LAZY_TILES_PROPERTY + "=true");
+            }
             if (config.skipMenus && !specifiesSkipMenus(config, profile)) {
                 command.add("-D" + SKIP_MENUS_PROPERTY + "=true");
             }
@@ -318,6 +327,11 @@ public final class GameLaunch {
     /** User args win: an explicit -Dstorm.experimental.clientperf=… suppresses the default. */
     static boolean specifiesClientPerf(LauncherConfig config, ServerProfile profile) {
         return anyUserArgStartsWith(config, profile, "-D" + CLIENT_PERF_PROPERTY);
+    }
+
+    /** User args win: an explicit -Dstorm.experimental.lazytiles=… suppresses the checkbox. */
+    static boolean specifiesLazyTiles(LauncherConfig config, ServerProfile profile) {
+        return anyUserArgStartsWith(config, profile, "-D" + LAZY_TILES_PROPERTY);
     }
 
     /** User args win: an explicit -Dstorm.skipmenus=… suppresses the default. */

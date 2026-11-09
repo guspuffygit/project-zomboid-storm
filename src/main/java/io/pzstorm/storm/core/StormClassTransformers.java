@@ -163,6 +163,7 @@ import io.pzstorm.storm.patch.performance.ErosionMainLoadGridsquarePatch;
 import io.pzstorm.storm.patch.performance.EventTriggerFastPathPatch;
 import io.pzstorm.storm.patch.performance.FBORenderCellRenderLayerHoistPatch;
 import io.pzstorm.storm.patch.performance.FBORenderLevelsFreeSkipPatch;
+import io.pzstorm.storm.patch.performance.FileSystemLazyPageDrainPatch;
 import io.pzstorm.storm.patch.performance.FileSystemUpdateAsyncTransactionsPatch;
 import io.pzstorm.storm.patch.performance.FishSchoolManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.FluidContainerInvEpochPatch;
@@ -201,6 +202,7 @@ import io.pzstorm.storm.patch.performance.IsoChunkAddRanchAnimalsPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkAddVehiclesPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkAddZombieZoneStoryPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkCheckGrassRegrowthPatch;
+import io.pzstorm.storm.patch.performance.IsoChunkLazyPageRequestPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkLoadPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkRemoveFromWorldPatch;
 import io.pzstorm.storm.patch.performance.IsoChunkSafeReadPatch;
@@ -228,7 +230,9 @@ import io.pzstorm.storm.patch.performance.IsoPlayerUpdateRemotePatch;
 import io.pzstorm.storm.patch.performance.IsoRegionsUpdatePatch;
 import io.pzstorm.storm.patch.performance.IsoRoomOnSeePatch;
 import io.pzstorm.storm.patch.performance.IsoSpriteFloorFlagsPatch;
+import io.pzstorm.storm.patch.performance.IsoSpriteLazyPageRenderPatch;
 import io.pzstorm.storm.patch.performance.IsoThumpableUpdateSkipPatch;
+import io.pzstorm.storm.patch.performance.IsoTreeLazyPageRenderPatch;
 import io.pzstorm.storm.patch.performance.IsoWaterFlowMemoPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateBuildingsPatch;
 import io.pzstorm.storm.patch.performance.IsoWorldUpdateDBsPatch;
@@ -315,11 +319,14 @@ import io.pzstorm.storm.patch.performance.StatisticManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.StatsGetPatch;
 import io.pzstorm.storm.patch.performance.SteamUtilsRunLoopPatch;
 import io.pzstorm.storm.patch.performance.TestZombieSpotPlayerPatch;
+import io.pzstorm.storm.patch.performance.TextureIDAssetManagerLazyPagePatch;
+import io.pzstorm.storm.patch.performance.TextureLazyPageBindPatch;
 import io.pzstorm.storm.patch.performance.ThermalNodeInsulationVisualPatch;
 import io.pzstorm.storm.patch.performance.ThermoregulatorClothingVisualsPatch;
 import io.pzstorm.storm.patch.performance.TradingManagerUpdatePatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerSweepFastPathPatch;
 import io.pzstorm.storm.patch.performance.UsingPlayerUpdatePatch;
+import io.pzstorm.storm.patch.performance.VBORendererLazyPageTexturePatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerSendVehiclesPatch;
 import io.pzstorm.storm.patch.performance.VehicleManagerServerUpdatePatch;
 import io.pzstorm.storm.patch.performance.VehiclePartAnimSettledSkipPatch;
@@ -482,6 +489,15 @@ public class StormClassTransformers {
                 registerTransformer(new PuddleShaderCompileFallbackPatch());
                 registerTransformer(new PuddleDepthClampPatch());
             }
+        }
+        if (Boolean.getBoolean("storm.experimental.lazytiles") && !StormEnv.isStormServer()) {
+            registerTransformer(new TextureIDAssetManagerLazyPagePatch());
+            registerTransformer(new TextureLazyPageBindPatch());
+            registerTransformer(new IsoSpriteLazyPageRenderPatch());
+            registerTransformer(new IsoTreeLazyPageRenderPatch());
+            registerTransformer(new VBORendererLazyPageTexturePatch());
+            registerTransformer(new IsoChunkLazyPageRequestPatch());
+            registerTransformer(new FileSystemLazyPageDrainPatch());
         }
         if (StormEnv.isStormServer()) {
             registerTransformer(new ScriptParserCommentsPatch());

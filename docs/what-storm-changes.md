@@ -160,6 +160,20 @@ vanilla mod-distribution flow and talk back to the server over
 additionally run Storm itself (the launcher passes the agent flags), which
 enables Storm-core client Java features:
 
+- **Lazy tile loading (on by default)** — the launcher passes
+  `-Dstorm.experimental.lazytiles=true` unless *"Lazy tile loading
+  (experimental)"* is unticked.
+  Vanilla decodes and uploads every page of every tile pack at join, so a
+  server with many tile mods costs gigabytes of texture memory for tiles no
+  map places. With the flag, tile-pack pages load when a loaded chunk
+  references them or when one is first drawn. A tile whose page is still
+  loading is skipped for a few frames and its chunk redraws once the page
+  lands. Trees get their own check because `FBORenderTrees` hands page ids
+  straight to the GPU, and a cut-away jumbo tree swaps in trunk and treetop
+  sprites no chunk object references. Any other drawer that sets a page id on
+  `VBORenderer` directly also requests it. Vanilla UI packs stay eager. Pages are never unloaded, so memory
+  grows toward the set of pages the player has seen. Any failure turns the
+  feature off and releases every deferred page.
 - **The multiplayer join runs over TCP** — login, login queue, Lua checksum,
   the four bulk payloads, saved player profiles and the initial chunk grid
   all move from RakNet UDP to Storm's game-port HTTP channel. Vanilla's

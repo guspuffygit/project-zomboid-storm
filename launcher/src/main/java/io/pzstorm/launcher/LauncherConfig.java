@@ -29,6 +29,9 @@ public final class LauncherConfig {
     /** Storm's experimental client-side performance patches; on by default. */
     public boolean clientPerfFixes = true;
 
+    /** Load tile-pack pages on first use instead of at join; on by default. */
+    public boolean lazyTileLoading = true;
+
     /** Skip intro screens (photosensitivity warning, logos, TOS); on by default. */
     public boolean skipMenus = true;
 
@@ -114,6 +117,7 @@ public final class LauncherConfig {
         map.put("jvmPath", jvmPath);
         map.put("bootstrapDir", bootstrapDir);
         map.put("clientPerfFixes", clientPerfFixes);
+        map.put("lazyTileLoading", lazyTileLoading);
         map.put("skipMenus", skipMenus);
         map.put("autoMemory", autoMemory);
         map.put("memoryGb", (long) memoryGb);
@@ -139,6 +143,7 @@ public final class LauncherConfig {
         config.jvmPath = ServerProfile.str(map.get("jvmPath"), "");
         config.bootstrapDir = ServerProfile.str(map.get("bootstrapDir"), "");
         config.clientPerfFixes = ServerProfile.bool(map.get("clientPerfFixes"), true);
+        config.lazyTileLoading = ServerProfile.bool(map.get("lazyTileLoading"), true);
         config.skipMenus = ServerProfile.bool(map.get("skipMenus"), true);
         config.autoMemory = ServerProfile.bool(map.get("autoMemory"), true);
         config.memoryGb = (int) ServerProfile.num(map.get("memoryGb"), 8);

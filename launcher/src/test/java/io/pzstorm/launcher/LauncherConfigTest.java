@@ -310,6 +310,17 @@ class LauncherConfigTest {
     }
 
     @Test
+    void lazyTileLoadingPersistsAndDefaultsOn() throws IOException {
+        LauncherConfig config = new LauncherConfig();
+        assertTrue(config.lazyTileLoading);
+        config.lazyTileLoading = false;
+        Path file = tmp.resolve("launcher.json");
+        config.save(file);
+        assertTrue(!LauncherConfig.load(file).lazyTileLoading);
+        assertTrue(LauncherConfig.load(tmp.resolve("missing.json")).lazyTileLoading);
+    }
+
+    @Test
     void skipMenusPersistsAndDefaultsOn() throws IOException {
         LauncherConfig config = new LauncherConfig();
         assertTrue(config.skipMenus);

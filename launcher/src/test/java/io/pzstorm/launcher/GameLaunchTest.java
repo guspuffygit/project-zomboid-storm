@@ -333,6 +333,34 @@ class GameLaunchTest {
     }
 
     @Test
+    void lazyTileLoadingDefaultOnAndOptOut() throws IOException {
+        assertTrue(
+                GameLaunch.plan(config(), null, null)
+                        .command
+                        .contains("-D" + GameLaunch.LAZY_TILES_PROPERTY + "=true"));
+
+        LauncherConfig off = config();
+        off.lazyTileLoading = false;
+        assertTrue(
+                GameLaunch.plan(off, null, null).command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.LAZY_TILES_PROPERTY)));
+
+        LauncherConfig userOverride = config();
+        userOverride.lazyTileLoading = true;
+        userOverride.globalVmArgs.add("-D" + GameLaunch.LAZY_TILES_PROPERTY + "=false");
+        List<String> cmd = GameLaunch.plan(userOverride, null, null).command;
+        assertFalse(cmd.contains("-D" + GameLaunch.LAZY_TILES_PROPERTY + "=true"));
+        assertTrue(cmd.contains("-D" + GameLaunch.LAZY_TILES_PROPERTY + "=false"));
+
+        LauncherConfig noBootstrap = config();
+        noBootstrap.lazyTileLoading = true;
+        noBootstrap.bootstrapDir = tmp.resolve("nope").toString();
+        assertTrue(
+                GameLaunch.plan(noBootstrap, null, null).command.stream()
+                        .noneMatch(a -> a.startsWith("-D" + GameLaunch.LAZY_TILES_PROPERTY)));
+    }
+
+    @Test
     void skipMenusDefaultOnAndOverridable() throws IOException {
         GameLaunch.LaunchPlan plan = GameLaunch.plan(config(), null, null);
         assertTrue(plan.command.contains("-D" + GameLaunch.SKIP_MENUS_PROPERTY + "=true"));

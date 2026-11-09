@@ -29,6 +29,7 @@ public final class SettingsDialog extends JDialog {
     private final JTextField bootstrapDir = new JTextField(36);
     private final JCheckBox clientPerfFixes =
             new JCheckBox("Experimental client performance fixes");
+    private final JCheckBox lazyTileLoading = new JCheckBox("Lazy tile loading (experimental)");
     private final JCheckBox skipMenus = new JCheckBox("Skip menus");
     private final JCheckBox autoMemory = new JCheckBox("Automatic");
     private final JSpinner memoryGb =
@@ -47,6 +48,11 @@ public final class SettingsDialog extends JDialog {
         clientPerfFixes.setSelected(config.clientPerfFixes);
         clientPerfFixes.setToolTipText(
                 "Passes -Dstorm.experimental.clientperf=true to the game (default on)");
+        lazyTileLoading.setSelected(config.lazyTileLoading);
+        lazyTileLoading.setToolTipText(
+                "Loads tile textures when they first come into view instead of all at join."
+                        + " Cuts memory on servers with many tile mods; tiles can pop in for a"
+                        + " moment. Passes -Dstorm.experimental.lazytiles=true (default on)");
         skipMenus.setSelected(config.skipMenus);
         skipMenus.setToolTipText(
                 "Boot straight to the main menu — skips the photosensitivity warning, logo"
@@ -90,6 +96,7 @@ public final class SettingsDialog extends JDialog {
         row = addRow(form, row, "Storm bootstrap dir", withBrowse(bootstrapDir, true));
         row = addHint(form, row, detectedBootstrap, "Storm bootstrap");
         row = addRow(form, row, null, clientPerfFixes);
+        row = addRow(form, row, null, lazyTileLoading);
         row = addRow(form, row, null, skipMenus);
         JPanel memoryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         memoryRow.setOpaque(false);
@@ -128,6 +135,7 @@ public final class SettingsDialog extends JDialog {
                     config.jvmPath = jvmPath.getText().trim();
                     config.bootstrapDir = bootstrapDir.getText().trim();
                     config.clientPerfFixes = clientPerfFixes.isSelected();
+                    config.lazyTileLoading = lazyTileLoading.isSelected();
                     config.skipMenus = skipMenus.isSelected();
                     config.autoMemory = autoMemory.isSelected();
                     config.memoryGb = ((Number) memoryGb.getValue()).intValue();

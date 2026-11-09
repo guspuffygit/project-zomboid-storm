@@ -161,6 +161,10 @@ workshop updates.
    (Storm's experimental client performance patches are **on by default**;
    untick *"Experimental client performance fixes"* in Settings or pass your
    own `-Dstorm.experimental.clientperf=…` to override),
+   `-Dstorm.experimental.lazytiles=true` while *"Lazy tile loading
+   (experimental)"* is ticked (**on by default**; Storm then loads tile-pack
+   pages when they first come into view instead of all at join — see
+   [what Storm changes](what-storm-changes.md#client-side-behavior)),
    a managed `-Xmx` replacing the game json's stock 3 GB heap (*Game memory*
    in Settings, identical on all three OSes: *Automatic* — the default —
    allocates half the system RAM plus 1 GB, capped at 9 GB, and shows the
