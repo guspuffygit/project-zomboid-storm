@@ -12,13 +12,13 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
 
 /**
- * Test transformer that patches {@code zombie.MultiPatchTarget.getB()} to return {@code
- * "patched-b"} instead of {@code "original-b"}.
+ * Test transformer that patches {@code io.pzstorm.storm.testtarget.MultiPatchTarget.getB()} to
+ * return {@code "patched-b"} instead of {@code "original-b"}.
  */
 public class MultiPatchTransformerB extends StormClassTransformer {
 
     public MultiPatchTransformerB() {
-        super("zombie.MultiPatchTarget");
+        super("io.pzstorm.storm.testtarget.MultiPatchTarget");
     }
 
     @Override

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  */
 class MultipleTransformersIntegrationTest implements IntegrationTest {
 
-    private static final String TARGET_CLASS = "zombie.MultiPatchTarget";
+    private static final String TARGET_CLASS = "io.pzstorm.storm.testtarget.MultiPatchTarget";
 
     private static final Class<?> STORM_CLASS_TRANSFORMER;
     private static final Class<?> STORM_CLASS_TRANSFORMERS;
@@ -96,7 +96,10 @@ class MultipleTransformersIntegrationTest implements IntegrationTest {
         // Get raw class bytes
         byte[] rawClass;
         try (InputStream is =
-                getClass().getClassLoader().getResourceAsStream("zombie/MultiPatchTarget.class")) {
+                getClass()
+                        .getClassLoader()
+                        .getResourceAsStream(
+                                "io/pzstorm/storm/testtarget/MultiPatchTarget.class")) {
             Assertions.assertNotNull(is, "MultiPatchTarget.class should be on the classpath");
             rawClass = is.readAllBytes();
         }
@@ -118,13 +121,20 @@ class MultipleTransformersIntegrationTest implements IntegrationTest {
     void applyAll_shouldReturnOriginalBytesWhenNoTransformersRegistered() throws Exception {
         byte[] rawClass;
         try (InputStream is =
-                getClass().getClassLoader().getResourceAsStream("zombie/MultiPatchTarget.class")) {
+                getClass()
+                        .getClassLoader()
+                        .getResourceAsStream(
+                                "io/pzstorm/storm/testtarget/MultiPatchTarget.class")) {
             Assertions.assertNotNull(is, "MultiPatchTarget.class should be on the classpath");
             rawClass = is.readAllBytes();
         }
 
         byte[] result =
-                (byte[]) APPLY_ALL.invoke(null, "zombie.NoTransformersRegistered", rawClass);
+                (byte[])
+                        APPLY_ALL.invoke(
+                                null,
+                                "io.pzstorm.storm.testtarget.NoTransformersRegistered",
+                                rawClass);
 
         Assertions.assertArrayEquals(
                 rawClass,
