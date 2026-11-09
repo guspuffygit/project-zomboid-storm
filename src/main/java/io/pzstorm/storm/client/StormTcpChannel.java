@@ -43,6 +43,15 @@ public final class StormTcpChannel {
     /** Session header name; mirrors StormTcpSessionRegistry.SESSION_HEADER on the server. */
     public static final String SESSION_HEADER = "X-Storm-Session";
 
+    /** Mirrors StormTcpSessionRegistry.CLIENT_OS_HEADER on the server. */
+    static final String CLIENT_OS_HEADER = "X-Storm-Client-OS";
+
+    private static final String CLIENT_OS =
+            describeOs(
+                    System.getProperty("os.name"),
+                    System.getProperty("os.version"),
+                    System.getProperty("os.arch"));
+
     private static final int POLL_INTERVAL_MILLIS = 250;
     private static final int HANDSHAKE_RETRY_MILLIS = 500;
     private static final int MAX_UNREACHABLE_ATTEMPTS = 5;
@@ -288,6 +297,7 @@ public final class StormTcpChannel {
                             .uri(URI.create(baseUrl + "/storm/handshake"))
                             .timeout(REQUEST_TIMEOUT)
                             .header("Content-Type", "application/json")
+                            .header(CLIENT_OS_HEADER, CLIENT_OS)
                             .POST(HttpRequest.BodyPublishers.ofString(body))
                             .build();
             HttpResponse<String> response =
@@ -314,6 +324,25 @@ public final class StormTcpChannel {
             LOGGER.debug("Storm TCP handshake to {} failed: {}", baseUrl, e.toString());
             return new Attempt(Outcome.UNREACHABLE, e.toString());
         }
+    }
+
+    /**
+     * {@code HttpRequest.Builder.header} throws on anything outside printable ASCII, and a throw
+     * there would cost the client its TCP session, so every other character becomes {@code ?}.
+     */
+    static String describeOs(
+            @Nullable String name, @Nullable String version, @Nullable String arch) {
+        StringBuilder out = new StringBuilder();
+        for (String part : new String[] {name, version, arch}) {
+            if (part == null || part.isBlank()) {
+                continue;
+            }
+            if (out.length() > 0) {
+                out.append(' ');
+            }
+            out.append(part.trim().replaceAll("[^\\x20-\\x7E]", "?"));
+        }
+        return out.length() == 0 ? "unknown" : out.toString();
     }
 
     private static HttpClient client() {

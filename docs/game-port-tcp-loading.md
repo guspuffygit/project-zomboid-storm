@@ -237,8 +237,11 @@ server; every client falls back to vanilla UDP.
 connection-stage metrics and the stalled-connection reaper see a TCP joiner
 exactly like a UDP one, because the vanilla handlers still run.
 
-**Logs.** `Marked Storm connection: guid=… steamId=… ip=… clientStorm=…` on the
-server marks a successful bind. `Storm TCP channel established to …` on the
+**Logs.** `Marked Storm connection: guid=… steamId=… ip=… clientStorm=…
+clientOs=… mtu=…` on the server marks a successful bind. `clientOs` is the
+client's `os.name os.version os.arch` from the `X-Storm-Client-OS` handshake
+header (`unknown` for older clients), and `mtu` is the MTU RakNet
+negotiated for that connection. `Storm TCP channel established to …` on the
 client, `Storm TCP channel unavailable for this server; staying on UDP` when the
 budget runs out.
 

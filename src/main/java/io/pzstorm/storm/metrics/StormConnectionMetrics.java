@@ -39,6 +39,9 @@ import zombie.network.GameServer;
  *       retransmission for this peer; growth here precedes a timeout-driven disconnect.
  *   <li>{@code storm_peer_packetloss_last_second{username}} — fraction of packets lost last second.
  *   <li>{@code storm_peer_average_ping_ms{username}} — running-average RTT to the peer.
+ *   <li>{@code storm_peer_mtu_bytes{username}} — the MTU RakNet negotiated with the peer. A peer on
+ *       1492 whose resend buffer freezes at multiples of 1432 bytes has a path that drops full-size
+ *       datagrams.
  *   <li>{@code storm_peer_congestion_limited{username}} — {@code 1} when RakNet's congestion
  *       control is currently throttling outbound BPS for this peer, {@code 0} otherwise.
  *   <li>{@code storm_peer_bps_limit_congestion{username}} — current BPS ceiling RakNet's congestion
@@ -61,6 +64,7 @@ import zombie.network.GameServer;
  * <p>Everything above comes from a single {@code UdpConnection.getStatistics()} per peer per tick —
  * the one JNI call, whose {@code ZNetStatistics} snapshot is then read field by field. Do not add a
  * second call to sample more fields; it allocates a fresh snapshot and does ~31 JNI write-backs.
+ * The MTU is a separate native read, taken once per connection because RakNet fixes it at connect.
  *
  * <p><b>Watchdog.</b> When {@link PeerSendBufferKickConfig#enabled()} and a peer's {@code
  * bytesInSendBufferHigh} stays above {@link PeerSendBufferKickConfig#thresholdBytes()} for {@link
@@ -121,6 +125,16 @@ public final class StormConnectionMetrics {
             Gauge.builder()
                     .name("storm_peer_average_ping_ms")
                     .help("Running-average round-trip time (milliseconds) to this peer.")
+                    .labelNames("username")
+                    .register(StormPrometheus.registry());
+
+    private static final Gauge MTU_BYTES =
+            Gauge.builder()
+                    .name("storm_peer_mtu_bytes")
+                    .help(
+                            "MTU (bytes) RakNet negotiated with this peer at connect. Fixed for the"
+                                    + " life of the connection. Direct UDP peers land on 1492 or"
+                                    + " 1200, Steam relay peers on 1200.")
                     .labelNames("username")
                     .register(StormPrometheus.registry());
 
@@ -221,6 +235,7 @@ public final class StormConnectionMetrics {
 
     private static final Set<String> lastSeenUsernames = new HashSet<>();
     private static final Map<String, Integer> consecutiveTicksOverThreshold = new HashMap<>();
+    private static final Map<String, UdpConnection> mtuSampledFor = new HashMap<>();
 
     private StormConnectionMetrics() {}
 
@@ -275,6 +290,9 @@ public final class StormConnectionMetrics {
             RESEND_BUFFER_BYTES.labelValues(username).set(stats.bytesInResendBuffer);
             PACKETLOSS_LAST_SECOND.labelValues(username).set(stats.packetlossLastSecond);
             AVERAGE_PING_MS.labelValues(username).set(c.getAveragePing());
+            if (mtuSampledFor.put(username, c) != c) {
+                MTU_BYTES.labelValues(username).set(c.getMTUSize());
+            }
             CONGESTION_LIMITED
                     .labelValues(username)
                     .set(stats.isLimitedByCongestionControl ? 1 : 0);
@@ -321,6 +339,8 @@ public final class StormConnectionMetrics {
             RESEND_BUFFER_BYTES.labelValues(prev).set(0.0);
             PACKETLOSS_LAST_SECOND.labelValues(prev).set(0.0);
             AVERAGE_PING_MS.labelValues(prev).set(0.0);
+            MTU_BYTES.labelValues(prev).set(0.0);
+            mtuSampledFor.remove(prev);
             CONGESTION_LIMITED.labelValues(prev).set(0.0);
             BPS_LIMIT_CONGESTION.labelValues(prev).set(0.0);
             SEND_BUFFER_MESSAGES.labelValues(prev, "immediate").set(0.0);

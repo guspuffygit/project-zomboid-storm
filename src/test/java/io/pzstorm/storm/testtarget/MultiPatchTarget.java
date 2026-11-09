@@ -1,4 +1,4 @@
-package zombie;
+package io.pzstorm.storm.testtarget;
 
 /**
  * Simple target class used by {@link io.pzstorm.storm.core.MultiPatchTransformerA} and {@link

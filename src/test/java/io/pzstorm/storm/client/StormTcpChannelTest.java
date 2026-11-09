@@ -28,6 +28,16 @@ class StormTcpChannelTest {
     }
 
     @Test
+    void describeOsJoinsThePartsAndStaysHeaderSafe() {
+        assertEquals(
+                "Mac OS X 26.5.1 aarch64",
+                StormTcpChannel.describeOs("Mac OS X", "26.5.1", "aarch64"));
+        assertEquals("Linux amd64", StormTcpChannel.describeOs("Linux", " ", "amd64"));
+        assertEquals("W?ndows 1?1", StormTcpChannel.describeOs("W\u00efndows", "1\n1", null));
+        assertEquals("unknown", StormTcpChannel.describeOs(null, null, null));
+    }
+
+    @Test
     void gameRngGateOpensOnceRngIsInitialized() throws Exception {
         Field rand = randField();
         Object previous = rand.get(RandStandard.INSTANCE);

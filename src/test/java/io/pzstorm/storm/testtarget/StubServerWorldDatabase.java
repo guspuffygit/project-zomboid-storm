@@ -1,4 +1,4 @@
-package zombie.network;
+package io.pzstorm.storm.testtarget;
 
 import java.sql.SQLException;
 

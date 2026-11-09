@@ -2,6 +2,7 @@ package io.pzstorm.storm.connection;
 
 import static io.pzstorm.storm.logging.StormLogger.LOGGER;
 
+import io.pzstorm.storm.util.StormServerTaskQueue;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Iterator;
@@ -38,15 +39,30 @@ import zombie.network.GameServer;
  *
  * <p>Thread safety: all state lives in concurrent maps and lookups only touch {@code UdpConnection}
  * identity fields (guid, steamId, ip), so calls are safe from the game-port HTTP pool threads.
- * Never reach from here into chat or packet-send paths off the server main thread.
+ * Never reach from here into chat, packet-send paths or RakNet natives off the server main thread.
+ * The bind log line reads the MTU through a native, so an off-thread binding hands that line to
+ * {@link StormServerTaskQueue}.
  */
 public final class StormTcpSessionRegistry {
 
     /** Header carrying the session token on authenticated game-port requests. */
     public static final String SESSION_HEADER = "X-Storm-Session";
 
+    /**
+     * Handshake header carrying the client's {@code os.name os.version os.arch}. A header rather
+     * than a body field because older servers reject a handshake body with unknown fields.
+     */
+    public static final String CLIENT_OS_HEADER = "X-Storm-Client-OS";
+
+    public static final String UNKNOWN_CLIENT_OS = "unknown";
+
     public record Session(
-            String token, long guid, long steamId, String clientStormVersion, String ip) {}
+            String token,
+            long guid,
+            long steamId,
+            String clientStormVersion,
+            String clientOs,
+            String ip) {}
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -60,16 +76,26 @@ public final class StormTcpSessionRegistry {
      * {@code null} if no live connection matches the claimed steamId + source IP.
      */
     public static @Nullable Session handshake(
-            long steamId, String clientStormVersion, String tcpSourceIp) {
+            long steamId, String clientStormVersion, String clientOs, String tcpSourceIp) {
         UdpConnection match = findConnection(steamId, tcpSourceIp);
         if (match == null) {
             return null;
         }
-        return bind(match, steamId, clientStormVersion, tcpSourceIp);
+        Session session = bind(match, steamId, clientStormVersion, clientOs, tcpSourceIp);
+        StormServerTaskQueue.submit(
+                () -> {
+                    logMarked(session, match);
+                    return null;
+                });
+        return session;
     }
 
     private static Session bind(
-            UdpConnection match, long steamId, String clientStormVersion, String tcpSourceIp) {
+            UdpConnection match,
+            long steamId,
+            String clientStormVersion,
+            String clientOs,
+            String tcpSourceIp) {
         long guid = match.getConnectedGUID();
 
         byte[] raw = new byte[16];
@@ -80,6 +106,7 @@ public final class StormTcpSessionRegistry {
                         guid,
                         steamId,
                         clientStormVersion,
+                        clientOs,
                         tcpSourceIp);
 
         Session previous = BY_GUID.put(guid, session);
@@ -88,13 +115,26 @@ public final class StormTcpSessionRegistry {
             BY_TOKEN.remove(previous.token());
         }
         BY_TOKEN.put(session.token(), session);
-        LOGGER.info(
-                "Marked Storm connection: guid={} steamId={} ip={} clientStorm={}",
-                guid,
-                steamId,
-                tcpSourceIp,
-                clientStormVersion);
         return session;
+    }
+
+    /** Server main thread only: the MTU comes from a RakNet native. */
+    private static void logMarked(Session session, UdpConnection connection) {
+        int mtu;
+        try {
+            mtu = connection.getMTUSize();
+        } catch (Throwable t) {
+            mtu = -1;
+        }
+        LOGGER.info(
+                "Marked Storm connection: guid={} steamId={} ip={} clientStorm={} clientOs={}"
+                        + " mtu={}",
+                session.guid(),
+                session.steamId(),
+                session.ip(),
+                session.clientStormVersion(),
+                session.clientOs(),
+                mtu);
     }
 
     /**
@@ -112,7 +152,7 @@ public final class StormTcpSessionRegistry {
      * 5 s window, so a client that handshakes and never logs in is still dropped.
      */
     public static @Nullable Session handshakePreLogin(
-            long claimedSteamId, String clientStormVersion, String tcpSourceIp) {
+            long claimedSteamId, String clientStormVersion, String clientOs, String tcpSourceIp) {
         UdpEngine engine = GameServer.udpEngine;
         if (engine == null) {
             return null;
@@ -145,7 +185,10 @@ public final class StormTcpSessionRegistry {
             return null;
         }
         match.connectionTimestamp = System.currentTimeMillis();
-        return bind(match, steam ? claimedSteamId : 0L, clientStormVersion, tcpSourceIp);
+        Session session =
+                bind(match, steam ? claimedSteamId : 0L, clientStormVersion, clientOs, tcpSourceIp);
+        logMarked(session, match);
+        return session;
     }
 
     /**

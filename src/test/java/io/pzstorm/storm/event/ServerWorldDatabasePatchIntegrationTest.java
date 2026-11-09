@@ -7,6 +7,7 @@ import io.pzstorm.storm.event.zomboid.OnBanIpEvent;
 import io.pzstorm.storm.event.zomboid.OnBanSteamIDEvent;
 import io.pzstorm.storm.event.zomboid.OnBanUserEvent;
 import io.pzstorm.storm.patch.networking.ServerWorldDatabasePatch;
+import io.pzstorm.storm.testtarget.StubServerWorldDatabase;
 import java.io.InputStream;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.ClassFileLocator;
@@ -16,7 +17,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import zombie.network.StubServerWorldDatabase;
 
 /**
  * Integration test for {@link ServerWorldDatabasePatch}. Applies the real patch's {@code

@@ -33,6 +33,7 @@ public class GamePortHandshakeEndpoints {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long TASK_TIMEOUT_SECONDS = 15;
+    private static final int MAX_CLIENT_OS_CHARS = 64;
 
     @GameHttpEndpoint(path = "/storm/handshake", method = "POST")
     public static void handshake(HttpRequestEvent event, HandshakeRequest body) throws IOException {
@@ -46,14 +47,16 @@ public class GamePortHandshakeEndpoints {
 
         String sourceIp = event.getRemoteAddress().getAddress().getHostAddress();
         String clientStorm = body.stormVersion() == null ? "unknown" : body.stormVersion();
-        Session session = StormTcpSessionRegistry.handshake(steamId, clientStorm, sourceIp);
+        String clientOs = clientOs(header(event, StormTcpSessionRegistry.CLIENT_OS_HEADER));
+        Session session =
+                StormTcpSessionRegistry.handshake(steamId, clientStorm, clientOs, sourceIp);
         if (session == null && GameServer.udpEngine != null) {
             try {
                 session =
                         StormServerTaskQueue.submit(
                                         () ->
                                                 StormTcpSessionRegistry.handshakePreLogin(
-                                                        steamId, clientStorm, sourceIp))
+                                                        steamId, clientStorm, clientOs, sourceIp))
                                 .get(TASK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 event.send(503, "server busy");
@@ -81,7 +84,9 @@ public class GamePortHandshakeEndpoints {
      * null}. Endpoint handlers for Storm-connection data should start with this.
      */
     public static @Nullable Session requireSession(HttpRequestEvent event) throws IOException {
-        Session session = StormTcpSessionRegistry.byToken(sessionHeader(event));
+        Session session =
+                StormTcpSessionRegistry.byToken(
+                        header(event, StormTcpSessionRegistry.SESSION_HEADER));
         if (session == null) {
             event.send(401, "missing or expired " + StormTcpSessionRegistry.SESSION_HEADER);
             return null;
@@ -108,10 +113,19 @@ public class GamePortHandshakeEndpoints {
         return connection;
     }
 
+    /** Older clients send no OS header. The value reaches the server log, so it is cleaned. */
+    static String clientOs(@Nullable String header) {
+        if (header == null) {
+            return StormTcpSessionRegistry.UNKNOWN_CLIENT_OS;
+        }
+        String cleaned = GamePortClientEventEndpoints.sanitize(header, MAX_CLIENT_OS_CHARS);
+        return cleaned.isEmpty() ? StormTcpSessionRegistry.UNKNOWN_CLIENT_OS : cleaned;
+    }
+
     /** Case-insensitive header lookup: the JDK server normalizes header-name casing. */
-    private static @Nullable String sessionHeader(HttpRequestEvent event) {
+    private static @Nullable String header(HttpRequestEvent event, String name) {
         for (Map.Entry<String, String> header : event.getRequestHeaders().entrySet()) {
-            if (StormTcpSessionRegistry.SESSION_HEADER.equalsIgnoreCase(header.getKey())) {
+            if (name.equalsIgnoreCase(header.getKey())) {
                 return header.getValue();
             }
         }
