@@ -262,4 +262,22 @@ class JoinFlowTest {
                 new JoinFlow.ServerRequirements(List.of(), List.of("modA"));
         assertNull(unarmed.joinChecksums(), "a pre-v2 server publishes no checksums");
     }
+
+    @Test
+    void fullUpdateReasonNamesForcedJoinAndEmptyScan() {
+        WorkshopStaleScan.Scan provedNothing =
+                new WorkshopStaleScan.Scan(Map.of("100", 50L, "200", 50L), Map.of());
+        assertEquals(
+                "Forced mod updates requested", JoinFlow.fullUpdateReason(true, provedNothing, 0));
+        assertEquals(
+                "Workshop scan proved no item current (2 installed, 0 published version(s)"
+                        + " returned)",
+                JoinFlow.fullUpdateReason(false, provedNothing, 0));
+        assertNull(
+                JoinFlow.fullUpdateReason(false, provedNothing, 3),
+                "a join with quick checks needs no explanation");
+        assertNull(
+                JoinFlow.fullUpdateReason(false, null, 0),
+                "a failed scan already logs its own warning");
+    }
 }

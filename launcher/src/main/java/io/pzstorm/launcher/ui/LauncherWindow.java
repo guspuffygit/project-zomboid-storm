@@ -25,6 +25,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -527,13 +530,56 @@ public final class LauncherWindow extends JFrame {
 
     private void onJoin(boolean forceModUpdates) {
         ServerProfile profile = serverList.getSelectedValue();
-        if (profile == null) {
+        if (profile == null || !confirmReplacingRunningGame()) {
             return;
         }
         runLaunch(() -> JoinFlow.join(config, profile, forceModUpdates));
     }
 
+    /**
+     * A launch closes any game the launcher started earlier. The game shows no window for minutes
+     * on a slow machine, so a player who presses Join again while it boots gets asked first.
+     */
+    private boolean confirmReplacingRunningGame() {
+        Optional<Instant> since = GameProcessTracker.runningSince();
+        if (since.isEmpty()) {
+            return true;
+        }
+        String[] options = {"Keep waiting", "Close it and start again"};
+        int choice =
+                JOptionPane.showOptionDialog(
+                        this,
+                        "<html>The game is already running. It started "
+                                + describeElapsed(Duration.between(since.get(), Instant.now()))
+                                + " ago.<br><br>The game can take a few minutes to show its"
+                                + " window, and longer on a Steam Deck or a slow disk.<br>Starting"
+                                + " again closes that game.</html>",
+                        "Game already running",
+                        JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[0]);
+        if (choice != 1) {
+            Log.info("Kept the running game — no new launch.");
+            return false;
+        }
+        Log.info("Player chose to close the running game and start again.");
+        return true;
+    }
+
+    static String describeElapsed(Duration elapsed) {
+        long seconds = Math.max(0, elapsed.getSeconds());
+        if (seconds < 60) {
+            return seconds + " s";
+        }
+        return (seconds / 60) + " min " + (seconds % 60) + " s";
+    }
+
     private void onLaunchOnly() {
+        if (!confirmReplacingRunningGame()) {
+            return;
+        }
         runLaunch(
                 () -> {
                     GameProcessTracker.reapLeftover();
@@ -560,7 +606,13 @@ public final class LauncherWindow extends JFrame {
                                 action.run();
                                 GameProcessTracker.armCloseLauncherOnGameExit();
                                 SwingUtilities.invokeLater(
-                                        () -> Log.info("Launcher will close when the game exits."));
+                                        () ->
+                                                Log.info(
+                                                        "Game is starting. Its window can take a"
+                                                                + " few minutes to appear — no need"
+                                                                + " to press Join again. Launcher"
+                                                                + " will close when the game"
+                                                                + " exits."));
                             } catch (SteamRestartRequiredException e) {
                                 Log.error("Launch failed", e);
                                 SwingUtilities.invokeLater(

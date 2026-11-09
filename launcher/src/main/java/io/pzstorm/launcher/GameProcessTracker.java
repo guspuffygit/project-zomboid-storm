@@ -1,10 +1,12 @@
 package io.pzstorm.launcher;
 
+import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -57,6 +59,22 @@ public final class GameProcessTracker {
     }
 
     /**
+     * Start time of a game the launcher spawned that is verifiably still running, from this session
+     * or an earlier one. The UI asks before a new launch replaces it: a slow machine can sit
+     * windowless for minutes while the game boots, and a second Join press would otherwise close
+     * the game that is starting.
+     */
+    public static Optional<Instant> runningSince() {
+        Properties props;
+        try {
+            props = readRecord();
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+        return findRecorded(props).flatMap(handle -> handle.info().startInstant());
+    }
+
+    /**
      * Kills the game JVM recorded by a previous spawn if it is verifiably still that same process.
      * Runs right before a new launch: two game instances fight over the Zomboid directory anyway,
      * and a leftover one file-locks the workshop pre-update. A WSL-spawned Windows game records the
@@ -64,37 +82,27 @@ public final class GameProcessTracker {
      * is then a silent no-op rather than a risk.
      */
     public static void reapLeftover() {
-        Properties props = new Properties();
+        Properties props;
         try {
-            if (!Files.isRegularFile(recordFile())) {
-                return;
-            }
-            try (Reader reader = Files.newBufferedReader(recordFile(), StandardCharsets.UTF_8)) {
-                props.load(reader);
-            }
+            props = readRecord();
             Files.deleteIfExists(recordFile());
         } catch (Exception e) {
             Log.warn("Could not read previous game process record: " + e.getMessage());
             return;
         }
-        String pid = props.getProperty("pid");
-        String startMillis = props.getProperty("startMillis");
-        if (pid == null || startMillis == null) {
-            return;
-        }
-        Optional<ProcessHandle> found;
-        try {
-            found = ProcessHandle.of(Long.parseLong(pid));
-        } catch (NumberFormatException | SecurityException e) {
-            return;
-        }
-        if (found.isEmpty() || !isRecordedProcess(found.get(), props)) {
+        Optional<ProcessHandle> found = findRecorded(props);
+        if (found.isEmpty()) {
             return;
         }
         ProcessHandle handle = found.get();
+        Process tracked = current;
+        if (tracked != null && tracked.pid() == handle.pid()) {
+            // the exit this reap causes must not trip the close-launcher-on-game-exit hook
+            current = null;
+        }
         Log.warn(
                 "Previous game JVM (pid "
-                        + pid
+                        + handle.pid()
                         + ") is still running — closing it so it cannot block this launch.");
         handle.destroy();
         try {
@@ -108,15 +116,47 @@ public final class GameProcessTracker {
         }
     }
 
+    private static Properties readRecord() throws IOException {
+        Properties props = new Properties();
+        if (Files.isRegularFile(recordFile())) {
+            try (Reader reader = Files.newBufferedReader(recordFile(), StandardCharsets.UTF_8)) {
+                props.load(reader);
+            }
+        }
+        return props;
+    }
+
+    private static Optional<ProcessHandle> findRecorded(Properties props) {
+        String pid = props.getProperty("pid");
+        if (pid == null || props.getProperty("startMillis") == null) {
+            return Optional.empty();
+        }
+        try {
+            return ProcessHandle.of(Long.parseLong(pid))
+                    .filter(handle -> isRecordedProcess(handle, props));
+        } catch (NumberFormatException | SecurityException e) {
+            return Optional.empty();
+        }
+    }
+
     /**
      * Arms the reverse direction of the Steam-Stop coupling: when the tracked game exits (for any
      * reason — user quit, crash, Steam Stop terminating just the game exe), the launcher exits too.
      * Steam tracks the ProjectZomboid64 process by exe name, not the launcher's javaw, so Stop only
      * kills the game — without this the launcher lingers as a headless javaw. Called from the UI
      * path after a successful spawn; headless {@code --join} skips it because the launcher already
-     * returns on its own.
+     * returns on its own. A game the launcher itself retired for a relaunch is no longer the
+     * tracked one, so its exit leaves the launcher running to finish that relaunch.
      */
     public static void armCloseLauncherOnGameExit() {
+        armCloseLauncherOnGameExit(
+                () -> {
+                    Log.info("Game process exited — closing launcher.");
+                    System.exit(0);
+                });
+    }
+
+    static void armCloseLauncherOnGameExit(Runnable closeLauncher) {
         Process process = current;
         if (process == null) {
             return;
@@ -124,8 +164,9 @@ public final class GameProcessTracker {
         process.onExit()
                 .thenRun(
                         () -> {
-                            Log.info("Game process exited — closing launcher.");
-                            System.exit(0);
+                            if (current == process) {
+                                closeLauncher.run();
+                            }
                         });
     }
 

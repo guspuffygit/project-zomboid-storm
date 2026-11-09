@@ -63,6 +63,14 @@ public final class WorkshopStaleScan {
             this.published = published;
         }
 
+        int installedCount() {
+            return installed.size();
+        }
+
+        int publishedCount() {
+            return published.size();
+        }
+
         /** Stale installed item ids, sorted. Empty when no acf exists or everything matches. */
         public List<String> staleInstalled() {
             return staleItems(installed, published);

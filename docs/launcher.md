@@ -186,6 +186,14 @@ workshop updates.
    `libjsig`/`libPZXInitThreads64` preloads on linux; `DYLD_LIBRARY_PATH` on
    mac) so transitive native dependencies resolve for a direct JVM spawn.
    Game output is captured to `<home>/Zomboid/storm/launcher/logs/game.log`.
+   A launch closes any game the launcher started earlier and that is still
+   running, because two instances fight over the Zomboid directory and a
+   leftover one file-locks the workshop update. In the UI the launcher asks
+   first (*Keep waiting* / *Close it and start again*) and shows how long ago
+   that game started, since a slow machine can stay windowless for minutes
+   while the game boots. Headless `--join` closes it without asking. The
+   launcher closes when the game it started exits on its own, but not when it
+   closed that game itself for a relaunch.
 
 Vanilla PZ behavior notes:
 

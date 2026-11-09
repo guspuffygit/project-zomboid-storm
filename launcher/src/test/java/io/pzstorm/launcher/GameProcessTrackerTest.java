@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -76,5 +77,57 @@ class GameProcessTrackerTest {
         GameProcessTracker.reapLeftover();
 
         Assertions.assertFalse(Files.exists(GameProcessTracker.recordFile()));
+    }
+
+    @Test
+    void runningSinceReportsLiveRecordedProcessWithoutConsumingRecord() throws Exception {
+        spawned = new ProcessBuilder("sleep", "60").start();
+        GameProcessTracker.record(spawned);
+
+        Assertions.assertTrue(GameProcessTracker.runningSince().isPresent());
+        Assertions.assertTrue(Files.isRegularFile(GameProcessTracker.recordFile()));
+        Assertions.assertTrue(spawned.isAlive());
+    }
+
+    @Test
+    void runningSinceIsEmptyOnceRecordedProcessExited() throws Exception {
+        spawned = new ProcessBuilder("true").start();
+        GameProcessTracker.record(spawned);
+        spawned.waitFor(5, TimeUnit.SECONDS);
+
+        Assertions.assertTrue(GameProcessTracker.runningSince().isEmpty());
+    }
+
+    @Test
+    void runningSinceIsEmptyWithoutRecord() {
+        Assertions.assertTrue(GameProcessTracker.runningSince().isEmpty());
+    }
+
+    @Test
+    void gameExitClosesLauncher() throws Exception {
+        spawned = new ProcessBuilder("sleep", "60").start();
+        GameProcessTracker.record(spawned);
+        CountDownLatch closed = new CountDownLatch(1);
+        GameProcessTracker.armCloseLauncherOnGameExit(closed::countDown);
+
+        spawned.destroy();
+
+        Assertions.assertTrue(closed.await(5, TimeUnit.SECONDS), "launcher must follow the game");
+    }
+
+    @Test
+    void reapedGameDoesNotCloseLauncher() throws Exception {
+        spawned = new ProcessBuilder("sleep", "60").start();
+        GameProcessTracker.record(spawned);
+        CountDownLatch closed = new CountDownLatch(1);
+        GameProcessTracker.armCloseLauncherOnGameExit(closed::countDown);
+
+        GameProcessTracker.reapLeftover();
+
+        Assertions.assertTrue(spawned.waitFor(5, TimeUnit.SECONDS), "recorded process not killed");
+        spawned.onExit().get(5, TimeUnit.SECONDS);
+        Assertions.assertFalse(
+                closed.await(500, TimeUnit.MILLISECONDS),
+                "a relaunch must not close the launcher that is running it");
     }
 }

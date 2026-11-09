@@ -141,6 +141,15 @@ public final class JoinFlow {
                             + " item(s) already match the published workshop version —"
                             + " quick state check only.");
         }
+        String fullUpdateReason = fullUpdateReason(forceModUpdates, scan, verify.size());
+        if (fullUpdateReason != null) {
+            Log.warn(
+                    fullUpdateReason
+                            + " — all "
+                            + update.size()
+                            + " item(s) go through the full Steam update, which can take several"
+                            + " minutes.");
+        }
         WorkshopUpdate.Result result;
         try {
             result = WorkshopUpdate.run(config, update, verify);
@@ -641,6 +650,26 @@ public final class JoinFlow {
             return new ServerRequirements(Collections.emptyList(), null);
         }
         return new ServerRequirements(probed.workshopItems, probed.mods);
+    }
+
+    /**
+     * Why a join skips every quick check, or null when at least one item got one. A full pass over
+     * a large mod list runs for many minutes, and the log has to say whether the player asked for
+     * it or the scan proved nothing.
+     */
+    static String fullUpdateReason(
+            boolean forceModUpdates, WorkshopStaleScan.Scan scan, int verifyCount) {
+        if (forceModUpdates) {
+            return "Forced mod updates requested";
+        }
+        if (verifyCount > 0 || scan == null) {
+            return null;
+        }
+        return "Workshop scan proved no item current ("
+                + scan.installedCount()
+                + " installed, "
+                + scan.publishedCount()
+                + " published version(s) returned)";
     }
 
     /**
