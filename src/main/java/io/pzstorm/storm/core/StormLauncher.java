@@ -270,6 +270,16 @@ public class StormLauncher {
 
                 try {
                     classLoader
+                            .loadClass("io.pzstorm.storm.client.ClientNetHealth")
+                            .getDeclaredMethod("start")
+                            .invoke(null);
+                } catch (Throwable t) {
+                    // diagnostics only; never take the client down
+                    LOGGER.error("Failed to start client net health sampler", t);
+                }
+
+                try {
+                    classLoader
                             .loadClass("io.pzstorm.storm.client.StormTcpChannel")
                             .getDeclaredMethod("start")
                             .invoke(null);
