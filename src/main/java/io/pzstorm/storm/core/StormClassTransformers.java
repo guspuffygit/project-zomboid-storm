@@ -313,6 +313,7 @@ import io.pzstorm.storm.patch.performance.ServerMapReleventNowFastContainsPatch;
 import io.pzstorm.storm.patch.performance.ServerMapSaveAllPatch;
 import io.pzstorm.storm.patch.performance.ServerPlayerDBSavePatch;
 import io.pzstorm.storm.patch.performance.ServerTickPatch;
+import io.pzstorm.storm.patch.performance.SpriteRenderStateLazyPagePatch;
 import io.pzstorm.storm.patch.performance.SpriteRendererFrameFencePatch;
 import io.pzstorm.storm.patch.performance.SpriteRendererRingBufferSizingPatch;
 import io.pzstorm.storm.patch.performance.StatisticManagerUpdatePatch;
@@ -496,6 +497,7 @@ public class StormClassTransformers {
             registerTransformer(new IsoSpriteLazyPageRenderPatch());
             registerTransformer(new IsoTreeLazyPageRenderPatch());
             registerTransformer(new VBORendererLazyPageTexturePatch());
+            registerTransformer(new SpriteRenderStateLazyPagePatch());
             registerTransformer(new IsoChunkLazyPageRequestPatch());
             registerTransformer(new FileSystemLazyPageDrainPatch());
         }

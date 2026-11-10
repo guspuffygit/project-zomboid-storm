@@ -247,8 +247,9 @@ test {
 tasks.register('clientPatchTest', Test) {
 	useJUnitPlatform()
 	systemProperty 'storm.testing', 'true'
-	// register the -Dstorm.experimental.clientperf patches so they get weave-validated too
+	// register the flag-gated client patches so they get weave-validated too
 	systemProperty 'storm.experimental.clientperf', 'true'
+	systemProperty 'storm.experimental.lazytiles', 'true'
 	systemProperty 'storm.popman.java', 'true'
 	jvmArgs '--enable-native-access=ALL-UNNAMED'
 	testClassesDirs = sourceSets.test.output.classesDirs

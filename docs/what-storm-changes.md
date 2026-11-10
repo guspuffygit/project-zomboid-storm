@@ -171,7 +171,10 @@ enables Storm-core client Java features:
   lands. Trees get their own check because `FBORenderTrees` hands page ids
   straight to the GPU, and a cut-away jumbo tree swaps in trunk and treetop
   sprites no chunk object references. Any other drawer that sets a page id on
-  `VBORenderer` directly also requests it. Vanilla UI packs stay eager. Pages are never unloaded, so memory
+  `VBORenderer` directly also requests it. UI draws request their page too,
+  because the sprite render state drops an unready texture before binding it,
+  which left the brush tool's tile picker blank for tilesets no nearby chunk
+  uses. Vanilla UI packs stay eager. Pages are never unloaded, so memory
   grows toward the set of pages the player has seen. Any failure turns the
   feature off and releases every deferred page.
 - **The multiplayer join runs over TCP** — login, login queue, Lua checksum,
