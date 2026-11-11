@@ -21,8 +21,8 @@ import javax.swing.SwingUtilities;
  * {@code --join <server>} where {@code <server>} is a profile name or {@code host:port}. Both
  * launch modes take {@code --user <username>} to pick among profiles that share a server, and
  * repeatable {@code --vm-arg <arg>} to add a JVM arg to this launch only (never saved). {@code
- * --join} also takes {@code --quick} to use the UI's fast "Join Server" mod check instead of
- * forcing every item through Steam.
+ * --join} uses the UI's "Join Server" mod check, and {@code --force-updates} forces every item
+ * through Steam instead.
  */
 public final class LauncherMain {
 
@@ -179,7 +179,7 @@ public final class LauncherMain {
     private static final String USAGE =
             "Usage: storm-launcher [--list | --version | --accept-terms"
                     + " | --print-launch <server> | --join <server>]"
-                    + " [--user <username>] [--vm-arg <arg>]... [--quick]";
+                    + " [--user <username>] [--vm-arg <arg>]... [--force-updates]";
 
     private static void runHeadless(LauncherConfig config, String[] args) throws Exception {
         String mode = args[0];
@@ -217,10 +217,10 @@ public final class LauncherMain {
         }
         String username = null;
         List<String> vmArgs = new ArrayList<>();
-        boolean quick = false;
+        boolean forceUpdates = false;
         for (int i = 2; i < args.length && args[i].startsWith("--"); i++) {
-            if (args[i].equals("--quick")) {
-                quick = true;
+            if (args[i].equals("--force-updates")) {
+                forceUpdates = true;
                 continue;
             }
             if (i + 1 >= args.length) {
@@ -260,7 +260,7 @@ public final class LauncherMain {
                     break;
                 }
             case "--join":
-                JoinFlow.join(config, profile, !quick);
+                JoinFlow.join(config, profile, forceUpdates);
                 break;
             default:
                 throw new AssertionError(mode);
