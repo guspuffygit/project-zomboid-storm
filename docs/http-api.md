@@ -160,4 +160,6 @@ curl -X POST --data-binary @/tmp/eval/EvalScript.class \
 
 The endpoint returns `String.valueOf(run())`, or an `ERROR:` line with a stack trace if the body is
 not a valid class file (missing the `0xCAFEBABE` magic), `defineClass` rejects it, or `run()` throws.
-`400` is returned for an empty body. Both endpoints run on the dedicated-server JVM's HTTP thread.
+`400` is returned for an empty body. Both endpoints are handed off to the game's main thread (the server tick via
+`StormServerTaskQueue`, the client `MainThread` via `MainThreadQueue`) and the HTTP thread waits up
+to 30 s for the result, so the code never races the game loop's Lua state.

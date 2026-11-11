@@ -12,8 +12,8 @@ import java.util.function.Supplier;
  * Hands work from an arbitrary thread (the HTTP dispatcher) to the game's {@code MainThread} and
  * waits for the result. Used by the client side of {@link HotReloadEndpoints}, where touching Lua
  * or GL state off the main thread is unsafe. {@link #drain()} must be pumped from a main-thread
- * tick (see {@link HotReloadEndpoints#drainMainThreadQueue}); the dedicated server has no such tick
- * and runs hot-reload work directly, so this queue is never used there.
+ * tick (see {@link HotReloadEndpoints#drainMainThreadQueue}). The dedicated server uses {@code
+ * StormServerTaskQueue} instead, so this queue is never used there.
  */
 public final class MainThreadQueue {
 
